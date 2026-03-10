@@ -1,15 +1,3 @@
-/**
- * \file src/jit/impl/mlir/ir/types.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #include "megbrain_build_config.h"
 #if MGB_JIT && MGB_JIT_MLIR
 
@@ -22,8 +10,7 @@
 namespace mgb {
 namespace jit {
 
-mlir::Type megdnn_dtype_to_mlir_type(megdnn::DType type,
-                                     mlir::MLIRContext* ctx) {
+mlir::Type megdnn_dtype_to_mlir_type(megdnn::DType type, mlir::MLIRContext* ctx) {
     switch (type.enumv()) {
         case megdnn::DTypeEnum::Float32:
             return mlir::FloatType::getF32(ctx);
@@ -52,8 +39,7 @@ mlir::Type megdnn_dtype_to_mlir_type(megdnn::DType type,
         case megdnn::DTypeEnum::Bool:
             return mlir::IntegerType::get(1, ctx);
         default:
-            mgb_throw(InternalError, "Unsupported MegDNN dtype: %s",
-                      type.name());
+            mgb_throw(InternalError, "Unsupported MegDNN dtype: %s", type.name());
     }
 }
 
@@ -92,8 +78,9 @@ megdnn::DType mlir_type_to_megdnn_dtype(mlir::Type type) {
     } else if (element_type.isSignlessInteger(1)) {
         enumv = megdnn::DTypeEnum::Bool;
     } else {
-        mgb_throw(InternalError, "Unsupported MLIR Type: %s",
-                  mlir_type_to_string(element_type).c_str());
+        mgb_throw(
+                InternalError, "Unsupported MLIR Type: %s",
+                mlir_type_to_string(element_type).c_str());
     }
     return megdnn::DType::from_enum(enumv);
 }

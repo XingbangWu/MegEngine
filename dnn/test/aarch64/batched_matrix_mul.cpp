@@ -1,18 +1,8 @@
-/**
- * \file dnn/test/aarch64/batched_matrix_mul.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "test/common/benchmarker.h"
 #include "test/common/checker.h"
-#include "test/common/rng.h"
 #include "test/common/matrix_mul.h"
+#include "test/common/rng.h"
+#include "test/common/task_record_check.h"
 
 #include "test/aarch64/fixture.h"
 
@@ -46,10 +36,42 @@ TEST_F(AARCH64, BATCHED_MATRIX_MUL) {
                     B = TensorShape{b, n, k};
                 else
                     B = TensorShape{b, k, n};
-                checker.set_param(param)
-                        .set_dtype(0, dtype)
-                        .set_dtype(1, dtype)
-                        .execs({A, B, {}});
+                checker.set_param(param).set_dtype(0, dtype).set_dtype(1, dtype).execs(
+                        {A, B, {}});
+            }
+        }
+    }
+}
+
+TEST_F(AARCH64, BATCHED_MATRIX_MUL_RECORD) {
+    TaskRecordChecker<BatchedMatrixMul> checker(0);
+    checker.set_epsilon(1e-2);
+    using Param = MatrixMul::Param;
+    // auto args = get_batch_matmul_args();
+    auto args = matrix_mul::get_batched_matmul_args();
+
+    for (DType dtype : std::vector<DType>{dtype::Float32()}) {
+        for (unsigned mask = 0; mask < 4; ++mask) {
+            for (auto& arg : args) {
+                size_t b = arg.b, m = arg.m, n = arg.n, k = arg.k;
+                //! if test all batch sizes, the test case will time out.
+                if (b != 2) {
+                    continue;
+                }
+                Param param;
+                param.transposeA = mask & 1;
+                param.transposeB = mask & 2;
+                TensorShape A, B;
+                if (param.transposeA)
+                    A = TensorShape{b, k, m};
+                else
+                    A = TensorShape{b, m, k};
+                if (param.transposeB)
+                    B = TensorShape{b, n, k};
+                else
+                    B = TensorShape{b, k, n};
+                checker.set_param(param).set_dtype(0, dtype).set_dtype(1, dtype).execs(
+                        {A, B, {}});
             }
         }
     }
@@ -105,8 +127,7 @@ TEST_F(AARCH64, BENCHMARK_TRANSPOSED_MATRIX_MUL_QUICK_FP16) {
     auto run = [&](size_t M, size_t K, size_t N) {
         float time = 1.f, perf = 1.f;
 
-        std::cout << "GEMM: (" << M << ", " << K << ", " << N << ")"
-                  << std::endl;
+        std::cout << "GEMM: (" << M << ", " << K << ", " << N << ")" << std::endl;
         Param param;
         param.transposeA = true;
         param.transposeB = true;
@@ -115,16 +136,13 @@ TEST_F(AARCH64, BENCHMARK_TRANSPOSED_MATRIX_MUL_QUICK_FP16) {
                 .set_dtype(1, dtype::Float32());
         time = benchmarker_gemm.exec({{M, K}, {K, N}, {}});
         perf = 2.f * M * K * N / time * mod;
-        std::cout << "gemm fp32, Performance is " << perf << " Gflops"
-                  << std::endl;
+        std::cout << "gemm fp32, Performance is " << perf << " Gflops" << std::endl;
         benchmarker_gemm.set_param(param)
                 .set_dtype(0, dtype::Float16())
                 .set_dtype(1, dtype::Float16());
         time = benchmarker_gemm.exec({{M, K}, {K, N}, {}});
         perf = 2.f * M * K * N / time * mod;
-        std::cout << "gemm fp16, Performance is " << perf << " Gflops"
-                  << std::endl;
-
+        std::cout << "gemm fp16, Performance is " << perf << " Gflops" << std::endl;
     };
 
     // run M = K = N
@@ -147,8 +165,7 @@ TEST_F(AARCH64, BENCHMARK_TRANSPOSED_MATRIX_MUL_ALL_SIZES_FP16) {
     auto run = [&](size_t M, size_t K, size_t N) {
         float time = 1.f, perf = 1.f;
 
-        std::cout << "GEMM: (" << M << ", " << K << ", " << N << ")"
-                  << std::endl;
+        std::cout << "GEMM: (" << M << ", " << K << ", " << N << ")" << std::endl;
         Param param;
         param.transposeA = param.transposeB = true;
         benchmarker_gemm.set_param(param)
@@ -156,16 +173,13 @@ TEST_F(AARCH64, BENCHMARK_TRANSPOSED_MATRIX_MUL_ALL_SIZES_FP16) {
                 .set_dtype(1, dtype::Float32());
         time = benchmarker_gemm.exec({{K, M}, {N, K}, {}});
         perf = 2.f * M * K * N / time * mod;
-        std::cout << "gemm fp32, Performance is " << perf << " Gflops"
-                  << std::endl;
+        std::cout << "gemm fp32, Performance is " << perf << " Gflops" << std::endl;
         benchmarker_gemm.set_param(param)
                 .set_dtype(0, dtype::Float16())
                 .set_dtype(1, dtype::Float16());
         time = benchmarker_gemm.exec({{K, M}, {N, K}, {}});
         perf = 2.f * M * K * N / time * mod;
-        std::cout << "gemm fp16, Performance is " << perf << " Gflops"
-                  << std::endl;
-
+        std::cout << "gemm fp16, Performance is " << perf << " Gflops" << std::endl;
     };
 
     std::cout << "warm up:\n";

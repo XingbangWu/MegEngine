@@ -1,19 +1,9 @@
-/**
- * \file dnn/test/common/memory_manager.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 #include <cstddef>
 
-#include "megdnn/handle.h"
-#include <unordered_map>
 #include <mutex>
+#include <unordered_map>
+#include "megdnn/handle.h"
 
 namespace megdnn {
 namespace test {

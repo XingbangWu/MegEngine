@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import itertools
 
 import numpy as np
@@ -14,9 +7,12 @@ import pytest
 import megengine as mge
 import megengine.autodiff as ad
 import megengine.functional as F
+import megengine.optimizer as optim
 from megengine import Tensor
+from megengine.core import set_option
 from megengine.module import Linear, Module
 from megengine.optimizer import SGD
+from megengine.traced_module import trace_module
 
 batch_size = 64
 data_shape = (batch_size, 2)
@@ -72,8 +68,18 @@ class XORNet(Module):
         return x
 
 
-def test_training_converge():
+@pytest.mark.parametrize(
+    "test_traced_module, with_drop, grad_clip",
+    [(False, False, False), (True, True, True)],
+)
+def test_training_converge(test_traced_module, with_drop, grad_clip):
+    if with_drop:
+        set_option("enable_drop", 1)
     net = XORNet()
+    if test_traced_module:
+        inp = Tensor(np.random.random((14, 2)))
+        net = trace_module(net, inp)
+
     opt = SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
     gm = ad.GradManager().attach(net.parameters())
 
@@ -82,6 +88,8 @@ def test_training_converge():
             pred = net(data)
             loss = F.nn.cross_entropy(pred, label)
             gm.backward(loss)
+            if grad_clip:
+                optim.clip_grad_norm(net.parameters(), max_norm=0.2, ord=2.0)
         return loss
 
     def infer(data):
@@ -90,11 +98,13 @@ def test_training_converge():
     train_dataset = minibatch_generator()
     losses = []
 
-    for data, label in itertools.islice(train_dataset, 2000):
+    for data, label in itertools.islice(train_dataset, 1500):
         data = Tensor(data, dtype=np.float32)
         label = Tensor(label, dtype=np.int32)
         opt.clear_grad()
         loss = train(data, label)
+        if grad_clip:
+            optim.clip_grad_value(net.parameters(), lower=-0.1, upper=0.1)
         opt.step()
         losses.append(loss.numpy())
 
@@ -105,10 +115,12 @@ def test_training_converge():
     xx, yy = np.meshgrid(x, x)
     xx = xx.reshape((ngrid * ngrid, 1))
     yy = yy.reshape((ngrid * ngrid, 1))
-    data = np.concatenate((xx, yy), axis=1).astype(np.float32)
-
-    pred = infer(data).numpy()
-    precision = calculate_precision(data, pred)
+    data = mge.tensor(np.concatenate((xx, yy), axis=1).astype(np.float32))
+    pred = infer(data)
+    precision = calculate_precision(data.numpy(), pred.numpy())
     assert precision == 1.0, "Test precision must be high enough, get {}".format(
         precision
     )
+
+    if with_drop:
+        set_option("enable_drop", 0)

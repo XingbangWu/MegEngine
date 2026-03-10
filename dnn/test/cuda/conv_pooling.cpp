@@ -1,22 +1,12 @@
-/**
- * \file dnn/test/cuda/conv_pooling.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "test/cuda/fixture.h"
 
-#include "test/common/tensor.h"
-#include "megdnn/oprs.h"
-#include "test/common/workspace_wrapper.h"
 #include "megdnn/opr_param_defs.h"
+#include "megdnn/oprs.h"
 #include "test/common/checker.h"
 #include "test/common/conv_pooling.h"
 #include "test/common/rng.h"
+#include "test/common/tensor.h"
+#include "test/common/workspace_wrapper.h"
 
 namespace megdnn {
 namespace test {
@@ -55,8 +45,7 @@ TEST_F(CUDA, CONV_POOLING_FORWARD)
 }
 #endif
 
-
-} // namespace test
-} // namespace megdnn
+}  // namespace test
+}  // namespace megdnn
 
 // vim: syntax=cpp.doxygen

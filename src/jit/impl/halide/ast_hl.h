@@ -1,14 +1,3 @@
-/**
- * \file src/jit/impl/halide/ast_hl.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "./halide_header.h"
@@ -58,12 +47,13 @@ AST_NODE_DECL(InputDevValueOp, Halide::Buffer<> m_buffer);
 AST_NODE_DECL(ElemwiseOp);
 AST_NODE_DECL(TypeCvtOp);
 AST_NODE_DECL(ReduceOp, Halide::Func m_comp);
-AST_NODE_DECL(ScalarImmOp,
-              union Val {
-                  int32_t iv;
-                  float fv;
-              };
-              Val m_val);
+AST_NODE_DECL(
+        ScalarImmOp,
+        union Val {
+            int32_t iv;
+            float fv;
+        };
+        Val m_val);
 AST_NODE_DECL(BroadcastOp);
 
 template <class Op>

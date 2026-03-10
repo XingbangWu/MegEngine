@@ -47,14 +47,14 @@
  *
  * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
  *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
+ * Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *
  * This file has been modified by Megvii ("Megvii Modifications").
- * All Megvii Modifications are Copyright (C) 2014-2019 Megvii Inc. All rights reserved.
+ * All Megvii Modifications are Copyright (C) 2014-2021 Megvii Inc. All rights reserved.
  *
  * ---------------------------------------------------------------------------
  */
@@ -79,8 +79,9 @@ using namespace warp;
 namespace {
 constexpr size_t BLOCK_SZ = 32u;
 template <typename T, InterpolationMode imode, BorderMode bmode, size_t CH>
-void warp_perspective_cv(const Mat<T>& src, Mat<T>& dst, const float* trans,
-                         const float border_value, size_t task_id) {
+void warp_perspective_cv(
+        const Mat<T>& src, Mat<T>& dst, const float* trans, const float border_value,
+        size_t task_id) {
     // no extra padding
     double M[9];
     rep(i, 9) M[i] = trans[i];
@@ -151,9 +152,10 @@ void warp_perspective_cv(const Mat<T>& src, Mat<T>& dst, const float* trans,
 }  // anonymous namespace
 
 void megdnn::naive::warp_perspective_cv_exec(
-        _megdnn_tensor_in src, _megdnn_tensor_in trans,
-        _megdnn_tensor_in mat_idx, _megdnn_tensor_in dst, float border_value,
-        BorderMode bmode, InterpolationMode imode, Handle* handle) {
+        _megdnn_tensor_in src, _megdnn_tensor_in trans, _megdnn_tensor_in mat_idx,
+        _megdnn_tensor_in dst, float border_value, BorderMode bmode,
+        InterpolationMode imode, Handle* handle) {
+#if !MGE_BUILD_WITHOUT_NAIVE_EXEC
     size_t ch = dst.layout[3];
     size_t width = dst.layout[2];
     size_t height = dst.layout[1];
@@ -163,77 +165,76 @@ void megdnn::naive::warp_perspective_cv_exec(
     size_t BLOCK_SZ_W = std::min(BLOCK_SZ * BLOCK_SZ / BLOCK_SZ_H, width);
     BLOCK_SZ_H = std::min(BLOCK_SZ * BLOCK_SZ / BLOCK_SZ_W, height);
 
-    size_t parallelism_batch = div_ceil<size_t>(height, BLOCK_SZ_H) *
-                               div_ceil<size_t>(width, BLOCK_SZ_W);
-    megdnn_assert(ch == 1 || ch == 3 || ch == 2,
-                  "unsupported src channel: %zu, avaiable channel size: 1/2/3",
-                  ch);
-    const float* trans_ptr = trans.ptr<dt_float32>();
-    const int* midx_ptr = nullptr;
-    if (mat_idx.raw_ptr) {
+    size_t parallelism_batch =
+            div_ceil<size_t>(height, BLOCK_SZ_H) * div_ceil<size_t>(width, BLOCK_SZ_W);
+    megdnn_assert(
+            ch == 1 || ch == 3 || ch == 2,
+            "unsupported src channel: %zu, avaiable channel size: 1/2/3", ch);
+    if (mat_idx.raw_ptr()) {
         megdnn_assert(mat_idx.layout.ndim == 1);
-        midx_ptr = mat_idx.ptr<int>();
     }
     if (dst.layout.dtype.enumv() == DTypeEnum::Float32) {
-#define cb(_imode, _bmode, _ch)                                                \
-    auto task = [src, trans_ptr, midx_ptr, dst, border_value,                  \
-                 parallelism_batch](size_t index, size_t) {                    \
-        size_t batch_id = index / parallelism_batch;                           \
-        size_t task_id = index % parallelism_batch;                            \
-        size_t src_id = batch_id;                                              \
-        if (midx_ptr) {                                                        \
-            src_id = midx_ptr[batch_id];                                       \
-            megdnn_assert(                                                     \
-                    src_id < src.layout.shape[0],                              \
-                    "mat_idx out of bound: mat_idx[%zu]=%zu src_batch=%zu",    \
-                    batch_id, src_id, src.layout.shape[0]);                    \
-        }                                                                      \
-        Mat<float> src_mat = TensorND2Mat<float>(src, src_id);                 \
-        Mat<float> dst_mat = TensorND2Mat<float>(dst, batch_id);               \
-        const float* task_trans_ptr = trans_ptr + batch_id * 3 * 3;            \
-        warp_perspective_cv<float MEGDNN_COMMA _imode MEGDNN_COMMA _bmode      \
-                                    MEGDNN_COMMA _ch>(                         \
-                src_mat MEGDNN_COMMA const_cast<Mat<float>&>(dst_mat)          \
-                        MEGDNN_COMMA task_trans_ptr MEGDNN_COMMA border_value, \
-                task_id);                                                      \
-    };                                                                         \
-    MEGDNN_DISPATCH_MULTI_THREAD_CPU_KERN(                                     \
-            static_cast<naive::HandleImpl*>(handle), batch* parallelism_batch, \
-            task);
+#define cb(_imode, _bmode, _ch)                                                       \
+    auto task = [src, trans, mat_idx, dst, border_value, parallelism_batch](          \
+                        size_t index, size_t) {                                       \
+        size_t batch_id = index / parallelism_batch;                                  \
+        size_t task_id = index % parallelism_batch;                                   \
+        size_t src_id = batch_id;                                                     \
+        if (mat_idx.raw_ptr()) {                                                      \
+            auto midx_ptr = mat_idx.ptr<int>();                                       \
+            src_id = midx_ptr[batch_id];                                              \
+            megdnn_assert(                                                            \
+                    src_id < src.layout.shape[0],                                     \
+                    "mat_idx out of bound: mat_idx[%zu]=%zu src_batch=%zu", batch_id, \
+                    src_id, src.layout.shape[0]);                                     \
+        }                                                                             \
+        Mat<float> src_mat = TensorND2Mat<float>(src, src_id);                        \
+        Mat<float> dst_mat = TensorND2Mat<float>(dst, batch_id);                      \
+        const float* task_trans_ptr = trans.ptr<float>() + batch_id * 3 * 3;          \
+        warp_perspective_cv<                                                          \
+                float MEGDNN_COMMA _imode MEGDNN_COMMA _bmode MEGDNN_COMMA _ch>(      \
+                src_mat MEGDNN_COMMA const_cast<Mat<float>&>(dst_mat)                 \
+                        MEGDNN_COMMA task_trans_ptr MEGDNN_COMMA border_value,        \
+                task_id);                                                             \
+    };                                                                                \
+    MEGDNN_DISPATCH_MULTI_THREAD_CPU_KERN(                                            \
+            static_cast<naive::HandleImpl*>(handle), batch* parallelism_batch, task);
         DISPATCH_IMODE(imode, bmode, ch, cb)
 #undef cb
     } else if (dst.layout.dtype.enumv() == DTypeEnum::Uint8) {
-#define cb(_imode, _bmode, _ch)                                                \
-    auto task = [src, trans_ptr, midx_ptr, dst, border_value,                  \
-                 parallelism_batch](size_t index, size_t) {                    \
-        size_t batch_id = index / parallelism_batch;                           \
-        size_t task_id = index % parallelism_batch;                            \
-        size_t src_id = batch_id;                                              \
-        if (midx_ptr) {                                                        \
-            src_id = midx_ptr[batch_id];                                       \
-            megdnn_assert(                                                     \
-                    src_id < src.layout.shape[0],                              \
-                    "mat_idx out of bound: mat_idx[%zu]=%zu src_batch=%zu",    \
-                    batch_id, src_id, src.layout.shape[0]);                    \
-        }                                                                      \
-        Mat<uchar> src_mat = TensorND2Mat<uchar>(src, src_id);                 \
-        Mat<uchar> dst_mat = TensorND2Mat<uchar>(dst, batch_id);               \
-        const float* task_trans_ptr = trans_ptr + batch_id * 3 * 3;            \
-        warp_perspective_cv<uchar MEGDNN_COMMA _imode MEGDNN_COMMA _bmode      \
-                                    MEGDNN_COMMA _ch>(                         \
-                src_mat MEGDNN_COMMA const_cast<Mat<uchar>&>(dst_mat)          \
-                        MEGDNN_COMMA task_trans_ptr MEGDNN_COMMA border_value, \
-                task_id);                                                      \
-    };                                                                         \
-    MEGDNN_DISPATCH_MULTI_THREAD_CPU_KERN(                                     \
-            static_cast<naive::HandleImpl*>(handle), batch* parallelism_batch, \
-            task);
+#define cb(_imode, _bmode, _ch)                                                       \
+    auto task = [src, trans, mat_idx, dst, border_value, parallelism_batch](          \
+                        size_t index, size_t) {                                       \
+        size_t batch_id = index / parallelism_batch;                                  \
+        size_t task_id = index % parallelism_batch;                                   \
+        size_t src_id = batch_id;                                                     \
+        if (mat_idx.raw_ptr()) {                                                      \
+            auto midx_ptr = mat_idx.ptr<int>();                                       \
+            src_id = midx_ptr[batch_id];                                              \
+            megdnn_assert(                                                            \
+                    src_id < src.layout.shape[0],                                     \
+                    "mat_idx out of bound: mat_idx[%zu]=%zu src_batch=%zu", batch_id, \
+                    src_id, src.layout.shape[0]);                                     \
+        }                                                                             \
+        Mat<uchar> src_mat = TensorND2Mat<uchar>(src, src_id);                        \
+        Mat<uchar> dst_mat = TensorND2Mat<uchar>(dst, batch_id);                      \
+        const float* task_trans_ptr = trans.ptr<float>() + batch_id * 3 * 3;          \
+        warp_perspective_cv<                                                          \
+                uchar MEGDNN_COMMA _imode MEGDNN_COMMA _bmode MEGDNN_COMMA _ch>(      \
+                src_mat MEGDNN_COMMA const_cast<Mat<uchar>&>(dst_mat)                 \
+                        MEGDNN_COMMA task_trans_ptr MEGDNN_COMMA border_value,        \
+                task_id);                                                             \
+    };                                                                                \
+    MEGDNN_DISPATCH_MULTI_THREAD_CPU_KERN(                                            \
+            static_cast<naive::HandleImpl*>(handle), batch* parallelism_batch, task);
         DISPATCH_IMODE(imode, bmode, ch, cb)
 #undef cb
     } else {
-        megdnn_throw(
-                megdnn_mangle("Unsupported datatype of WarpPerspective optr."));
+        megdnn_throw("Unsupported datatype of WarpPerspective optr.");
     }
+#else
+    __builtin_trap();
+#endif
 }
 
 // vim: syntax=cpp.doxygen

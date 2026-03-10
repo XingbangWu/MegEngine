@@ -1,14 +1,3 @@
-/**
- * \file src/core/impl/graph/topo_sort.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "./impl_common.h"
@@ -21,9 +10,8 @@ namespace cg {
 class TopoSorter {
 public:
     struct PriorityItem;
-    using PriorityRemapper =
-            thin_function<void(const VarNodeArray& dest_vars,
-                               const PriorityItem* seq, size_t seq_len)>;
+    using PriorityRemapper = thin_function<void(
+            const VarNodeArray& dest_vars, const PriorityItem* seq, size_t seq_len)>;
 
     TopoSorter(ComputingGraphImpl* graph);
     ~TopoSorter() noexcept;
@@ -32,8 +20,8 @@ public:
      * \brief get a computing sequence satisifying topology requirement
      * \param extra_info output param, extra info for the comp seq
      */
-    const OprNodeArray* get_comp_seq(CompSeqExtraInfo& extra_info,
-                                     const VarNodeArray& dest);
+    const OprNodeArray* get_comp_seq(
+            CompSeqExtraInfo& extra_info, const VarNodeArray& dest);
 
     //! undo modifications on opr node props
     void restore_opr_prop();
@@ -98,4 +86,3 @@ struct TopoSorter::PriorityItem {
 }  // namespace mgb
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}
-

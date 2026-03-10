@@ -1,14 +1,3 @@
-/**
- * \file src/core/include/megbrain/graph/event.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/graph/operator_node.h"
@@ -33,7 +22,7 @@ struct OprInserted {
     //! associated exception if insertion fails; nullptr if no error
     MegBrainError* exc;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -44,7 +33,7 @@ struct OprExecStart {
     OperatorNodeBase* opr;
     GraphExecutable::ExecEnv* env;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -55,7 +44,7 @@ struct AfterWait {
     CompNode comp_node;
     OperatorNodeBase* opr;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -66,7 +55,7 @@ struct OprExecKernelStart {
     OperatorNodeBase* opr;
     GraphExecutable::ExecEnv* env;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -76,7 +65,7 @@ struct OprExecKernelEnd {
     OperatorNodeBase* opr;
     GraphExecutable::ExecEnv* env;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -86,7 +75,7 @@ struct OprExecFinished {
     OperatorNodeBase* opr;
     GraphExecutable::ExecEnv* env;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -98,7 +87,7 @@ struct BeforeKernel {
     OperatorNodeBase* opr;
     CompNode comp_node;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -110,7 +99,7 @@ struct AfterKernel {
     OperatorNodeBase* opr;
     CompNode comp_node;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -128,7 +117,7 @@ struct StaticMemAlloc {
     CompNode comp_node;
     size_t alloc_size;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -139,7 +128,7 @@ struct CompSeqOrderDetermined {
     ComputingGraph* graph;
     AsyncExecutable* exec;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -163,7 +152,7 @@ struct CompSeqExecBeforeStart {
     //! configuration)
     size_t seq_version;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -197,7 +186,7 @@ struct CompSeqExecFinished {
     ComputingGraph* graph;
     AsyncExecutable* exec;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -211,7 +200,7 @@ struct CompSeqExecError {
     ComputingGraph* grah;
     AsyncExecutable* exec;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 /*!
@@ -221,7 +210,7 @@ struct SubgraphAssociated {
     ComputingGraph* par_graph;
     ComputingGraph* sub_graph;
 
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 
 #if MGB_ENABLE_VAR_DEV_MEM_DEFRAGMENTER
@@ -229,7 +218,7 @@ struct SubgraphAssociated {
  * \brief signaled before graph memory defragementation
  */
 struct BeforeMemDefrag {
-    MGB_TYPEINFO_OBJ_DECL;
+    MGB_TYPEINFO_OBJ_DECL_WITH_EXPORT;
 };
 #endif
 

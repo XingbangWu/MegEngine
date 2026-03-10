@@ -1,13 +1,3 @@
-/**
- * \file dnn/test/rocm/batched_matrix_mul.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "hcc_detail/hcc_defs_prologue.h"
 #include "test/rocm/fixture.h"
 
@@ -22,7 +12,7 @@ TEST_F(ROCM, BATCHED_MATRIX_MUL) {
     checker.set_epsilon(1e-2);
     using Param = MatrixMul::Param;
     size_t b = 9, m = 10, n = 11, k = 12;
-    std::vector<DType> dtypes{MEGDNN_INC_FLOAT16(dtype::Float16() MEGDNN_COMMA)
+    std::vector<DType> dtypes{DNN_INC_FLOAT16(dtype::Float16() MEGDNN_COMMA)
                                       dtype::Float32()};
     for (auto dtype : dtypes)
         for (unsigned mask = 0; mask < 4; ++mask) {
@@ -46,7 +36,6 @@ TEST_F(ROCM, BATCHED_MATRIX_MUL) {
         }
 }
 
-} // namespace test
-} // namespace megdnn
+}  // namespace test
+}  // namespace megdnn
 // vim: syntax=cpp.doxygen
-

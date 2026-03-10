@@ -1,14 +1,3 @@
-/**
- * \file src/jit/include/megbrain/jit/compiler.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 #include "internal_graph.h"
 #include "megbrain/jit/executor_opr.h"
@@ -119,11 +108,11 @@ protected:
 private:
     using ArgsCache = big_key_hash_map::BigKeyHashMap<
             std::unique_ptr<Executable>, JITExecutor::Args::HashEq,
-            big_key_hash_map::Ref<JITExecutor::Args> >;
+            big_key_hash_map::Ref<JITExecutor::Args>>;
 
-    using ExprCache =
-            std::unordered_map<const InternalGraph*, ArgsCache,
-                               InternalGraph::PtrHash, InternalGraph::PtrEqual>;
+    using ExprCache = std::unordered_map<
+            const InternalGraph*, ArgsCache, InternalGraph::PtrHash,
+            InternalGraph::PtrEqual>;
 
     class EmptyCompiler;
 

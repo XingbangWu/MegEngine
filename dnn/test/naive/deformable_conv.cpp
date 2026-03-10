@@ -1,13 +1,4 @@
-/**
- * \file dnn/test/naive/deformable_conv.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
+#include "megdnn/dtype.h"
 #include "test/naive/fixture.h"
 
 #include "megdnn/oprs/nn.h"
@@ -41,24 +32,36 @@ TEST_F(NAIVE, DEFORMABLE_CONV_FWD) {
     param.format = DeformableConv::Param::Format::NCHW;
     param.sparse = DeformableConv::Param::Sparse::GROUP;
 
-    checker.set_param(param).execs({{1, 2, 5, 5},
-                                    {2, 1, 1, 3, 3},
-                                    {1, 2 * 2 * 3 * 3, 5, 5},
-                                    {1, 2 * 3 * 3, 5, 5},
-                                    {}});
+    checker.set_param(param).execs(
+            {{1, 2, 5, 5},
+             {2, 1, 1, 3, 3},
+             {1, 2 * 2 * 3 * 3, 5, 5},
+             {1, 2 * 3 * 3, 5, 5},
+             {}});
 
-    checker.set_param(param).execs({{1, 2, 5, 5},
-                                    {2, 1, 1, 3, 3},
-                                    {1, 2 * 2 * 3 * 3, 5, 5},
-                                    {1, 2 * 3 * 3, 5, 5},
-                                    {}});
+    checker.set_param(param).execs(
+            {{1, 2, 5, 5},
+             {2, 1, 1, 3, 3},
+             {1, 2 * 2 * 3 * 3, 5, 5},
+             {1, 2 * 3 * 3, 5, 5},
+             {}});
 
     param.sparse = DeformableConv::Param::Sparse::DENSE;
-    checker.set_param(param).execs({{1, 2, 5, 5},
-                                    {2, 2, 3, 3},
-                                    {1, 2 * 2 * 3 * 3, 5, 5},
-                                    {1, 2 * 3 * 3, 5, 5},
-                                    {}});
+    checker.set_param(param).execs(
+            {{1, 2, 5, 5},
+             {2, 2, 3, 3},
+             {1, 2 * 2 * 3 * 3, 5, 5},
+             {1, 2 * 3 * 3, 5, 5},
+             {}});
+    //! check algo interface
+    auto opr = handle()->create_operator<DeformableConv>();
+    auto i0 = megdnn::TensorLayout({1, 2, 5, 5}, megdnn::dtype::Float32());
+    auto i1 = megdnn::TensorLayout({2, 1, 1, 3, 3}, megdnn::dtype::Float32());
+    auto i2 = megdnn::TensorLayout({1, 2 * 2 * 3 * 3, 5, 5}, megdnn::dtype::Float32());
+    auto i3 = megdnn::TensorLayout({1, 2 * 3 * 3, 5, 5}, megdnn::dtype::Float32());
+    auto o = opr->get_algorithm_info_heuristic(i0, i1, i2, i3, {});
+    auto kk = o.desc.name;
+    printf("%s\n", kk.c_str());
 }
 
 TEST_F(NAIVE, DEFORMABLE_CONV_BWD_FILTER) {
@@ -83,11 +86,24 @@ TEST_F(NAIVE, DEFORMABLE_CONV_BWD_FILTER) {
     param.format = DeformableConv::Param::Format::NCHW;
     param.sparse = DeformableConv::Param::Sparse::GROUP;
 
-    checker.set_param(param).execs({{1, 2, 5, 5},
-                                    {1, 2 * 2 * 3 * 3, 5, 5},
-                                    {1, 2 * 3 * 3, 5, 5},
-                                    {1, 2, 5, 5},
-                                    {2, 1, 1, 3, 3}});
+    checker.set_param(param).execs(
+            {{1, 2, 5, 5},
+             {1, 2 * 2 * 3 * 3, 5, 5},
+             {1, 2 * 3 * 3, 5, 5},
+             {1, 2, 5, 5},
+             {2, 1, 1, 3, 3}});
+
+    //! check algo interface
+    auto opr = handle()->create_operator<DeformableConvBackwardFilter>();
+    auto i0 = megdnn::TensorLayout({1, 2, 5, 5}, megdnn::dtype::Float32());
+    auto i1 = megdnn::TensorLayout({1, 2 * 2 * 3 * 3, 5, 5}, megdnn::dtype::Float32());
+    auto i2 = megdnn::TensorLayout({1, 2 * 3 * 3, 5, 5}, megdnn::dtype::Float32());
+    auto i3 = megdnn::TensorLayout({1, 2, 5, 5}, megdnn::dtype::Float32());
+    auto i4 = megdnn::TensorLayout({2, 1, 1, 3, 3}, megdnn::dtype::Float32());
+
+    auto o = opr->get_algorithm_info_heuristic(i0, i1, i2, i3, i4);
+    auto kk = o.desc.name;
+    printf("%s\n", kk.c_str());
 }
 
 TEST_F(NAIVE, DEFORMABLE_CONV_BWD_DATA) {
@@ -115,13 +131,27 @@ TEST_F(NAIVE, DEFORMABLE_CONV_BWD_DATA) {
     param.format = DeformableConv::Param::Format::NCHW;
     param.sparse = DeformableConv::Param::Sparse::GROUP;
 
-    checker.set_param(param).execs({{1, 2, 5, 5},
-                                    {2, 1, 1, 3, 3},
-                                    {1, 1 * 2 * 3 * 3, 5, 5},
-                                    {1, 1 * 3 * 3, 5, 5},
-                                    {1, 2, 5, 5},
-                                    {1, 2, 5, 5},
-                                    {1, 1 * 2 * 3 * 3, 5, 5},
-                                    {1, 1 * 3 * 3, 5, 5}});
+    checker.set_param(param).execs(
+            {{1, 2, 5, 5},
+             {2, 1, 1, 3, 3},
+             {1, 1 * 2 * 3 * 3, 5, 5},
+             {1, 1 * 3 * 3, 5, 5},
+             {1, 2, 5, 5},
+             {1, 2, 5, 5},
+             {1, 1 * 2 * 3 * 3, 5, 5},
+             {1, 1 * 3 * 3, 5, 5}});
+    //! check algo interface
+    auto opr = handle()->create_operator<DeformableConvBackwardData>();
+    auto i0 = megdnn::TensorLayout({1, 2, 5, 5}, megdnn::dtype::Float32());
+    auto i1 = megdnn::TensorLayout({2, 1, 1, 3, 3}, megdnn::dtype::Float32());
+    auto i2 = megdnn::TensorLayout({1, 1 * 2 * 3 * 3, 5, 5}, megdnn::dtype::Float32());
+    auto i3 = megdnn::TensorLayout({1, 1 * 3 * 3, 5, 5}, megdnn::dtype::Float32());
+    auto i4 = megdnn::TensorLayout({1, 2, 5, 5}, megdnn::dtype::Float32());
+    auto i5 = megdnn::TensorLayout({1, 2, 5, 5}, megdnn::dtype::Float32());
+    auto i6 = megdnn::TensorLayout({1, 1 * 2 * 3 * 3, 5, 5}, megdnn::dtype::Float32());
+    auto i7 = megdnn::TensorLayout({1, 1 * 3 * 3, 5, 5}, megdnn::dtype::Float32());
+    auto o = opr->get_algorithm_info_heuristic(i0, i1, i2, i3, i4, i5, i6, i7);
+    auto kk = o.desc.name;
+    printf("%s\n", kk.c_str());
 }
 // vim: syntax=cpp.doxygen

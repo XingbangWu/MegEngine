@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/rocm/handle.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "hcc_detail/hcc_defs_prologue.h"
 
 #include "src/common/handle_impl.h"
@@ -17,33 +7,38 @@
 #include "src/rocm/miopen_with_check.h"
 #include "src/rocm/utils.h"
 
+#include "src/rocm/adaptive_pooling/opr_impl.h"
+#include "src/rocm/add_update/opr_impl.h"
+#include "src/rocm/argmxx/opr_impl.h"
+#include "src/rocm/argsort/opr_impl.h"
+#include "src/rocm/batch_normalization/opr_impl.h"
+#include "src/rocm/batched_matrix_mul/opr_impl.h"
 #include "src/rocm/checksum/opr_impl.h"
 #include "src/rocm/convolution/opr_impl.h"
 #include "src/rocm/elemwise/opr_impl.h"
 #include "src/rocm/eye/opr_impl.h"
-#include "src/rocm/pooling/opr_impl.h"
-#include "src/rocm/reduce/opr_impl.h"
-#include "src/rocm/type_cvt/opr_impl.h"
-#include "src/rocm/add_update/opr_impl.h"
-#include "src/rocm/matrix_mul/opr_impl.h"
-#include "src/rocm/batched_matrix_mul/opr_impl.h"
-#include "src/rocm/indexing_one_hot/opr_impl.h"
-#include "src/rocm/rng/opr_impl.h"
-#include "src/rocm/relayout/opr_impl.h"
-#include "src/rocm/powc/opr_impl.h"
+#include "src/rocm/fill/opr_impl.h"
 #include "src/rocm/indexing_multi_axis_vec/opr_impl.h"
+#include "src/rocm/indexing_one_hot/opr_impl.h"
 #include "src/rocm/linspace/opr_impl.h"
-#include "src/rocm/argmxx/opr_impl.h"
+#include "src/rocm/matrix_mul/opr_impl.h"
+#include "src/rocm/param_pack/opr_impl.h"
+#include "src/rocm/pooling/opr_impl.h"
+#include "src/rocm/powc/opr_impl.h"
+#include "src/rocm/reduce/opr_impl.h"
+#include "src/rocm/relayout/opr_impl.h"
+#include "src/rocm/rng/opr_impl.h"
 #include "src/rocm/sleep/opr_impl.h"
-#include "src/rocm/batch_normalization/opr_impl.h"
+#include "src/rocm/topk/opr_impl.h"
+#include "src/rocm/type_cvt/opr_impl.h"
 
-#include <miopen/version.h>
 #include <hip/hip_version.h>
+#include <miopen/version.h>
 
 #include <cstring>
 
 #define STR_HELPER(x) #x
-#define STR(x) STR_HELPER(x)
+#define STR(x)        STR_HELPER(x)
 
 #define MIOPEN_VERSION_STR    \
     STR(MIOPEN_VERSION_MAJOR) \
@@ -55,18 +50,18 @@
 #undef STR_HELPER
 
 namespace megdnn {
-std::unique_ptr<Handle> Handle::make_rocm_handle(megcoreComputingHandle_t computing_handle) {
+std::unique_ptr<Handle> Handle::make_rocm_handle(
+        megcoreComputingHandle_t computing_handle) {
     return std::make_unique<rocm::HandleImpl>(computing_handle);
 }
 template <typename Opr>
 std::unique_ptr<Opr> Handle::create_rocm_operator() {
     return static_cast<rocm::HandleImpl*>(this)->create_operator<Opr>();
 }
-#define INST(opr) \
-    template std::unique_ptr<opr> Handle::create_rocm_operator();
+#define INST(opr) template std::unique_ptr<opr> Handle::create_rocm_operator();
 MEGDNN_FOREACH_OPR_CLASS(INST)
 #undef INST
-}
+}  // namespace megdnn
 
 namespace megdnn {
 namespace rocm {
@@ -97,16 +92,16 @@ HandleImpl::HandleImpl(megcoreComputingHandle_t comp_handle)
 
     // Note that all rocblas scalars (alpha, beta) and scalar results such as
     // dot output resides at device side.
-    rocblas_check(rocblas_set_pointer_mode(m_rocblas_handle,
-                                           rocblas_pointer_mode_device));
+    rocblas_check(
+            rocblas_set_pointer_mode(m_rocblas_handle, rocblas_pointer_mode_device));
 
     // init const scalars
     hip_check(hipMalloc(&m_const_scalars, sizeof(ConstScalars)));
     ConstScalars const_scalars_val;
     const_scalars_val.init();
-    hip_check(hipMemcpyAsync(m_const_scalars, &const_scalars_val,
-                             sizeof(ConstScalars), hipMemcpyHostToDevice,
-                             stream()));
+    hip_check(hipMemcpyAsync(
+            m_const_scalars, &const_scalars_val, sizeof(ConstScalars),
+            hipMemcpyHostToDevice, stream()));
     hip_check(hipStreamSynchronize(stream()));
 }
 
@@ -129,7 +124,9 @@ void HandleImpl::ConstScalars::init() {
 
 template <typename Opr>
 std::unique_ptr<Opr> HandleImpl::create_operator() {
-    megdnn_throw("unsupported rocm opr");
+    megdnn_throw(
+            "unsupported rocm opr, try export RUNTIME_OVERRIDE_LOG_LEVEL=0 to get more "
+            "info");
     return nullptr;
 }
 
@@ -146,6 +143,8 @@ bool HandleImpl::check_cross_dev_copy_constraint(const TensorLayout& src) {
     return src.is_contiguous() || src.stride[src.ndim - 1] == 1;
 }
 
+MEGDNN_SPECIALIZE_CREATE_OPERATOR(ArgsortForward);
+MEGDNN_SPECIALIZE_CREATE_OPERATOR(ArgsortBackward);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(ConvolutionForward);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(ConvolutionBackwardData);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(ConvolutionBackwardFilter);
@@ -154,8 +153,11 @@ MEGDNN_SPECIALIZE_CREATE_OPERATOR(Eye);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(ChecksumForward);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(PoolingForward);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(PoolingBackward);
+MEGDNN_SPECIALIZE_CREATE_OPERATOR(AdaptivePoolingForward);
+MEGDNN_SPECIALIZE_CREATE_OPERATOR(AdaptivePoolingBackward);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(ReduceForward);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(TypeCvt);
+MEGDNN_SPECIALIZE_CREATE_OPERATOR(TopK);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(AddUpdateForward);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(MatrixMulForward);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(BatchedMatrixMulForward);
@@ -174,6 +176,8 @@ MEGDNN_SPECIALIZE_CREATE_OPERATOR(ArgminForward);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(SleepForward);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(BNForward);
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(BNBackward);
+MEGDNN_SPECIALIZE_CREATE_OPERATOR(ParamPackConcat);
+MEGDNN_SPECIALIZE_CREATE_OPERATOR(Fill);
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpragmas"
@@ -184,8 +188,7 @@ MEGDNN_FOREACH_OPR_CLASS(MEGDNN_INST_CREATE_OPERATOR)
 }  // namespace rocm
 }  // namespace megdnn
 
-
 MEGDNN_VERSION_SYMBOL3(HIP, HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH);
-MEGDNN_VERSION_SYMBOL3(MIOPEN, MIOPEN_VERSION_MAJOR, MIOPEN_VERSION_MINOR,
-                       MIOPEN_VERSION_PATCH);
+MEGDNN_VERSION_SYMBOL3(
+        MIOPEN, MIOPEN_VERSION_MAJOR, MIOPEN_VERSION_MINOR, MIOPEN_VERSION_PATCH);
 // vim: syntax=cpp.doxygen

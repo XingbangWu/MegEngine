@@ -3,7 +3,7 @@
  *
  * This file is part of MegBrain, a deep learning framework developed by Megvii.
  *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
+ * \copyright Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
  *
  */
 
@@ -33,18 +33,17 @@ public:
     }
 
     //! get owner graph and check that it matches opr and inputs
-    ComputingGraph* owner_graph(const cg::OperatorNodeBase& opr,
-                                const VarNodeArray& inputs) const;
+    MGE_WIN_DECLSPEC_FUC ComputingGraph* owner_graph(
+            const cg::OperatorNodeBase& opr, const VarNodeArray& inputs) const;
 };
 
 /*!
  * \brief copy a single operator by serializing and the then deserializing
  *      using new config and apply on new inputs
  */
-cg::OperatorNodeBase* copy_opr_shallow(const cg::OperatorNodeBase& opr,
-                                       const VarNodeArray& inputs,
-                                       const OperatorNodeConfig& config = {},
-                                       const OprShallowCopyContext& ctx = {});
+cg::OperatorNodeBase* copy_opr_shallow(
+        const cg::OperatorNodeBase& opr, const VarNodeArray& inputs,
+        const OperatorNodeConfig& config = {}, const OprShallowCopyContext& ctx = {});
 
 namespace intl {
 

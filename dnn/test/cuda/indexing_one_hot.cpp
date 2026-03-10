@@ -1,16 +1,5 @@
-/**
- * \file dnn/test/cuda/indexing_one_hot.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
-#include "test/common/benchmarker.h"
 #include "test/common/indexing_one_hot.h"
+#include "test/common/benchmarker.h"
 #include "test/cuda/fixture.h"
 
 #include "megcore_cuda.h"
@@ -39,6 +28,11 @@ TEST_F(CUDA_ERROR_INFO, INDEXING_ONE_HOT) {
     ASSERT_TRUE(failed);
 }
 
+TEST_F(CUDA, INDEXING_SET_ONE_HOT) {
+    run_indexing_set_one_hot_test(handle_cuda());
+}
+
+#if MEGDNN_WITH_BENCHMARK
 TEST_F(CUDA, BENCHMARK_INDEXING_ONE_HOT) {
     Benchmarker<IndexingOneHot> bench{handle_cuda()};
     bench.set_times(1);
@@ -53,9 +47,6 @@ TEST_F(CUDA, BENCHMARK_INDEXING_ONE_HOT) {
     printf("bandwidth: %.2fGiB/s\n",
            A * B * D * sizeof(float) / 1024.0 / 1024 / 1024 / time);
 }
-
-TEST_F(CUDA, INDEXING_SET_ONE_HOT) {
-    run_indexing_set_one_hot_test(handle_cuda());
-}
+#endif
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

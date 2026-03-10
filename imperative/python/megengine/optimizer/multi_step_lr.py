@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 from bisect import bisect_right
 from typing import Iterable as Iter
 
@@ -14,16 +7,17 @@ from .optimizer import Optimizer
 
 
 class MultiStepLR(LRScheduler):
-    r"""
-    Decays the learning rate of each parameter group by gamma once the
+    r"""Decays the learning rate of each parameter group by gamma once the
         number of epoch reaches one of the milestones.
 
-    :param optimizer: wrapped optimizer.
-    :type milestones: list
-    :param milestones: list of epoch indices which should be increasing.
-    :type gamma: float
-    :param gamma: multiplicative factor of learning rate decay. Default: 0.1
-    :param current_epoch: the index of current epoch. Default: -1
+    Args:
+        optimizer (Optimizer): wrapped optimizer.
+        milestones (Iter[int]): list of epoch indices which should be increasing.
+        gamma (float): multiplicative factor of learning rate decay. Default: 0.1.
+        current_epoch (int): the index of current epoch. Default: -1.
+    
+    Returns:
+        An instance of the MultiStepLR Scheduler.
     """
 
     def __init__(
@@ -45,8 +39,7 @@ class MultiStepLR(LRScheduler):
         super().__init__(optimizer, current_epoch)
 
     def state_dict(self):
-        r"""
-        Returns the state of the scheduler as a :class:`dict`.
+        r"""Returns the state of the scheduler as a :class:`dict`.
             It contains an entry for every variable in self.__dict__ which
             is not the optimizer.
         """
@@ -57,11 +50,10 @@ class MultiStepLR(LRScheduler):
         }
 
     def load_state_dict(self, state_dict):
-        r"""
-        Loads the schedulers state.
+        r"""Loads the schedulers state.
 
-        :type state_dict: dict
-        :param state_dict: scheduler state.
+        Args:
+          state_dict: scheduler state.
         """
         tmp_dict = {}
         for key in ["milestones", "gamma", "current_epoch"]:

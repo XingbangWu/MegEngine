@@ -1,15 +1,3 @@
-/**
- * \file src/jit/impl/mlir/ir/each_mode.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #pragma once
 
 #include "megbrain_build_config.h"
@@ -72,21 +60,20 @@
 
 #define MLIR_MGB_FOREACH_ELEMWISE_MODE_TERNARY(cb) \
     cb(CondLeqMovOp, COND_LEQ_MOV) \
+    cb(CondLtMovOp, COND_LT_MOV) \
     cb(FuseMulAdd3Op, FUSE_MUL_ADD3)
 // clang-format on
 
 namespace mgb {
 namespace jit {
 
-mlir::Value lower_elemwise_to_std(mlir::Operation* op,
-                                  mlir::OpBuilder& builder,
-                                  mlir::Location loc,
-                                  mlir::ValueRange operands);
+mlir::Value lower_elemwise_to_std(
+        mlir::Operation* op, mlir::OpBuilder& builder, mlir::Location loc,
+        mlir::ValueRange operands);
 
-mlir::Value lower_typecvt_to_std(mlir::Operation* op,
-                                 mlir::OpBuilder& builder,
-                                 mlir::Location loc,
-                                 mlir::Value input);
+mlir::Value lower_typecvt_to_std(
+        mlir::Operation* op, mlir::OpBuilder& builder, mlir::Location loc,
+        mlir::Value input);
 
 }  // namespace jit
 }  // namespace mgb

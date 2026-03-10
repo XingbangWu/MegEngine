@@ -1,15 +1,3 @@
-/**
- * \file dnn/src/x86/matrix_mul/int8/kernel_sse_4x8x2.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #include <immintrin.h>
 #ifdef WIN32
 #include <avx2intrin.h>
@@ -30,25 +18,25 @@ namespace matmul_sse_4x8x2 {
 
 template <typename CType>
 MEGDNN_ATTRIBUTE_TARGET("sse4.1")
-void store_overflow(void* ptr, __m128i a);
+void inline store_overflow(void* ptr, __m128i a);
 
 template <>
-void store_overflow<int16_t>(void* ptr, __m128i a) {
+void inline store_overflow<int16_t>(void* ptr, __m128i a) {
     a = _mm_shufflelo_epi16(a, 0x08);
     a = _mm_shufflehi_epi16(a, 0x08);
     a = _mm_shuffle_epi32(a, 0x08);
     _mm_storel_epi64((__m128i*)ptr, a);
 }
 template <>
-void store_overflow<int32_t>(void* ptr, __m128i a) {
+void inline store_overflow<int32_t>(void* ptr, __m128i a) {
     _mm_storeu_si128((__m128i*)(ptr), a);
 }
 template <typename CType>
 MEGDNN_ATTRIBUTE_TARGET("sse4.1")
-void store_overflow(void* ptr, __m128i a, int remain);
+void inline store_overflow(void* ptr, __m128i a, int remain);
 
 template <>
-void store_overflow<int16_t>(void* ptr, __m128i a, int remain) {
+void inline store_overflow<int16_t>(void* ptr, __m128i a, int remain) {
     __m128i mask = _mm_continue_mask(remain * sizeof(int16_t));
     a = _mm_shufflelo_epi16(a, 0x08);
     a = _mm_shufflehi_epi16(a, 0x08);
@@ -56,17 +44,16 @@ void store_overflow<int16_t>(void* ptr, __m128i a, int remain) {
     _mm_maskmoveu_si128(a, mask, reinterpret_cast<char*>(ptr));
 }
 template <>
-void store_overflow<int32_t>(void* ptr, __m128i a, int remain) {
+void inline store_overflow<int32_t>(void* ptr, __m128i a, int remain) {
     __m128i mask = _mm_continue_mask(remain * sizeof(int32_t));
     _mm_maskmoveu_si128(a, mask, reinterpret_cast<char*>(ptr));
 }
 
 template <typename CType>
 MEGDNN_ATTRIBUTE_TARGET("sse4.1")
-static inline void kern_gemm_s8s8s32_sse_4x8x2(const int16_t* pack_a_ptr,
-                                               const int8_t* pack_b_ptr,
-                                               CType* c_ptr, const int ldc,
-                                               const int k) {
+static inline void kern_gemm_s8s8s32_sse_4x8x2(
+        const int16_t* pack_a_ptr, const int8_t* pack_b_ptr, CType* c_ptr,
+        const int ldc, const int k) {
     constexpr int k_step = 2;
 
     __m128i a_vec[2];
@@ -458,10 +445,9 @@ static inline void kern_gemm_s8s8s32_sse_4x8x2_remain_m_n(
     }
 }
 
-static inline void gemm_s8s8s32_sse_4x8x2_pack_an(dt_int16* out,
-                                                  const dt_int8* in, int ldin,
-                                                  int m_start, int m_max,
-                                                  int k_start, int k_max) {
+static inline void gemm_s8s8s32_sse_4x8x2_pack_an(
+        dt_int16* out, const dt_int8* in, int ldin, int m_start, int m_max, int k_start,
+        int k_max) {
     constexpr int tile_m = 4;
     constexpr int tile_k_step = 8;
     constexpr int tile_k = 2;
@@ -524,10 +510,9 @@ static inline void gemm_s8s8s32_sse_4x8x2_pack_an(dt_int16* out,
     }
 }
 
-static inline void gemm_s8s8s32_sse_4x8x2_pack_bn(dt_int8* out,
-                                                  const dt_int8* in, int ldin,
-                                                  int n_start, int n_max,
-                                                  int k_start, int k_max) {
+static inline void gemm_s8s8s32_sse_4x8x2_pack_bn(
+        dt_int8* out, const dt_int8* in, int ldin, int n_start, int n_max, int k_start,
+        int k_max) {
     constexpr int tile_n = 8;
     constexpr int tile_k = 2;
     constexpr int tile_len = tile_n * tile_k;
@@ -548,8 +533,9 @@ static inline void gemm_s8s8s32_sse_4x8x2_pack_bn(dt_int8* out,
             outptr += pack_line_len;
         }
         if (n_end < n_max) {
-            naive_transpose_kn_pad(outptr, in + k * ldin + n_end, ldin, tile_k,
-                                   n_remain, tile_k, tile_n);
+            naive_transpose_kn_pad(
+                    outptr, in + k * ldin + n_end, ldin, tile_k, n_remain, tile_k,
+                    tile_n);
         }
         out += tile_len;
     }
@@ -564,16 +550,16 @@ static inline void gemm_s8s8s32_sse_4x8x2_pack_bn(dt_int8* out,
             outptr += pack_line_len;
         }
         if (n_end < n_max) {
-            naive_transpose_kn_pad(outptr, in + k * ldin + n_end, ldin,
-                                   k_remain, n_remain, tile_k, tile_n);
+            naive_transpose_kn_pad(
+                    outptr, in + k * ldin + n_end, ldin, k_remain, n_remain, tile_k,
+                    tile_n);
         }
     }
 }
 
-static inline void gemm_s8s8s32_sse_4x8x2_pack_bt(dt_int8* out,
-                                                  const dt_int8* in, int ldin,
-                                                  int n_start, int n_max,
-                                                  int k_start, int k_max) {
+static inline void gemm_s8s8s32_sse_4x8x2_pack_bt(
+        dt_int8* out, const dt_int8* in, int ldin, int n_start, int n_max, int k_start,
+        int k_max) {
     constexpr int tile_n = 8;
     constexpr int tile_k = 2;
     constexpr int tile_k_step = 16;
@@ -604,8 +590,7 @@ static inline void gemm_s8s8s32_sse_4x8x2_pack_bt(dt_int8* out,
             in7 += tile_k_step;
             out += tile_n * tile_k_step;
         }
-        naive_transpose_8xk_k2(out, in0, in1, in2, in3, in4, in5, in6, in7,
-                               k_remain);
+        naive_transpose_8xk_k2(out, in0, in1, in2, in3, in4, in5, in6, in7, k_remain);
         out += tile_n * round_up(k_remain, tile_k);
     }
     if (n_remain > 0) {
@@ -614,10 +599,9 @@ static inline void gemm_s8s8s32_sse_4x8x2_pack_bt(dt_int8* out,
     }
 }
 
-static inline void gemm_s8s8s32_sse_4x8x2_pack_at(dt_int16* out,
-                                                  const dt_int8* in, int ldin,
-                                                  int m_start, int m_max,
-                                                  int k_start, int k_max) {
+static inline void gemm_s8s8s32_sse_4x8x2_pack_at(
+        dt_int16* out, const dt_int8* in, int ldin, int m_start, int m_max, int k_start,
+        int k_max) {
     constexpr int tile_m = 8;
     constexpr int tile_m_step = 4;
     constexpr int tile_k = 2;
@@ -635,16 +619,16 @@ static inline void gemm_s8s8s32_sse_4x8x2_pack_at(dt_int16* out,
         for (int m = m_start; m < m_end; m += tile_m) {
             const dt_int8* inptr_0 = in + k * ldin + m;
             const dt_int8* inptr_1 = inptr_0 + ldin;
-            transpose_km_2x8_k2_tile4_int8_to_int16(inptr_0, inptr_1, outptr,
-                                                    pack_line_len);
+            transpose_km_2x8_k2_tile4_int8_to_int16(
+                    inptr_0, inptr_1, outptr, pack_line_len);
             outptr += (tile_m / tile_m_step) * pack_line_len;
         }
         if (m_end < m_max) {
             for (int m = m_end; m < m_max; m += tile_m_step) {
-                const int m_remain =
-                        m_max - m >= tile_m_step ? tile_m_step : m_max - m;
-                naive_transpose_kn_pad(outptr, in + k * ldin + m, ldin, tile_k,
-                                       m_remain, tile_k, tile_m_step);
+                const int m_remain = m_max - m >= tile_m_step ? tile_m_step : m_max - m;
+                naive_transpose_kn_pad(
+                        outptr, in + k * ldin + m, ldin, tile_k, m_remain, tile_k,
+                        tile_m_step);
                 outptr += pack_line_len;
             }
         }
@@ -657,16 +641,16 @@ static inline void gemm_s8s8s32_sse_4x8x2_pack_at(dt_int16* out,
         for (int n = m_start; n < m_end; n += tile_m) {
             const dt_int8* inptr_0 = in + k * ldin + n;
             const dt_int8* inptr_1 = &zerobuff[0];
-            transpose_km_2x8_k2_tile4_int8_to_int16(inptr_0, inptr_1, outptr,
-                                                    pack_line_len);
+            transpose_km_2x8_k2_tile4_int8_to_int16(
+                    inptr_0, inptr_1, outptr, pack_line_len);
             outptr += (tile_m / tile_m_step) * pack_line_len;
         }
         if (m_end < m_max) {
             for (int m = m_end; m < m_max; m += tile_m_step) {
-                const int m_remain =
-                        m_max - m >= tile_m_step ? tile_m_step : m_max - m;
-                naive_transpose_kn_pad(outptr, in + k * ldin + m, ldin,
-                                       k_remain, m_remain, tile_k, tile_m_step);
+                const int m_remain = m_max - m >= tile_m_step ? tile_m_step : m_max - m;
+                naive_transpose_kn_pad(
+                        outptr, in + k * ldin + m, ldin, k_remain, m_remain, tile_k,
+                        tile_m_step);
                 outptr += pack_line_len;
             }
         }

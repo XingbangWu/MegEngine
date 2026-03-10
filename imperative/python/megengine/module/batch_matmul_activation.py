@@ -1,10 +1,3 @@
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import numpy as np
 
 from ..functional import matmul, relu
@@ -14,9 +7,7 @@ from .module import Module
 
 
 class BatchMatMulActivation(Module):
-    r"""
-    Batched MatMul with activation(only relu supported), no transpose anywhere.
-    """
+    r"""Batched :func:`~.matmul` with activation(only :func:`~.relu` supported), no transpose anywhere."""
 
     def __init__(
         self,
@@ -24,7 +15,7 @@ class BatchMatMulActivation(Module):
         in_features: int,
         out_features: int,
         bias: bool = True,
-        nonlinear_mode="IDENTITY",
+        nonlinear_mode="identity",
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -37,7 +28,7 @@ class BatchMatMulActivation(Module):
         if bias:
             b_shape = (out_features,)
             self.bias = Parameter(np.zeros(b_shape, dtype=np.float32))
-        self.nonlinear_mode = nonlinear_mode
+        self.nonlinear_mode = nonlinear_mode.lower()
         self.reset_parameters()
 
     def _get_fanin(self):
@@ -54,7 +45,7 @@ class BatchMatMulActivation(Module):
         res = matmul(weight, x)
         if self.bias is not None:
             res += bias
-        if self.nonlinear_mode == "RELU":
+        if self.nonlinear_mode == "relu":
             res = relu(res)
         return res
 

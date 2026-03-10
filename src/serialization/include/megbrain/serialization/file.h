@@ -1,14 +1,3 @@
-/**
- * \file src/serialization/include/megbrain/serialization/file.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/graph.h"
@@ -44,13 +33,22 @@ public:
     virtual void rewind() = 0;
 
     //! skip given number of bytes
-    virtual void skip(size_t bytes) = 0;
+    virtual void skip(int64_t bytes) = 0;
 
     //! read data into buffer
     virtual void read(void* dst, size_t size) = 0;
 
     //! return current read offset
     virtual size_t tell() = 0;
+
+    //! whether this file format support share memory when load model
+    virtual bool is_shared_memory() { return false; }
+
+    //! whether this can be write
+    virtual bool writable() { return false; }
+
+    //! tag this file have been wrote
+    virtual void have_modified() {}
 
     /*!
      * \brief read into a host tensor
@@ -59,8 +57,7 @@ public:
      * implementation might directly reset the storage of \p dest to
      * utilize zero-copy.
      */
-    virtual void read_into_tensor(HostTensorND& dest,
-                                  const TensorLayout& layout);
+    virtual void read_into_tensor(HostTensorND& dest, const TensorLayout& layout);
 
     /*!
      * \brief read with sharing memory (i.e. use zero-copy if possible)
@@ -73,12 +70,12 @@ public:
     virtual SharedBuffer read_shared(size_t size);
 
     //! create an InputFile correspoding to a file on local file system
-    static std::unique_ptr<InputFile> make_fs(const char* path);
+    MGE_WIN_DECLSPEC_FUC static std::unique_ptr<InputFile> make_fs(const char* path);
 
     //! create an InputFile correspoding to a memory region; the memory
     //! region must be alive throughout lifespan of this InputFile
-    static std::unique_ptr<InputFile> make_mem_proxy(const void* ptr,
-                                                     size_t size);
+    MGE_WIN_DECLSPEC_FUC static std::unique_ptr<InputFile> make_mem_proxy(
+            const void* ptr, size_t size);
 
     /*!
      * \brief create an InputFile that would directly reuse the memory
@@ -88,9 +85,8 @@ public:
      *      If this is set to true, tensor storage can be aggressively
      *      shared by reusing the buffer for alignment.
      */
-    static std::unique_ptr<InputFile> make_mem_proxy(std::shared_ptr<void> ptr,
-                                                     size_t size,
-                                                     bool writable = true);
+    MGE_WIN_DECLSPEC_FUC static std::unique_ptr<InputFile> make_mem_proxy(
+            std::shared_ptr<void> ptr, size_t size, bool writable = true);
 };
 
 //! abstract output file interface
@@ -111,8 +107,8 @@ public:
     virtual size_t tell() = 0;
 
     //! create an OutputFile correspoding to a file on local file system
-    static std::unique_ptr<OutputFile> make_fs(const char* path,
-                                               char mode = 'w');
+    MGE_WIN_DECLSPEC_FUC static std::unique_ptr<OutputFile> make_fs(
+            const char* path, char mode = 'w');
 
     /*!
      * \brief create an OutputFile to write to a std::vector
@@ -120,7 +116,7 @@ public:
      * Note that the vector must be alive throughout lifespan of this
      * OutputFile. Current content in *buf* would not be cleared.
      */
-    static std::unique_ptr<OutputFile> make_vector_proxy(
+    MGE_WIN_DECLSPEC_FUC static std::unique_ptr<OutputFile> make_vector_proxy(
             std::vector<uint8_t>* buf);
 };
 

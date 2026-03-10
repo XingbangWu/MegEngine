@@ -1,14 +1,3 @@
-/**
- * \file src/rocm/elemwise/kern_wrapper.h.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \brief helper for implementing elemwise oprs
- *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
-
 #pragma once
 
 #include "src/rocm/elemwise_helper.h.hip"

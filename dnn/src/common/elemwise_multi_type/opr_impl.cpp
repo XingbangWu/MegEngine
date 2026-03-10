@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/common/elemwise_multi_type/opr_impl.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include <mutex>
 #include "megdnn/oprs.h"
 #include "src/common/utils.h"
@@ -28,16 +17,24 @@ void check_dtype(const ModeTrait& trait, size_t i, const TensorLayout& src) {
 }  // anonymous namespace
 
 const ModeTrait& ModeTrait::from_mode(Mode mode) {
-    static std::mutex mtx;
+    static DNN_MUTEX mtx;
     static std::vector<ModeTrait> traits;
 
-    std::lock_guard<std::mutex> _lock(mtx);
+    MEGDNN_LOCK_GUARD(mtx);
 
     auto make_check_dtype_func = [](DType expected) {
         auto func = [expected](DType dtype) {
-            megdnn_assert(expected.enumv() == dtype.enumv(),
-                          "expected %s, but got %s", expected.name(),
-                          dtype.name());
+            megdnn_assert(
+                    expected.enumv() == dtype.enumv(), "expected %s, but got %s",
+                    expected.name(), dtype.name());
+        };
+        return func;
+    };
+
+    auto make_not_check_dtype_func = []() {
+        auto func = [](DType dtype) {
+            megdnn_assert(
+                    true, "This function is to not check the dtype %s", dtype.name());
         };
         return func;
     };
@@ -52,9 +49,9 @@ const ModeTrait& ModeTrait::from_mode(Mode mode) {
     auto make_out_dtype_func = [](DType expected) {
         auto func = [expected](DType& dtype, bool check) {
             if (check) {
-                megdnn_assert(expected.enumv() == dtype.enumv(),
-                              "expected %s, but got %s", expected.name(),
-                              dtype.name());
+                megdnn_assert(
+                        expected.enumv() == dtype.enumv(), "expected %s, but got %s",
+                        expected.name(), dtype.name());
             } else {
                 dtype = expected;
             }
@@ -137,6 +134,23 @@ const ModeTrait& ModeTrait::from_mode(Mode mode) {
             dst.need_specify_out_dtype = true;
         };
 
+        auto init_bool_unary_op = [&](ModeTrait& dst, const char* name) {
+            dst.arity = 1;
+            dst.check_inp[0] = make_check_category(DTypeCategory::FLOAT);
+            dst.check_out = make_out_dtype_func(dtype::Bool());
+            dst.name = name;
+            dst.need_specify_out_dtype = true;
+        };
+
+        auto init_bool_binary_op = [&](ModeTrait& dst, const char* name) {
+            dst.arity = 2;
+            dst.check_inp[0] = make_not_check_dtype_func();
+            dst.check_inp[1] = make_not_check_dtype_func();
+            dst.check_out = make_out_dtype_func(dtype::Bool());
+            dst.name = name;
+            dst.need_specify_out_dtype = true;
+        };
+
         auto init_quantized_binary_op = [&](ModeTrait& dst, const char* name) {
             dst.arity = 2;
             dst.check_inp[0] = make_check_category(DTypeCategory::QUANTIZED);
@@ -155,10 +169,33 @@ const ModeTrait& ModeTrait::from_mode(Mode mode) {
             dst.name = name;
             dst.need_specify_out_dtype = true;
         };
+        auto init_fma3_int16xf32xf32xf32 = [&](ModeTrait& dst, const char* name) {
+            dst.arity = 3;
+            dst.check_inp[0] = make_check_dtype_func(dtype::Int16());
+            dst.check_inp[1] = make_check_dtype_func(dtype::Float32());
+            dst.check_inp[2] = make_check_dtype_func(dtype::Float32());
+            dst.check_out = make_out_dtype_func(dtype::Float32());
+            dst.name = name;
+        };
+        auto init_mul_int16xf32xf32 = [&](ModeTrait& dst, const char* name) {
+            dst.arity = 2;
+            dst.check_inp[0] = make_check_dtype_func(dtype::Int16());
+            dst.check_inp[1] = make_check_dtype_func(dtype::Float32());
+            dst.check_out = make_out_dtype_func(dtype::Float32());
+            dst.name = name;
+        };
+        auto init_fma3_uint8xf32xf32xf32 = [&](ModeTrait& dst, const char* name) {
+            dst.arity = 3;
+            dst.check_inp[0] = make_check_dtype_func(dtype::Uint8());
+            dst.check_inp[1] = make_check_dtype_func(dtype::Float32());
+            dst.check_inp[2] = make_check_dtype_func(dtype::Float32());
+            dst.check_out = make_out_dtype_func(dtype::Float32());
+            dst.name = name;
+        };
 
 #define SET(f, m)                                                         \
     MIDOUT_BEGIN(megdnn_common_elemwise_multi_type, midout_iv(Mode::m)) { \
-        f(traits[static_cast<int>(Mode::m)], megdnn_mangle(#m));          \
+        f(traits[static_cast<int>(Mode::m)], (#m));                       \
     }                                                                     \
     MIDOUT_END();
         SET(init_fma3_int16x32x32x32, FUSE_MUL_ADD3_INT16x32x32x32);
@@ -169,6 +206,9 @@ const ModeTrait& ModeTrait::from_mode(Mode mode) {
         SET(init_fuse_add_rmulh_rshr_int32x32x32x8,
             FUSE_ADD_RMULH_ROUND_SHR_SATURATE_INT32x32x32x8);
         SET(init_rshrs_iXxi8xi16, ROUND_SHR_SATURATE_IXxI8xI16);
+        SET(init_fma3_int16xf32xf32xf32, FUSE_MUL_ADD3_INT16xF32xF32xF32);
+        SET(init_mul_int16xf32xf32, MUL_INT16xF32xF32);
+        SET(init_fma3_uint8xf32xf32xf32, FUSE_MUL_ADD3_UINT8xF32xF32xF32);
 
         //! quantized opr, with specified dtype.
         //! dispatch elemwise mode internally
@@ -224,14 +264,24 @@ const ModeTrait& ModeTrait::from_mode(Mode mode) {
 
         SET(init_quantized_ternary_op, QFUSE_MUL_ADD3);
         SET(init_quantized_ternary_op, QCOND_LEQ_MOV);
+        SET(init_quantized_ternary_op, QCOND_LT_MOV);
+
+        SET(init_bool_binary_op, LT);
+        SET(init_bool_binary_op, LEQ);
+        SET(init_bool_binary_op, EQ);
+        SET(init_bool_binary_op, NEQ);
+        SET(init_bool_unary_op, ISNAN);
+        SET(init_bool_unary_op, ISINF);
 #undef SET
     }
-
+    megdnn_assert(
+            static_cast<std::size_t>(mode) < traits.size(),
+            "Invalid elemwise multitype mode in this version. "
+            "Maybe this version is too old, and you may need to update.");
     return traits.at(static_cast<int>(mode));
 }
 
-void ElemwiseMultiType::deduce_layout(const TensorLayoutArray& src,
-                                      TensorLayout& dst) {
+void ElemwiseMultiType::deduce_layout(const TensorLayoutArray& src, TensorLayout& dst) {
     auto trait = mode_trait();
     megdnn_assert(src.size() == trait.arity);
     for (size_t i = 0; i < trait.arity; ++i) {

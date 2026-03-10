@@ -1,10 +1,3 @@
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 from typing import Tuple, Union
 
 from ..functional import relu
@@ -24,14 +17,16 @@ class _ConvBnActivation2d(Module):
         dilation: Union[int, Tuple[int, int]] = 1,
         groups: int = 1,
         bias: bool = True,
-        conv_mode: str = "CROSS_CORRELATION",
-        compute_mode: str = "DEFAULT",
+        conv_mode: str = "cross_correlation",
+        compute_mode: str = "default",
         eps=1e-5,
         momentum=0.9,
         affine=True,
         track_running_stats=True,
+        padding_mode: str = "zeros",
+        **kwargs
     ):
-        super().__init__()
+        super().__init__(**kwargs)
         self.conv = Conv2d(
             in_channels,
             out_channels,
@@ -43,14 +38,15 @@ class _ConvBnActivation2d(Module):
             bias,
             conv_mode,
             compute_mode,
+            padding_mode,
+            **kwargs,
         )
         self.bn = BatchNorm2d(out_channels, eps, momentum, affine, track_running_stats)
 
 
 class ConvBn2d(_ConvBnActivation2d):
-    r"""
-    A fused :class:`~.Module` including Conv2d, BatchNorm2d. Could be replaced
-    with :class:`~.QATModule` version :class:`~.qat.conv_bn.ConvBn2d` using
+    r"""A fused :class:`~.Module` including :class:`~.module.Conv2d` and :class:`~.module.BatchNorm2d`.
+    Could be replaced with :class:`~.QATModule` version :class:`~.qat.ConvBn2d` using
     :func:`~.quantize.quantize_qat`.
     """
 
@@ -59,10 +55,8 @@ class ConvBn2d(_ConvBnActivation2d):
 
 
 class ConvBnRelu2d(_ConvBnActivation2d):
-    r"""
-    A fused :class:`~.Module` including Conv2d, BatchNorm2d and relu. Could be replaced
-    with :class:`~.QATModule` version :class:`~.qat.conv_bn.ConvBnRelu2d` using
-    :func:`~.quantize.quantize_qat`.
+    r"""A fused :class:`~.Module` including :class:`~.module.Conv2d`, :class:`~.module.BatchNorm2d` and :func:`~.relu`.
+    Could be replaced with :class:`~.QATModule` version :class:`~.qat.ConvBnRelu2d` using :func:`~.quantize.quantize_qat`.
     """
 
     def forward(self, inp):

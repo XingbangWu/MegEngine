@@ -1,15 +1,3 @@
-/**
- * \file src/core/include/megbrain/exception.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #pragma once
 
 #include "megbrain_build_config.h"
@@ -25,7 +13,7 @@
 #endif
 
 #if (defined(__GNUC__) && !defined(__ANDROID__) && !defined(ANDROID) && \
-     !defined(__APPLE__))
+     !defined(__APPLE__) && !defined(__OHOS__))
 #include <cxxabi.h>  // for abi::__forced_unwind
 #define __MGB_HANDLE_FORCED_UNWIND MGB_CATCH(abi::__forced_unwind&, { throw; })
 #else
@@ -40,18 +28,17 @@
  * \param _scope_msg const char* type text to describe where this exception is
  *      caught
  */
-#define MGB_CATCH_ALL_EXCEPTION(_scope_msg, _ptr)                       \
-    MGB_CATCH(std::exception& _exc, {                                   \
-        mgb_log_error("caught exception in %s; what(): %s", _scope_msg, \
-                      _exc.what());                                     \
-        _ptr = std::current_exception();                                \
-    })                                                                  \
-    __MGB_HANDLE_FORCED_UNWIND                                          \
-    MGB_CATCH(..., {                                                    \
-        mgb_log_error("caught unknown exception in %s", _scope_msg);    \
-        _ptr = std::current_exception();                                \
-    })                                                                  \
-    do {                                                                \
+#define MGB_CATCH_ALL_EXCEPTION(_scope_msg, _ptr)                                     \
+    MGB_CATCH(std::exception& _exc, {                                                 \
+        mgb_log_error("caught exception in %s; what(): %s", _scope_msg, _exc.what()); \
+        _ptr = std::current_exception();                                              \
+    })                                                                                \
+    __MGB_HANDLE_FORCED_UNWIND                                                        \
+    MGB_CATCH(..., {                                                                  \
+        mgb_log_error("caught unknown exception in %s", _scope_msg);                  \
+        _ptr = std::current_exception();                                              \
+    })                                                                                \
+    do {                                                                              \
     } while (0)
 
 /*!
@@ -60,18 +47,17 @@
  * \param _scope_msg const char* type text to describe where this exception is
  *      caught
  */
-#define MGB_HANDLE_EXCEPTION_DTOR(_scope_msg)                                 \
-    MGB_CATCH(std::exception& _exc, {                                         \
-        mgb_log_error("abort due to exception in %s; what(): %s", _scope_msg, \
-                      _exc.what());                                           \
-        abort();                                                              \
-    })                                                                        \
-    MGB_CATCH(..., {                                                          \
-        mgb_log_error("abort due to unknown exception in %s", _scope_msg);    \
-    })                                                                        \
-    do {                                                                      \
+#define MGB_HANDLE_EXCEPTION_DTOR(_scope_msg)                                         \
+    MGB_CATCH(std::exception& _exc, {                                                 \
+        mgb_log_error(                                                                \
+                "abort due to exception in %s; what(): %s", _scope_msg, _exc.what()); \
+        abort();                                                                      \
+    })                                                                                \
+    MGB_CATCH(..., {                                                                  \
+        mgb_log_error("abort due to unknown exception in %s", _scope_msg);            \
+    })                                                                                \
+    do {                                                                              \
     } while (0)
-
 namespace mgb {
 
 //! the most general MegBrain exception type; also base class for all megbrain
@@ -112,7 +98,7 @@ public:
 
 private:
     std::shared_ptr<ExtraInfo> m_extra_info;
-    void init();
+    MGE_WIN_DECLSPEC_FUC void init();
 };
 
 //! base class for system error: error caused by uncontrollable environment
@@ -139,11 +125,19 @@ public:
     CudaError(const std::string& msg);
 };
 
-class AtlasError final: public SystemError {
+class EnFlameError final : public SystemError {
 public:
-    AtlasError(const std::string& msg);
+    EnFlameError(const std::string& msg);
 };
 
+class AtlasError final : public SystemError {
+public:
+    /*!
+     * \brief get extra info for current atlas status, to be appended in error message
+     */
+    static std::string get_atlas_extra_info();
+    AtlasError(const std::string& msg);
+};
 
 class ROCmError final : public SystemError {
 public:
@@ -170,6 +164,11 @@ public:
 class CndevError final : public SystemError {
 public:
     CndevError(const std::string& msg);
+};
+
+class CnnlError final : public SystemError {
+public:
+    CnnlError(const std::string& msg);
 };
 
 class CnmlError final : public SystemError {
@@ -219,7 +218,6 @@ public:
     using MegBrainError::MegBrainError;
 };
 
-
 }  // namespace mgb
 
 namespace mgb {
@@ -227,6 +225,5 @@ namespace mgb {
 bool has_uncaught_exception();
 
 }  // namespace mgb
-
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

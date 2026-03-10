@@ -1,18 +1,7 @@
-/**
- * \file src/core/include/megbrain/utils/thread_pool.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 #include "megbrain/common.h"
-#include "megbrain/system.h"
 #include "megbrain/comp_node.h"
+#include "megbrain/system.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -36,15 +25,14 @@ struct TaskElem {
     size_t nr_parallelism;
 };
 
+#if MGB_HAVE_THREAD
 /**
  * \brief Worker and related flag
  */
 struct Worker {
 public:
     Worker(thin_function<void()>&& run) : thread{run} {}
-    ~Worker() {
-        thread.join();
-    }
+    ~Worker() { thread.join(); }
     //! Worker thread
     std::thread thread;
     //! Indicate whether the Worker thread need run
@@ -53,7 +41,6 @@ public:
     bool affinity_flag{false};
 };
 
-#if MGB_HAVE_THREAD
 /**
  * \brief ThreadPool execute the task in multi-threads(nr_threads>1) mode , it
  * will fallback to single-thread mode if nr_thread is 1.
@@ -80,7 +67,7 @@ public:
     ~ThreadPool();
 
 private:
-    const size_t m_nr_threads = 0;
+    size_t m_nr_threads = 1;
     //! Indicate whether the main thread have binding
     bool m_main_affinity_flag;
     //! The callback binding the threads to cores

@@ -1,14 +1,3 @@
-/**
- * \file src/rocm/int_fastdiv.h.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \brief fast integer division for constant divisor
- *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
-
 #pragma once
 
 #include "src/common/utils.cuh"

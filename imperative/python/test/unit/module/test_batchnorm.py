@@ -1,35 +1,25 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import functools
-import multiprocessing as mp
 import platform
 
 import numpy as np
 import pytest
 
 import megengine as mge
+import megengine.amp as amp
 import megengine.distributed as dist
-from megengine import Tensor
+from megengine import Tensor, jit
+from megengine.autodiff.grad_manager import GradManager
 from megengine.core._trace_option import use_symbolic_shape
 from megengine.module import BatchNorm1d, BatchNorm2d, SyncBatchNorm
 
 _assert_allclose = functools.partial(np.testing.assert_allclose, atol=5e-6, rtol=5e-6)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Darwin", reason="do not imp GPU mode at macos now"
-)
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="windows disable MGB_ENABLE_OPR_MM"
-)
+@pytest.mark.require_ngpu(2)
 @pytest.mark.isolated_distributed
-def test_syncbn():
+@pytest.mark.parametrize("enable_amp", [False, True])
+def test_syncbn(enable_amp):
     nr_chan = 8
     data_shape = (3, nr_chan, 4, 16)
     momentum = 0.9
@@ -41,15 +31,19 @@ def test_syncbn():
     server = dist.Server()
     port = server.py_server_port
 
-    def worker(rank, data, yv_expect, running_mean, running_var):
-        if mge.get_device_count("gpu") < nr_ranks:
-            return
-        dist.init_process_group("localhost", port, nr_ranks, rank, rank)
-        bn = SyncBatchNorm(nr_chan, momentum=momentum, eps=eps)
-        for i in range(steps):
-            yv = bn(Tensor(data[i]))
-
-        _assert_allclose(yv.numpy(), yv_expect)
+    @dist.launcher(n_gpus=2)
+    def worker(data, yv_expect, running_mean, running_var):
+        with amp.autocast(enabled=enable_amp):
+            rank = dist.get_rank()
+            bn = SyncBatchNorm(nr_chan, momentum=momentum, eps=eps)
+            for i in range(steps):
+                yv = bn(Tensor(data[rank][i]))
+        if enable_amp:
+            np.testing.assert_allclose(
+                yv.numpy(), yv_expect[rank], atol=5e-4, rtol=5e-4
+            )
+        else:
+            _assert_allclose(yv.numpy(), yv_expect[rank])
         _assert_allclose(bn.running_mean.numpy(), running_mean)
         _assert_allclose(bn.running_var.numpy(), running_var)
 
@@ -77,24 +71,9 @@ def test_syncbn():
         for j in range(steps):
             data[i].append(xv[j][:, :, :, i * 8 : i * 8 + 8])
 
-    procs = []
-    for rank in range(nr_ranks):
-        p = mp.Process(
-            target=worker,
-            args=(
-                rank,
-                data[rank],
-                yv_expect[:, :, :, rank * 8 : rank * 8 + 8],
-                running_mean,
-                running_var,
-            ),
-        )
-        p.start()
-        procs.append(p)
+    yv_expect = [yv_expect[:, :, :, i * 8 : i * 8 + 8] for i in range(nr_ranks)]
 
-    for p in procs:
-        p.join(10)
-        assert p.exitcode == 0
+    worker(data, yv_expect, running_mean, running_var)
 
 
 def test_batchnorm():
@@ -140,9 +119,6 @@ def test_batchnorm():
     _assert_allclose(yv1.numpy(), yv_expect)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Darwin", reason="do not imp GPU mode at macos now"
-)
 def test_syncbn1d():
     nr_chan = 8
     data_shape = (3, nr_chan, 4)
@@ -230,9 +206,6 @@ def test_batchnorm2d():
     _assert_allclose(yv1.numpy(), yv_expect)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Darwin", reason="do not imp GPU mode at macos now"
-)
 def test_syncbn2d():
     nr_chan = 8
     data_shape = (3, nr_chan, 16, 16)
@@ -300,9 +273,6 @@ def test_batchnorm_no_stats():
         _assert_allclose(yv.numpy(), yv_expect)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Darwin", reason="do not imp GPU mode at macos now"
-)
 def test_syncbn_no_stats():
     nr_chan = 8
     data_shape = (3, nr_chan, 4)
@@ -348,9 +318,6 @@ def test_batchnorm2d_no_stats():
         _assert_allclose(yv.numpy(), yv_expect)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Darwin", reason="do not imp GPU mode at macos now"
-)
 def test_syncbn2d_no_stats():
     nr_chan = 8
     data_shape = (3, nr_chan, 16, 16)
@@ -371,3 +338,59 @@ def test_syncbn2d_no_stats():
         yv_expect = (xv - mean) / sd
 
         _assert_allclose(yv.numpy(), yv_expect)
+
+
+def test_syncbn2d_grad():
+    nr_chan = 8
+    data_shape = (3, nr_chan, 16, 16)
+    syncbn = SyncBatchNorm(8, track_running_stats=False)
+    bn = BatchNorm2d(8, track_running_stats=False)
+    for i in range(4):
+        if i == 2:
+            syncbn.training = False
+            bn.training = False
+        inp = Tensor(np.random.normal(loc=2.3, size=data_shape).astype(np.float32))
+        diff = Tensor(np.random.normal(size=data_shape).astype(np.float32))
+
+        with GradManager().attach(inp) as gm:
+            oup = syncbn(inp)
+            gm.backward(oup, diff)
+
+        grad = inp.grad
+        inp.grad = None
+
+        with GradManager().attach(inp) as gm:
+            oup_expect = bn(inp)
+            gm.backward(oup_expect, diff)
+
+        grad_expect = inp.grad
+        inp.grad = None
+
+        _assert_allclose(oup.numpy(), oup_expect.numpy())
+        _assert_allclose(grad.numpy(), grad_expect.numpy())
+
+
+@pytest.mark.parametrize("dim", [1, 2])
+@pytest.mark.parametrize("is_symbolic", [None, False, True])
+def test_batchnorm_empty_tensor(dim, is_symbolic):
+    if dim == 1:
+        m = BatchNorm1d(4, affine=True)
+        inp = mge.tensor(np.random.randn(0, 4, 0).astype("float32"))
+    elif dim == 2:
+        m = BatchNorm2d(4, affine=True)
+        inp = mge.tensor(np.random.randn(0, 4, 0, 0).astype("float32"))
+    else:
+        raise NotImplementedError
+
+    m.train()
+
+    def fn(inp):
+        return m(inp)
+
+    if is_symbolic is not None:
+        fn = jit.trace(symbolic=is_symbolic)(fn)
+    for _ in range(3):
+        out = fn(inp)
+        np.testing.assert_equal(out.numpy(), inp)
+        if is_symbolic is None:
+            break

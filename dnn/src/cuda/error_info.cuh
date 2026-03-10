@@ -1,20 +1,8 @@
-/**
- * \file dnn/src/cuda/error_info.cuh
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include <cuda_runtime.h>
 #include "megcore_cdefs.h"
 #include "megdnn/arch.h"
-
 
 typedef megcore::AsyncErrorInfo AsyncErrorInfo;
 #if MEGDNN_CC_CUDA
@@ -24,9 +12,9 @@ typedef megcore::AsyncErrorInfo AsyncErrorInfo;
 namespace {
 #endif
 
-__device__ void set_async_error_info(AsyncErrorInfo* info, void* tracker,
-                                     const char* msg, int arg0 = 0,
-                                     int arg1 = 0, int arg2 = 0, int arg3 = 0)
+__device__ void set_async_error_info(
+        AsyncErrorInfo* info, void* tracker, const char* msg, int arg0 = 0,
+        int arg1 = 0, int arg2 = 0, int arg3 = 0)
 #if MEGDNN_CC_CUDA
 {
     if (info && !atomicAdd(&info->nr_error, 1)) {
@@ -45,7 +33,7 @@ __device__ void set_async_error_info(AsyncErrorInfo* info, void* tracker,
     }
 }
 #else
-;
+        ;
 #endif
 
 #if MEGDNN_CC_CUDA

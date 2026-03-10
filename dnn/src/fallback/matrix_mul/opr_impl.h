@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/fallback/matrix_mul/opr_impl.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #pragma once
 #include <unordered_map>
 #include "megdnn/opr_param_defs.h"
@@ -32,11 +21,12 @@ public:
 
     bool is_thread_safe() const override { return true; }
 
-    size_t get_workspace_in_bytes(const TensorLayout&, const TensorLayout&,
-                                  const TensorLayout&) override;
+    size_t get_workspace_in_bytes(
+            const TensorLayout&, const TensorLayout&, const TensorLayout&) override;
 
-    void exec(_megdnn_tensor_in A, _megdnn_tensor_in B, _megdnn_tensor_out C,
-              _megdnn_workspace workspace) override;
+    void exec(
+            _megdnn_tensor_in A, _megdnn_tensor_in B, _megdnn_tensor_out C,
+            _megdnn_workspace workspace) override;
 
     struct KernSizeParam {
         DType A_type, B_type, C_type;
@@ -50,28 +40,28 @@ public:
     };
 
     struct KernParam : public KernSizeParam {
-        const void* A_ptr;
-        const void* B_ptr;
-        void* C_ptr;
-        void* workspace_ptr;
-        size_t workspace_size;
+        RefPtr A_ptr;
+        RefPtr B_ptr;
+        RefPtr C_ptr;
+        void* workspace_ptr = nullptr;
+        size_t workspace_size = 0;
 
         template <typename T>
         inline const T* A() const {
             // A_type.assert_is_compatible_ctype<T>();
-            return static_cast<const T*>(A_ptr);
+            return static_cast<const T*>(A_ptr.get_ptr());
         }
 
         template <typename T>
         inline const T* B() const {
             // B_type.assert_is_compatible_ctype<T>();
-            return static_cast<const T*>(B_ptr);
+            return static_cast<const T*>(B_ptr.get_ptr());
         }
 
         template <typename T>
         inline T* C() const {
             // C_type.assert_is_compatible_ctype<T>();
-            return static_cast<T*>(C_ptr);
+            return static_cast<T*>(C_ptr.get_ptr());
         }
         template <typename T>
         inline T* workspace() const {
@@ -80,8 +70,8 @@ public:
     };
 
     typedef void (*kern_t)(const KernParam&);
-    typedef void (*kern_naked_t)(const KernParam&, const void* a_panel,
-                                 const void* b_panel);
+    typedef void (*kern_naked_t)(
+            const KernParam&, const void* a_panel, const void* b_panel);
     class AlgoBase : public Algorithm {
     protected:
         virtual ~AlgoBase() = default;
@@ -110,6 +100,12 @@ public:
             //! fallback
             FB_F32K8x12x1 = 1 << 0,
             FB_GEMV,
+            FB_NAIVE,
+            FB_GI_F32_GEMV_MK4,
+            FB_GI_F32_MK4_4x8,
+            FB_GI_F16_MK8_8x8,
+            FB_GI_F32_MK4_PACK_4x12,
+            FB_GI_F32_4x12,
 
 #if MEGDNN_X86
             //! x86
@@ -121,6 +117,7 @@ public:
             X86_INT8X8X16_SSE,
             X86_INT8X8X32_SSE_4X8X2,
             X86_F32_MK8_8X8,
+            X86_F32_6x16,
             X86_INT8X8X32_VNNI,
             X86_INT8X8X32_MKLDNN,
 #elif MEGDNN_AARCH64 || MEGDNN_ARMV7
@@ -128,7 +125,8 @@ public:
             ARM_COMMON_INT8X8X32_GEMV,
             ARM_COMMON_INT8X8X32_GEMV_MK4,
             ARM_COMMON_INT8X8X32_GEMV_MK4_DOT,
-            ARM_COMMON_F32_GEMV_MK4,
+            ARM_COMMON_INT8X8X32_GEVM_DOT,
+            ARM_COMMON_INT8X8X32_GEVM_N32K4_DOT,
             ARM_COMMON_F16_GEMV,
             ARM_COMMON_GEVM,
 #if MEGDNN_AARCH64
@@ -139,6 +137,7 @@ public:
             AARCH64_F32_GEMV,
             AARCH64_F16_K8X24X1,
             AARCH64_F16_MK8_8X8,
+            AARCH64_F16_MK8_16X12X1,
             AARCH64_INT8X8X32_K8X12X4_DOTPROD,
             AARCH64_INT8X8X32_MK4_8X12X4_DOTPROD,
             AARCH64_INT8X8X32_MK4_4X4X16,
@@ -173,7 +172,8 @@ public:
             ARMV7_INT8X8X16_MK4_K8X8X4,
             ARMV7_INT16X16X32_K12X4X1,
             ARMV7_INT16X16X32_MK8_4X8,
-            ARMV7_INT8X8X32_MK4_4X2X16
+            ARMV7_INT8X8X32_MK4_4X2X16,
+            ARMV7_INT8X8X16_K8X8X4
 #endif
 #endif
         };
@@ -181,6 +181,7 @@ public:
         enum class AlgoSet : uint32_t {
             ALGO_TYPE_GEMM = 0,
             ALGO_TYPE_GEMV = 1,
+            ALGO_TYPE_GEVM = 2,
         };
 
         enum class PackMode : uint32_t {
@@ -218,12 +219,13 @@ public:
         virtual WorkspaceBundle get_bundle(const KernSizeParam&) const {
             megdnn_assert(0);
         };
-        virtual InnerBlockSize get_inner_block_size() const {
-            megdnn_assert(0);
-        };
-        bool preferred_reproducible(const KernSizeParam& param,
-                                    bool reproducible = true) {
-            return (!reproducible || is_reproducible()) && preferred(param);
+        virtual InnerBlockSize get_inner_block_size() const { megdnn_assert(0); };
+        bool preferred_attribute(
+                const KernSizeParam& param,
+                const AlgoAttribute& positive_attr = AlgoAttribute::REPRODUCIBLE,
+                const AlgoAttribute& negative_attr = AlgoAttribute::DEFAULT) {
+            return contain_attribute_all(positive_attr) &&
+                   !contain_attribute_any(negative_attr) && preferred(param);
         };
         virtual MatmulDescription matmul_description() const = 0;
 
@@ -231,14 +233,20 @@ public:
     };
 
 private:
-    class AlgoF32K8x12x1;  // Fallback F32 Kernel 8x12x1
+    class AlgoF32K8x12x1;        // Fallback F32 Kernel 8x12x1
+    class AlgoF32GiGemvMK4;      // fallback F32 gi Gemv NCHW44
+    class AlgoF32GiMK4_4x8;      // fallback F32 gi Gemm NCHW44
+    class AlgoF32GiMK4Pack4x12;  // fallback F32 gi Gemm pack NCHW44
+    class AlgoF32Gi4x12;         // fallback F32 gi Gemm
+    class AlgoF16GiMK8_8x8;
     class AlgoGemv;
+    class AlgoNaive;
     class AlgoPack;
     //! maintain all the algos of in the opr of fallback
     static const AlgoPack& algo_pack();
-    static AlgoBase* get_algo_from_desc(const AlgorithmDesc& desc);
-public:
+    Algorithm* get_algorithm_from_desc(const AlgorithmDesc& desc) override;
 
+public:
     /**
      * \brief get all the algorithm for the opr.
      */
@@ -250,24 +258,25 @@ public:
     SmallVector<AlgoBase*> select_algo_type(AlgoTypePack algo_type);
 
 protected:
-    KernSizeParam make_kern_size_param(const TensorLayout& A,
-                                       const TensorLayout& B,
-                                       const TensorLayout& C);
+    KernSizeParam make_kern_size_param(
+            const TensorLayout& A, const TensorLayout& B, const TensorLayout& C);
 
-    KernParam make_kern_param(_megdnn_tensor_in A, _megdnn_tensor_in B,
-                              _megdnn_tensor_out C,
-                              _megdnn_workspace workspace);
+    KernParam make_kern_param(
+            _megdnn_tensor_in A, _megdnn_tensor_in B, _megdnn_tensor_out C,
+            _megdnn_workspace workspace);
 
-    std::vector<Algorithm*> get_all_algorithms(const TensorLayout& A,
-                                               const TensorLayout& B,
-                                               const TensorLayout& C) override;
+    std::vector<Algorithm*> get_all_algorithms(
+            const TensorLayout& A, const TensorLayout& B,
+            const TensorLayout& C) override;
 
-    Algorithm* get_algorithm_heuristic(const TensorLayout& A,
-                                       const TensorLayout& B,
-                                       const TensorLayout& C,
-                                       size_t workspace_limit_in_bytes,
-                                       bool reproducible) override;
+    std::vector<Algorithm*> get_all_algorithms_safe(
+            const TensorLayout& A, const TensorLayout& B,
+            const TensorLayout& C) override;
 
+    Algorithm* get_algorithm_heuristic(
+            const TensorLayout& A, const TensorLayout& B, const TensorLayout& C,
+            size_t workspace_limit_in_bytes, const AlgoAttribute& positive_attr,
+            const AlgoAttribute& negative_attr) override;
 };
 
 }  // namespace fallback

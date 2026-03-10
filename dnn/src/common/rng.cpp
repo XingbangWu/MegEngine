@@ -1,28 +1,127 @@
-/**
- * \file dnn/src/common/rng.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megdnn/oprs.h"
 
 #include "src/common/utils.h"
 
 namespace megdnn {
 
-void RNGBase::check_exec(
-        const TensorLayout &dst, size_t workspace_in_bytes) {
-    megdnn_assert(dst.dtype.category() == DTypeCategory::FLOAT &&
-            dst.is_contiguous());
+void ShuffleRNGForward::deduce_layout(
+        const TensorLayout& src, TensorLayout& dst, TensorLayout& indices) {
+    dst = src;
+    indices = TensorLayout(TensorShape({src.shape[0]}), dtype::Int32());
+}
+void ShuffleRNGForward::check_exec(
+        const TensorLayout& src, const TensorLayout& dst, const TensorLayout& indices,
+        size_t workspace_in_bytes) {
+    TensorLayout dst_expected, indices_expected;
+    megdnn_assert_contiguous(src);
+    deduce_layout(src, dst_expected, indices_expected);
+
+    megdnn_assert_eq_layout(dst_expected, dst);
+    megdnn_assert_eq_layout(indices_expected, indices);
+    megdnn_assert_contiguous(indices);
+    megdnn_assert(src.dtype == dst.dtype);
+    megdnn_assert(indices.dtype == dtype::Int32());
+
+    auto required_workspace_in_bytes = get_workspace_in_bytes(src, dst, indices);
+    megdnn_assert(workspace_in_bytes >= required_workspace_in_bytes);
+}
+
+void ShuffleRNGBackward::check_exec(
+        const TensorLayout& diff, const TensorLayout& indices, const TensorLayout& grad,
+        size_t workspace_in_bytes) {
+    megdnn_assert(
+            diff.shape[0] == indices.shape[0] && diff.dtype == grad.dtype &&
+                    indices.dtype == dtype::Int32{} && diff.is_contiguous() &&
+                    indices.is_contiguous() && grad.is_contiguous(),
+            "invalid layouts: diff=%s indices=%s grad=%s", diff.to_string().c_str(),
+            indices.to_string().c_str(), grad.to_string().c_str());
+    auto required_workspace_in_bytes = get_workspace_in_bytes(diff, indices, grad);
+    megdnn_assert(workspace_in_bytes >= required_workspace_in_bytes);
+}
+
+void PermutationRNG::check_exec(const TensorLayout& dst, size_t workspace_in_bytes) {
+    megdnn_assert(
+            (dst.dtype == dtype::Float32() || dst.dtype == dtype::Int32() ||
+             dst.dtype == dtype::Int16()) &&
+            dst.dtype.enumv() == param().dtype && dst.is_contiguous());
     megdnn_assert(workspace_in_bytes >= get_workspace_in_bytes(dst));
 }
 
-} // namespace megdnn
+void PoissonRNG::check_exec(
+        const TensorLayout& lam, const TensorLayout& dst, size_t workspace_in_bytes) {
+    megdnn_assert(
+            dst.dtype.category() == DTypeCategory::FLOAT && lam.dtype == dst.dtype);
+    megdnn_assert(dst.is_contiguous() && lam.is_contiguous());
+    megdnn_assert(lam.total_nr_elems() == dst.total_nr_elems());
+    megdnn_assert(workspace_in_bytes >= get_workspace_in_bytes(lam, dst));
+}
+
+void GammaRNG::check_exec(
+        const TensorLayout& shape, const TensorLayout& scale, const TensorLayout& dst,
+        size_t workspace_in_bytes) {
+    megdnn_assert(
+            dst.dtype.category() == DTypeCategory::FLOAT && shape.dtype == dst.dtype &&
+            scale.dtype == dst.dtype);
+    megdnn_assert(
+            shape.is_contiguous() && scale.is_contiguous() && dst.is_contiguous());
+    megdnn_assert(
+            shape.total_nr_elems() == dst.total_nr_elems() &&
+            scale.total_nr_elems() == dst.total_nr_elems());
+    megdnn_assert(workspace_in_bytes >= get_workspace_in_bytes(shape, scale, dst));
+}
+
+void BetaRNG::check_exec(
+        const TensorLayout& alpha, const TensorLayout& beta, const TensorLayout& dst,
+        size_t workspace_in_bytes) {
+    megdnn_assert(
+            dst.dtype.category() == DTypeCategory::FLOAT && alpha.dtype == dst.dtype &&
+            beta.dtype == dst.dtype);
+    megdnn_assert(alpha.is_contiguous() && beta.is_contiguous() && dst.is_contiguous());
+    megdnn_assert(
+            alpha.total_nr_elems() == dst.total_nr_elems() &&
+            beta.total_nr_elems() == dst.total_nr_elems());
+    megdnn_assert(workspace_in_bytes >= get_workspace_in_bytes(alpha, beta, dst));
+}
+
+void ExponentialRNG::check_exec(
+        const TensorLayout& rate, const TensorLayout& dst, size_t workspace_in_bytes) {
+    megdnn_assert(
+            dst.dtype.category() == DTypeCategory::FLOAT && rate.dtype == dst.dtype);
+    megdnn_assert(dst.is_contiguous() && rate.is_contiguous());
+    megdnn_assert(rate.total_nr_elems() == dst.total_nr_elems());
+    megdnn_assert(workspace_in_bytes >= get_workspace_in_bytes(rate, dst));
+}
+
+void MultinomialRNG::deduce_layout(const TensorLayout& probs, TensorLayout& dst) {
+    dst = TensorLayout(
+            TensorShape({probs.shape[0], static_cast<size_t>(m_param.num_samples)}),
+            megdnn::dtype::Int32());
+}
+
+void MultinomialRNG::check_exec(
+        const TensorLayout& probs, const TensorLayout& dst, size_t workspace_in_bytes) {
+    megdnn_assert(probs.is_contiguous() && dst.is_contiguous());
+    megdnn_assert(probs.ndim == 2 && dst.ndim == 2);
+    TensorLayout dst_expected;
+    deduce_layout(probs, dst_expected);
+    megdnn_assert_eq_layout(dst_expected, dst);
+    megdnn_assert(probs.dtype.category() == DTypeCategory::FLOAT);
+    megdnn_assert(dst.dtype == dtype::Int32());
+    megdnn_assert(workspace_in_bytes >= get_workspace_in_bytes(probs, dst));
+    megdnn_assert(m_param.replacement || m_param.num_samples <= probs.shape[1]);
+}
+
+#define INST_CHECK_EXEC(RNG_NAME)                                                   \
+    void RNG_NAME::check_exec(const TensorLayout& dst, size_t workspace_in_bytes) { \
+        megdnn_assert(                                                              \
+                dst.dtype.category() == DTypeCategory::FLOAT &&                     \
+                dst.dtype.enumv() == param().dtype && dst.is_contiguous());         \
+        megdnn_assert(workspace_in_bytes >= get_workspace_in_bytes(dst));           \
+    }
+
+INST_CHECK_EXEC(UniformRNG) INST_CHECK_EXEC(GaussianRNG)
+#undef INST_CHECK_EXEC
+
+}  // namespace megdnn
 
 // vim: syntax=cpp.doxygen
-

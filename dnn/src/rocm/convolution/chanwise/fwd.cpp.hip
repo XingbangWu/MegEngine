@@ -1,12 +1,3 @@
-/**
- * \file src/rocm/convolution/chanwise/fwd.cpp.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
-
 #include "hip_header.h"
 #include "./kern.h.hip"
 #include "./kern_helper.h.hip"
@@ -105,7 +96,7 @@ void chanwise::run_fwd(T* dst, const T* src, const T* flt, const Param& param,
     dim3 nr_block(param.src_chl,
                   std::min(512, max(nr_out_dimx / (nr_thread * 4), 1)));
     uint32_t shared = param.chl_mul * param.flt_h * param.flt_w * sizeof(T);
-    kern<<<nr_block, nr_thread, shared, stream>>>(dst, src, flt, param);
+    hipLaunchKernelGGL(kern, nr_block, nr_thread, shared, stream, dst, src, flt, param);
     after_kernel_launch();
 }
 

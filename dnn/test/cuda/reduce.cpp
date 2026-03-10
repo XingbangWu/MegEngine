@@ -1,14 +1,3 @@
-/**
- * \file dnn/test/cuda/reduce.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megdnn/oprs.h"
 #include "test/common/checker.h"
 #include "test/common/rng.h"
@@ -25,6 +14,8 @@ TEST_F(CUDA, REDUCE) {
     checker.set_rng(0, &rng);
     checker.set_param({Mode::SUM, 1});
 
+    checker.execs({{100, 160, 1}, {}});
+    checker.execs({{100, 31, 1}, {}});
     // 1-step
     checker.execs({{2, 64, 32}, {}});
     // 2-step
@@ -41,7 +32,7 @@ TEST_F(CUDA, REDUCE) {
     checker.execs({{2, 16 * 16 + 1, 31}, {}});
     checker.execs({{2, 16 * 16 * 16 + 1, 31}, {}});
     checker.execs({{2, 16 * 16 * 16 * 16 + 1, 31}, {}});
-#if MEGDNN_TEGRA_X1
+#if MEGDNN_TEGRA_X1 || MEGDNN_TEGRA_X2
     checker.execs({{2, 8 * 16 * 16 * 16 * 16 + 1, 31}, {}});
 #else
     checker.execs({{2, 16 * 16 * 16 * 16 * 16 + 1, 31}, {}});
@@ -53,6 +44,20 @@ TEST_F(CUDA, REDUCE) {
     checker.execs({{3, 512, 500}, {}});
     // very large reduce
     checker.execs({{1, 4194304, 1}, {}});
+
+    // inputs have nan
+    {
+        const auto nan = std::numeric_limits<float>::quiet_NaN();
+        UniformFloatWithValueRNG rng1 =
+                UniformFloatWithValueRNG(-1.0f, 1.0f, 0.5f, nan);
+        checker.set_allow_invalid_check(true).set_rng(0, &rng1);
+        for (auto mode : {Mode::MIN, Mode::MAX}) {
+            checker.set_param({mode, 1});
+            checker.execs({{2, 64, 32}, {}});
+        }
+        checker.set_allow_invalid_check(false);
+    }
+    checker.set_rng(0, &rng);
 
     auto check = [&](Reduce::Mode mode, DType src_dtype, DType dst_dtype,
                      Reduce::DataType data_type) {
@@ -72,36 +77,45 @@ TEST_F(CUDA, REDUCE) {
                     .execs({{2, 3, 100, 5}, dst_shape});
         }
     };
-    for (auto mode : {Mode::SUM, Mode::MEAN, Mode::SUM_SQR, Mode::PRODUCT,
-                      Mode::MIN, Mode::MAX}) {
-        for (auto dtype : std::vector<DType>{dtype::Float16(), dtype::Float32(),
-                                             dtype::Int32()}) {
+    for (auto mode :
+         {Mode::SUM, Mode::MEAN, Mode::SUM_SQR, Mode::PRODUCT, Mode::MIN, Mode::MAX}) {
+        for (auto dtype :
+             std::vector<DType>{dtype::Float16(), dtype::Float32(), dtype::Int32()}) {
             check(mode, dtype, dtype, Reduce::DataType::DEFAULT);
         }
         check(mode, dtype::Float16(), dtype::Float32(),
               Reduce::DataType::FLOAT_O32xC32);
-        check(mode, dtype::Int32(), dtype::Float32(),
-              Reduce::DataType::FLOAT_O32xC32);
+        check(mode, dtype::Int32(), dtype::Float32(), Reduce::DataType::FLOAT_O32xC32);
         check(mode, dtype::Float16(), dtype::Float16(),
               Reduce::DataType::FLOAT_O16xC32);
         check(mode, dtype::Float32(), dtype::Float16(),
               Reduce::DataType::FLOAT_O16xC32);
-        ASSERT_THROW(check(mode, dtype::Int32(), dtype::Float16(),
-                           Reduce::DataType::FLOAT_O16xC32),
-                     MegDNNError);
-        ASSERT_THROW(check(mode, dtype::Float16(), dtype::Float16(),
-                           Reduce::DataType::FLOAT_IO16xC32),
-                     MegDNNError);
+        ASSERT_THROW(
+                check(mode, dtype::Int32(), dtype::Float16(),
+                      Reduce::DataType::FLOAT_O16xC32),
+                MegDNNError);
+        ASSERT_THROW(
+                check(mode, dtype::Float16(), dtype::Float16(),
+                      Reduce::DataType::FLOAT_IO16xC32),
+                MegDNNError);
     }
 
     {
         // very large reduce for I16CO32
-        Reduce::Param param{Mode::SUM_SQR, 1,
-                            Reduce::Param::DataType::FLOAT_O32xC32};
+        Reduce::Param param{Mode::SUM_SQR, 1, Reduce::Param::DataType::FLOAT_O32xC32};
         checker.set_dtype(0, dtype::Float16())
                 .set_dtype(1, dtype::Float32())
                 .set_param(param)
                 .execs({{1, 4194304, 1}, {1, 1, 1}});
+    }
+
+    {
+        // large reduce_mean for O16C32
+        Reduce::Param param{Mode::MEAN, 1, Reduce::Param::DataType::FLOAT_O16xC32};
+        checker.set_dtype(0, dtype::Float16())
+                .set_dtype(1, dtype::Float16())
+                .set_param(param)
+                .execs({{1, 65536, 5}, {1, 1, 5}});
     }
 }
 

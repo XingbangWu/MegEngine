@@ -1,16 +1,9 @@
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-
 import contextlib
 import os
 import tempfile
 
 import numpy as np
+import pytest
 
 import megengine as mge
 import megengine.functional as F
@@ -19,6 +12,7 @@ import megengine.optimizer as optim
 from megengine import tensor
 from megengine.autodiff import GradManager
 from megengine.jit import trace
+from megengine.optimizer import SGD
 
 
 @contextlib.contextmanager
@@ -109,7 +103,6 @@ def test_xornet_trace_dump():
             _, loss = val_fun(data, label)
             loss = loss.numpy()
             val_loss.append((step, loss))
-            print("Step: {} loss={}".format(step, loss))
         opt.step()
 
     test_data = np.array(
@@ -131,12 +124,65 @@ def test_xornet_trace_dump():
 
     data = tensor(test_data.astype(np.float32))
     out = pred_fun(data)
-    pred_output = out.numpy()
-    pred_label = np.argmax(pred_output, 1)
-
-    with np.printoptions(precision=4, suppress=True):
-        print("Predicated probability:")
-        print(pred_output)
 
     with mkstemp() as out:
         pred_fun.dump(out, arg_names=["data"], output_names=["label"])
+
+
+def test_dump_bn_train_mode():
+    @trace(symbolic=True, capture_as_const=True)
+    def bn_train(data):
+        pred = M.BatchNorm2d(10)(data).sum()
+        return pred
+
+    data = mge.tensor(np.random.random((10, 10, 10, 10)))
+    bn_train(data)
+    with pytest.raises(RuntimeError):
+        bn_train.dump("test.mge")
+
+
+class ViT(M.Module):
+    def __init__(self, patch_size=16, in_chans=3, embed_dim=768):
+        super().__init__()
+        self.proj = M.Conv2d(
+            in_chans, embed_dim, kernel_size=patch_size, stride=patch_size
+        )
+        self.extra = M.Linear(embed_dim, embed_dim)
+        self.head = M.Linear(embed_dim, 1)
+
+    def forward(self, x):
+        x = self.proj(x)
+        x = F.flatten(x, 2).transpose(0, 2, 1)
+
+        x = self.extra(x)
+        x = x.mean(axis=1)
+        x = self.head(x)
+        x = x.sum()
+        return x
+
+
+def test_ViTmode_trace_train():
+    model = ViT(embed_dim=384)
+    data = mge.random.normal(size=(1, 3, 224, 224))
+    optim = SGD(model.parameters(), lr=0.01)
+    gm = GradManager()
+    gm.attach(model.parameters())
+
+    @trace(symbolic=True)
+    def train(d):
+        with gm:
+            loss = model(d)
+            gm.backward(loss)
+
+        optim.step().clear_grad()
+        return loss
+
+    @trace(symbolic=True)
+    def val(d):
+        loss = model(d)
+        return loss
+
+    for i in range(3):
+        print(f"iter: {i}")
+        t = train(data)
+        r = val(data)

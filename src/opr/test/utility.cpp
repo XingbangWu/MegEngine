@@ -1,25 +1,14 @@
-/**
- * \file src/opr/test/utility.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megbrain/opr/utility.h"
 #include "megbrain/gopt/framework.h"
 #include "megbrain/opr/io.h"
+#include "megbrain/serialization/opr_shallow_copy.h"
 #include "megbrain/test/helper.h"
 
 using namespace mgb;
 
 TEST(TestOprUtility, AssertEqual) {
     HostTensorGenerator<> gen;
-    auto host_x = gen({1, 2, 3}),
-         host_y = gen({1, 2, 3});
+    auto host_x = gen({1, 2, 3}), host_y = gen({1, 2, 3});
     auto graph = ComputingGraph::make();
     auto x = opr::Host2DeviceCopy::make(*graph, host_x),
          y = opr::Host2DeviceCopy::make(*graph, host_y),
@@ -37,8 +26,7 @@ TEST(TestOprUtility, VirtualGradCompNode) {
     auto host_x = gen({1}, cns[0]);
     auto graph = ComputingGraph::make();
     auto x = opr::Host2DeviceCopy::make(*graph, host_x),
-         loss = opr::Copy::make(x, cns[1]),
-         gx = opr::VirtualGrad::make(loss, x);
+         loss = opr::Copy::make(x, cns[1]), gx = opr::VirtualGrad::make(loss, x);
 
     HostTensorND gx_host;
     auto func = graph->compile({make_callback_copy(gx, gx_host)});
@@ -61,8 +49,8 @@ TEST(TestOprUtility, VirtualLoss) {
          gx = opr::VirtualGrad::make(loss, x),
          expect = 2 * x1g + 3 * opr::Copy::make(x2g, cns[0]);
     HostTensorND host_gx, host_expect;
-    auto func = graph->compile({make_callback_copy(gx, host_gx),
-                                make_callback_copy(expect, host_expect)});
+    auto func = graph->compile(
+            {make_callback_copy(gx, host_gx), make_callback_copy(expect, host_expect)});
     func->execute();
     MGB_ASSERT_TENSOR_EQ(host_expect, host_gx);
 }
@@ -77,8 +65,7 @@ TEST(TestOprUtility, Timestamp) {
          y0 = opr::Timestamp::make(opr::Sleep::make(x0, 0.1), times, 1),
          z0 = opr::Timestamp::make(opr::Sleep::make(y0, 0.1), times, 2),
 
-         x_cn1 = opr::Copy::make(x, cns[1]),
-         x1 = opr::Timestamp::make(x_cn1, times, 3),
+         x_cn1 = opr::Copy::make(x, cns[1]), x1 = opr::Timestamp::make(x_cn1, times, 3),
          y1 = opr::Timestamp::make(opr::Sleep::make(x1, 0.2), times, 4);
 
     graph->options().var_sanity_check_first_run = false;
@@ -124,19 +111,16 @@ TEST(TestOprUtility, VirtualDep) {
     auto y2 = x1 * x1;
 
     bool called = false;
-    auto cb = [&called](DeviceTensorND&) {
-        called = true;
-    };
+    auto cb = [&called](DeviceTensorND&) { called = true; };
 
-    auto virtual_dep = opr::VirtualDep::make({y0, y1,
-            opr::CallbackInjector::make(y2, cb)});
-
+    auto virtual_dep =
+            opr::VirtualDep::make({y0, y1, opr::CallbackInjector::make(y2, cb)});
 
     HostTensorND host_y0, host_virtual_dep;
 
     auto func = graph->compile(
             {make_callback_copy(y0, host_y0),
-            make_callback_copy(virtual_dep, host_virtual_dep)});
+             make_callback_copy(virtual_dep, host_virtual_dep)});
 
     func->execute();
 
@@ -202,7 +186,6 @@ TEST(TestOprUtility, CallbackInjector) {
     ASSERT_EQ(4, nr_cb_val);
 }
 
-
 TEST(TestOprUtility, MultiInputCallbackInjector) {
     auto graph = ComputingGraph::make();
     HostTensorGenerator<> gen;
@@ -238,11 +221,13 @@ TEST(TestOprUtility, MultiInputCallbackInjector) {
         ASSERT_EQ(b->comp_node(), dv[1].comp_node());
         ASSERT_EQ(c->comp_node(), dv[2].comp_node());
     };
-    auto test_v = opr::CallbackInjector::make({
-        opr::Host2DeviceCopy::make(*graph, a),
-        opr::Host2DeviceCopy::make(*graph, b),
-        opr::Host2DeviceCopy::make(*graph, c),
-        }, cb_mul);
+    auto test_v = opr::CallbackInjector::make(
+            {
+                    opr::Host2DeviceCopy::make(*graph, a),
+                    opr::Host2DeviceCopy::make(*graph, b),
+                    opr::Host2DeviceCopy::make(*graph, c),
+            },
+            cb_mul);
     auto test_func = graph->compile({{test_v, {}}, {test_v, {}}});
     test_func->execute();
 
@@ -255,10 +240,11 @@ TEST(TestOprUtility, MultiInputCallbackInjector) {
 
         auto cb_val = [&nr_cb](const DeviceTensorND&) { ++nr_cb; };
 
-        auto y = opr::CallbackInjector::make({
-            opr::ImmutableTensor::make(*graph, *host_x),
-            opr::ImmutableTensor::make(*graph, *host_z)
-            }, {true, ignore, cb_val}) + 1;
+        auto y = opr::CallbackInjector::make(
+                         {opr::ImmutableTensor::make(*graph, *host_x),
+                          opr::ImmutableTensor::make(*graph, *host_z)},
+                         {true, ignore, cb_val}) +
+                 1;
         HostTensorND host_y;
         auto func = graph->compile({make_callback_copy(y, host_y)});
 
@@ -410,14 +396,10 @@ TEST(TestOprUtility, InvliadGradCopy) {
     auto graph = ComputingGraph::make();
     auto host_x = gen({2, 3});
     SymbolVar x = opr::Host2DeviceCopy::make(*graph, host_x),
-              y = opr::InvalidGrad::make(*((x * 2 + 3) * 4).node()->owner_opr(),
-                                         0),
-              y1;
-    unpack_vector(gopt::GraphOptimizer{}
-                          .add_preset_passes()
-                          .apply({{y}})
-                          .endpoint_vars(),
-                  y1);
+              y = opr::InvalidGrad::make(*((x * 2 + 3) * 4).node()->owner_opr(), 0), y1;
+    unpack_vector(
+            gopt::GraphOptimizer{}.add_preset_passes().apply({{y}}).endpoint_vars(),
+            y1);
     ASSERT_NE(y.node(), y1.node());
 }
 
@@ -432,16 +414,15 @@ TEST(TestOprUtility, RequireInputDynamicStorage) {
     auto cb = [&called](DeviceTensorND&) { called = true; };
 
     auto ycb = opr::CallbackInjector::make(y, cb),
-         require_input_dynamic_storage =
-                 opr::RequireInputDynamicStorage::make(ycb);
+         require_input_dynamic_storage = opr::RequireInputDynamicStorage::make(ycb);
 
     HostTensorND host_y, host_require_input_dynamic_storage;
     graph->options().graph_opt_level = 0;
 
     ComputingGraph::OutputSpec out_spec{
             make_callback_copy(y, host_y),
-            make_callback_copy(require_input_dynamic_storage,
-                               host_require_input_dynamic_storage)};
+            make_callback_copy(
+                    require_input_dynamic_storage, host_require_input_dynamic_storage)};
     auto func = graph->compile(out_spec);
     func->execute();
     auto nr_opr = [](const std::unique_ptr<cg::AsyncExecutable>& func) {
@@ -467,4 +448,66 @@ TEST(TestOprUtility, RequireInputDynamicStorage) {
     ASSERT_LT(nr_opr(func), nr0);
 }
 
+TEST(TestOprUtility, ShapeHint) {
+    HostTensorGenerator<> gen;
+    HostTensorGenerator<dtype::Int32> gen_int;
+    constexpr size_t length = 233;
+    {  // basic
+        for (bool dynamic : {false, true}) {
+            auto host_x = gen_int({length});
+            auto graph = ComputingGraph::make();
+            SymbolVar x = opr::Host2DeviceCopy::make(*graph, host_x), x_shape_hint, y;
+            if (dynamic) {
+                x_shape_hint = opr::ShapeHint::make(
+                        opr::MarkDynamicVar::make(x), TensorShape{length * 2});
+            } else {
+                x_shape_hint = opr::ShapeHint::make(x, TensorShape{length * 2});
+            }
+            y = x_shape_hint * 2 + 1;
+            if (dynamic) {
+                ASSERT_TRUE(y.shape().eq_shape({length * 2}));
+            } else {
+                ASSERT_TRUE(y.shape().eq_shape({length}));
+            }
+            HostTensorND host_y;
+            auto func = graph->compile({make_callback_copy(y, host_y)});
+            func->execute();
+            ASSERT_TRUE(host_y.shape().eq_shape({length}));
+            for (size_t i = 0; i < length; ++i) {
+                ASSERT_EQ((*host_x->ptr<int32_t>()) * 2 + 1, *host_y.ptr<int32_t>());
+            }
+        }
+    }
+    {  // shallow copy
+        auto graph = ComputingGraph::make();
+        auto host_x = gen({length});
+        SymbolVar x = opr::Host2DeviceCopy::make(*graph, host_x),
+                  y = opr::ShapeHint::make(x, TensorShape{length * 2}),
+                  x_unknown = opr::MarkDynamicVar::make(x),
+                  y_copy = serialization::copy_opr_shallow(
+                                   *y.node()->owner_opr(), {x_unknown.node()})
+                                   ->output(0);
+        ASSERT_TRUE(y.shape().eq_shape({length}));
+        ASSERT_TRUE(y_copy.shape().eq_shape({length * 2}));
+    }
+    {  // grad
+        auto host_x = gen({1}), host_y = gen({1});
+        auto graph = ComputingGraph::make();
+        auto x = opr::Host2DeviceCopy::make(*graph, host_x),
+             y = opr::Host2DeviceCopy::make(*graph, host_y),
+             x_shape_hint =
+                     opr::ShapeHint::make(opr::MarkDynamicVar::make(x), TensorShape{1}),
+             y_shape_hint = opr::ShapeHint::make(y, TensorShape{1}),
+             t = x_shape_hint * y_shape_hint;
+        HostTensorND host_gx, host_gy;
+        auto func = graph->compile(
+                {make_callback_copy(cg::grad(t, x), host_gx),
+                 make_callback_copy(cg::grad(t, y), host_gy)});
+        func->execute();
+        ASSERT_TRUE(host_gx.shape().is_scalar());
+        ASSERT_TRUE(host_gy.shape().is_scalar());
+        ASSERT_FLOAT_EQ(*host_x->ptr<float>(), *host_gy.ptr<float>());
+        ASSERT_FLOAT_EQ(*host_y->ptr<float>(), *host_gx.ptr<float>());
+    }
+}
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

@@ -3,7 +3,7 @@
  *
  * This file is part of MegBrain, a deep learning framework developed by Megvii.
  *
- * \copyright Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
+ * \copyright Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
  *
  */
 
@@ -12,8 +12,8 @@
 #include "megdnn/handle.h"
 
 namespace mgb {
-    //! get a naive megdnn handle on CPU, used for checking opr correctness
-    megdnn::Handle* megdnn_naive_handle();
-}
+//! get a naive megdnn handle on CPU, used for checking opr correctness
+megdnn::Handle* megdnn_naive_handle();
+}  // namespace mgb
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

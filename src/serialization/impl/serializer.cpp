@@ -1,16 +1,24 @@
-/**
- * \file src/serialization/impl/serializer.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megbrain/serialization/serializer.h"
+#include "megbrain/gopt/inference.h"
+#include "megbrain/opr/io.h"
+#include "megbrain/opr/tensor_manip.h"
 #include "megbrain/opr/utility.h"
+
+namespace {
+bool is_opr_memforward_var(mgb::VarNode* var) {
+    if (var) {
+        auto opr = var->owner_opr();
+        if (opr->try_cast_final<mgb::opr::Reshape>() ||
+            opr->try_cast_final<mgb::opr::Broadcast>() ||
+            opr->try_cast_final<mgb::opr::Subtensor>() ||
+            opr->try_cast_final<mgb::opr::AxisAddRemove>() ||
+            opr->try_cast_final<mgb::opr::Dimshuffle>()) {
+            return true;
+        }
+    };
+    return false;
+}
+}  // namespace
 
 namespace mgb {
 namespace serialization {
@@ -27,22 +35,82 @@ std::unique_ptr<cg::AsyncExecutable> GraphLoader::LoadResult::graph_compile(
     return ret;
 }
 
-GraphLoader::SharedTensorNameMap
-GraphLoader::shared_tensor_name_map() {
+void GraphLoader::LoadResult::update_output_var_list(
+        const SymbolVarArray& output_var_array) {
+    mgb::ThinHashMap<mgb::SymbolVar, mgb::SymbolVar> out_var_map;
+    mgb_assert(output_var_array.size() == output_var_list.size());
+    // replace symvar in output_var_list
+    for (size_t idx = 0; idx < output_var_array.size(); ++idx) {
+        out_var_map[output_var_list[idx]] = output_var_array[idx];
+        output_var_list[idx] = output_var_array[idx];
+    }
+    // replace symvar in output_var_map_id
+    for (auto&& item : output_var_map_id) {
+        item.second = out_var_map[item.second];
+    }
+    // replace symvar in output_var_map
+    for (auto&& item : output_var_map) {
+        item.second = out_var_map[item.second].rename(item.first);
+    }
+}
+
+void GraphLoader::LoadResult::graph_compile_ahead() {
+    //! when force_output_use_user_specified_memory is set, the output var may
+    //! be changed by gopt, then the var in LoadResult can not exist, so here
+    //! just do basic optimize_for_inference ahead, and replace the var in
+    //! LoadResult
+    if (graph->options().force_output_use_user_specified_memory) {
+        //! if the output var is like dimshuffle, reshape, it maybe memory forward to
+        //! the output, so add a Copy operator in the end.
+        for (auto& var : output_var_list) {
+            if (is_opr_memforward_var(var.node())) {
+                std::string name = var.node()->name();
+                var = opr::Copy::make(var, name);
+            }
+        }
+        auto options = gopt::OptimizeForInferenceOptions{};
+        auto new_vars = gopt::optimize_for_inference(output_var_list, options);
+        output_var_list = new_vars;
+        output_var_map.clear();
+        for (auto& var : new_vars) {
+            output_var_map[var.node()->cname()] = var;
+        }
+        std::unordered_map<size_t, SymbolVar> var_map_id;
+        for (auto& var : new_vars) {
+            bool found = false;
+            for (auto& old_var_it : output_var_map_id) {
+                if (old_var_it.second.node()->name() == var.node()->name()) {
+                    found = true;
+                    var_map_id[old_var_it.first] = var;
+                }
+            }
+            mgb_assert(
+                    found, "can't find var name %s when optimize_for_inference. ",
+                    var.node()->cname());
+        }
+        output_var_map_id = var_map_id;
+    }
+}
+
+GraphLoader::SharedTensorNameMap GraphLoader::shared_tensor_name_map() {
     SharedTensorNameMap ret;
-    for (auto &&i: shared_tensor_id_map()) {
+    for (auto&& i : shared_tensor_id_map()) {
         mgb_assert(!i.first.empty(), "name stripped during graph dump");
         auto ins = ret.emplace(i.first, &i.second);
         mgb_assert(ins.second);
     }
     return ret;
 }
-
 std::unique_ptr<GraphLoader> make_fbs_loader(std::unique_ptr<InputFile> file);
 std::unique_ptr<GraphDumper> make_fbs_dumper(std::unique_ptr<OutputFile> file);
-bool is_fbs_file(InputFile& file);
 
-bool GraphDumper::should_remove_in_dump(cg::OperatorNodeBase *opr) {
+std::unique_ptr<GraphLoader> make_fbs_v2_loader(std::unique_ptr<InputFile> file);
+std::unique_ptr<GraphDumper> make_fbs_v2_dumper(
+        std::unique_ptr<OutputFile> file, int version);
+bool is_fbs_file(InputFile& file);
+bool is_fbs_v2_file(InputFile& file);
+
+bool GraphDumper::should_remove_in_dump(cg::OperatorNodeBase* opr) {
 #if MGB_ENABLE_GRAD
     return opr->same_type<opr::SetGrad>();
 #else
@@ -50,40 +118,51 @@ bool GraphDumper::should_remove_in_dump(cg::OperatorNodeBase *opr) {
 #endif
 }
 
-std::unique_ptr<GraphDumper> GraphDumper::make(std::unique_ptr<OutputFile> file,
-                                               GraphDumpFormat format) {
+std::unique_ptr<GraphDumper> GraphDumper::make(
+        std::unique_ptr<OutputFile> file, GraphDumpFormat format, int version) {
     switch (format) {
         case GraphDumpFormat::FLATBUFFERS:
 #if MGB_ENABLE_FBS_SERIALIZATION
             return make_fbs_dumper(std::move(file));
 #endif
-        MGB_FALLTHRU
+            MGB_FALLTHRU
+        case GraphDumpFormat::FLATBUFFERS_V2:
+#if MGB_ENABLE_FBS_SERIALIZATION
+            return make_fbs_v2_dumper(std::move(file), version);
+#endif
+            MGB_FALLTHRU
         default:
-            mgb_throw(SerializationError,
-                      "unsupported serialization format requested");
+            mgb_throw(SerializationError, "unsupported serialization format requested");
     }
     mgb_assert(false, "unreachable");
 }
 
-std::unique_ptr<GraphLoader> GraphLoader::make(std::unique_ptr<InputFile> file, GraphDumpFormat format) {
+std::unique_ptr<GraphLoader> GraphLoader::make(
+        std::unique_ptr<InputFile> file, GraphDumpFormat format) {
     switch (format) {
         case GraphDumpFormat::FLATBUFFERS:
 #if MGB_ENABLE_FBS_SERIALIZATION
             return make_fbs_loader(std::move(file));
 #endif
-        MGB_FALLTHRU
+            MGB_FALLTHRU
+        case GraphDumpFormat::FLATBUFFERS_V2:
+#if MGB_ENABLE_FBS_SERIALIZATION
+            return make_fbs_v2_loader(std::move(file));
+#endif
+            MGB_FALLTHRU
         default:
-            mgb_throw(SerializationError,
-                      "unsupported serialization format requested");
+            mgb_throw(SerializationError, "unsupported serialization format requested");
     }
     mgb_assert(false, "unreachable");
 }
 
-Maybe<GraphDumpFormat> GraphLoader::identify_graph_dump_format(
-        InputFile& file) {
+Maybe<GraphDumpFormat> GraphLoader::identify_graph_dump_format(InputFile& file) {
 #if MGB_ENABLE_FBS_SERIALIZATION
     if (is_fbs_file(file)) {
         return GraphDumpFormat::FLATBUFFERS;
+    }
+    if (is_fbs_v2_file(file)) {
+        return GraphDumpFormat::FLATBUFFERS_V2;
     }
 #endif
     return {};

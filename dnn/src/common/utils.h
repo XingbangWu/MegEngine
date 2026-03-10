@@ -1,15 +1,4 @@
 /**
- * \file dnn/src/common/utils.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
-/**
  * Boost Software License - Version 1.0 - August 17th, 2003
  *
  * Permission is hereby granted, free of charge, to any person or organization
@@ -41,8 +30,8 @@
 #include "megdnn/basic_types.h"
 #include "megdnn/dtype.h"
 #include "megdnn/handle.h"
-#include "megdnn/thin/small_vector.h"
 #include "megdnn/oprs/general.h"
+#include "megdnn/thin/small_vector.h"
 
 #include "src/common/hash_ct.h"
 #include "src/common/utils.cuh"
@@ -54,68 +43,103 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <type_traits>
 
 #if defined(_WIN32)
 #include <windows.h>
 #endif
 
-#if __cplusplus >= 201703L || __clang_major__ >= 4
-    #define MEGDNN_FALLTHRU [[fallthrough]];
-#elif __GNUC__ >= 7
-    #define MEGDNN_FALLTHRU __attribute__ ((fallthrough));
-#else
-    #define MEGDNN_FALLTHRU
+#if MEGDNN_AARCH64 || MEGDNN_ARMV7
+#if MGB_ENABLE_CPUINFO
+#include "cpuinfo.h"
+#endif
 #endif
 
-#define rep(i, n) for (auto i = decltype(n){0}; i < (n); ++i)
+#if __cplusplus >= 201703L || __clang_major__ >= 4
+#define MEGDNN_FALLTHRU [[fallthrough]];
+#elif __GNUC__ >= 7
+#define MEGDNN_FALLTHRU __attribute__((fallthrough));
+#else
+#define MEGDNN_FALLTHRU
+#endif
+
+#define rep(i, n)            for (auto i = decltype(n){0}; i < (n); ++i)
 #define rep_step(i, n, step) for (auto i = decltype(n){0}; i < (n); i += (step))
 
-#define megdnn_assert_contiguous(layout)                              \
-    do {                                                              \
-        megdnn_assert((layout).is_contiguous(), "%s is %s.", #layout, \
-                      (layout).to_string().c_str());                  \
+#define megdnn_assert_contiguous(layout)                        \
+    do {                                                        \
+        megdnn_assert(                                          \
+                (layout).is_contiguous(), "%s is %s.", #layout, \
+                (layout).to_string().c_str());                  \
     } while (0)
 
-#define megdnn_assert_non_overlapping_strong(layout)                     \
+#define megdnn_assert_non_overlapping_strong(layout)                        \
+    do {                                                                    \
+        megdnn_assert(                                                      \
+                (layout).is_non_overlapping_strong(), "%s is %s.", #layout, \
+                (layout).to_string().c_str());                              \
+    } while (0)
+
+#define megdnn_assert_eq_size_t(lhs_, rhs_)                                         \
+    do {                                                                            \
+        size_t lhs = lhs_, rhs = rhs_;                                              \
+        megdnn_assert(lhs == rhs, "%s is %zu, %s is %zu.", #lhs_, lhs, #rhs_, rhs); \
+    } while (0)
+
+#define megdnn_assert_eq_layout(lhs, rhs)                                \
     do {                                                                 \
-        megdnn_assert((layout).is_non_overlapping_strong(), "%s is %s.", \
-                      #layout, (layout).to_string().c_str());            \
+        megdnn_assert(                                                   \
+                lhs.eq_layout(rhs), "%s is %s, %s is %s.", #lhs,         \
+                lhs.to_string().c_str(), #rhs, rhs.to_string().c_str()); \
     } while (0)
 
-#define megdnn_assert_eq_size_t(lhs_, rhs_)                                   \
-    do {                                                                      \
-        size_t lhs = lhs_, rhs = rhs_;                                        \
-        megdnn_assert(lhs == rhs, "%s is %zu, %s is %zu.", #lhs_, lhs, #rhs_, \
-                      rhs);                                                   \
+#define megdnn_assert_eq_shape(lhs, rhs)                                 \
+    do {                                                                 \
+        megdnn_assert(                                                   \
+                lhs.eq_shape(rhs), "%s is %s, %s is %s.", #lhs,          \
+                lhs.to_string().c_str(), #rhs, rhs.to_string().c_str()); \
     } while (0)
 
-#define megdnn_assert_eq_layout(lhs, rhs)                                      \
-    do {                                                                       \
-        megdnn_assert(lhs.eq_layout(rhs), "%s is %s, %s is %s.", #lhs,         \
-                      lhs.to_string().c_str(), #rhs, rhs.to_string().c_str()); \
+#define megdnn_assert_eq_dtype(lhs, rhs)                                               \
+    do {                                                                               \
+        megdnn_assert(                                                                 \
+                lhs.dtype == rhs.dtype, "%s is %s, %s is %s.", #lhs, lhs.dtype.name(), \
+                #rhs, rhs.dtype.name());                                               \
     } while (0)
 
-#define megdnn_assert_eq_shape(lhs, rhs)                                       \
-    do {                                                                       \
-        megdnn_assert(lhs.eq_shape(rhs), "%s is %s, %s is %s.", #lhs,          \
-                      lhs.to_string().c_str(), #rhs, rhs.to_string().c_str()); \
+#define megdnn_assert_not_empty(layout, op)                                       \
+    do {                                                                          \
+        megdnn_assert(                                                            \
+                (!(layout).is_empty()), "%s: not support empty args %s: %s", #op, \
+                #layout, (layout).to_string().c_str());                           \
     } while (0)
 
-#define megdnn_assert_eq_dtype(lhs, rhs)                                   \
-    do {                                                                   \
-        megdnn_assert(lhs.dtype == rhs.dtype, "%s is %s, %s is %s.", #lhs, \
-                      lhs.dtype.name(), #rhs, rhs.dtype.name());           \
-    } while (0)
+#define megdnn_layout_msg(layout) std::string(#layout "=" + (layout).to_string())
 
-#define megdnn_layout_msg(layout) \
-    std::string(megdnn_mangle(#layout "=" + (layout).to_string()))
-
-#define MEGDNN_LOCK_GUARD(var) \
-    std::lock_guard<std::remove_cv_t<decltype(var)>> _lock_guard_##var { var }
+#if __DEPLOY_ON_XP_SP2__
+#define DNN_MUTEX              size_t
+#define MEGDNN_LOCK_GUARD(var) MEGDNN_MARK_USED_VAR(var)
+#else
+#define DNN_MUTEX                std::mutex
+#define DNN_TOKENPASTE(x, y)     x##y
+#define DNN_TOKENPASTE2(x, y)    DNN_TOKENPASTE(x, y)
+#define DNN_LOCK_GUARD_CTOR(mtx) DNN_TOKENPASTE2(__lock_guard_, __LINE__)(mtx)
+#define MEGDNN_LOCK_GUARD(mtx)   std::lock_guard<decltype(mtx)> DNN_LOCK_GUARD_CTOR(mtx)
+#endif
 
 namespace megdnn {
 
 /* ================ logging ================  */
+#if MEGDNN_ENABLE_MANGLING
+#define megdnn_log_debug(fmt...) \
+    _megdnn_do_log(::megdnn::LogLevel::DEBUG, "", "", __LINE__, fmt)
+#define megdnn_log(fmt...) \
+    _megdnn_do_log(::megdnn::LogLevel::INFO, "", "", __LINE__, fmt)
+#define megdnn_log_warn(fmt...) \
+    _megdnn_do_log(::megdnn::LogLevel::WARN, "", "", __LINE__, fmt)
+#define megdnn_log_error(fmt...) \
+    _megdnn_do_log(::megdnn::LogLevel::ERROR, "", "", __LINE__, fmt)
+#else
 #define megdnn_log_debug(fmt...) \
     _megdnn_do_log(::megdnn::LogLevel::DEBUG, __FILE__, __func__, __LINE__, fmt)
 #define megdnn_log(fmt...) \
@@ -124,10 +148,12 @@ namespace megdnn {
     _megdnn_do_log(::megdnn::LogLevel::WARN, __FILE__, __func__, __LINE__, fmt)
 #define megdnn_log_error(fmt...) \
     _megdnn_do_log(::megdnn::LogLevel::ERROR, __FILE__, __func__, __LINE__, fmt)
+#endif
 
 #if MEGDNN_ENABLE_LOGGING
-void __log__(LogLevel level, const char* file, const char* func, int line,
-             const char* fmt, ...) __attribute__((format(printf, 5, 6)));
+void __log__(
+        LogLevel level, const char* file, const char* func, int line, const char* fmt,
+        ...) __attribute__((format(printf, 5, 6)));
 
 #define _megdnn_do_log ::megdnn::__log__
 #else
@@ -149,19 +175,17 @@ constexpr int32_t cast_int(T data) {
  * \return true if index is updated successfully, false otherwise (index is
  * already the last one, next index does not exist)
  */
-bool get_next_addr(size_t* index, const size_t* shape, size_t n,
-                   size_t stride = 1);
+bool get_next_addr(size_t* index, const size_t* shape, size_t n, size_t stride = 1);
 size_t get_linear_addr(size_t* index, const size_t* shape, size_t n);
 int get_linear_addr_noncont(size_t* index, const TensorLayout& layout);
-size_t infer_conv_shape(size_t inp, size_t flt, size_t stride, size_t pad,
-                        bool is_floor = true);
-void infer_conv_shape2d(size_t ih, size_t iw, size_t fh, size_t fw, size_t sh,
-                        size_t sw, size_t ph, size_t pw, size_t& oh, size_t& ow,
-                        bool is_floor = true);
+size_t infer_conv_shape(
+        size_t inp, size_t flt, size_t stride, size_t pad, bool is_floor = true);
+void infer_conv_shape2d(
+        size_t ih, size_t iw, size_t fh, size_t fw, size_t sh, size_t sw, size_t ph,
+        size_t pw, size_t& oh, size_t& ow, bool is_floor = true);
 template <typename T, typename S, typename Func>
 SmallVector<T> apply_vector(Func&& func, const SmallVector<S>& vec);
-std::string ssprintf(const char* fmt, ...)
-        __attribute__((format(printf, 1, 2)));
+std::string ssprintf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /*!
  * \brief transpose (m*n) matrix to (n*m) matrix
@@ -173,16 +197,17 @@ std::string ssprintf(const char* fmt, ...)
  *
  */
 template <typename dtype>
-void transpose(const dtype* src, dtype* dst, size_t m, size_t n,
-               ptrdiff_t lds = -1, ptrdiff_t ldd = -1);
+void transpose(
+        const dtype* src, dtype* dst, size_t m, size_t n, ptrdiff_t lds = -1,
+        ptrdiff_t ldd = -1);
 
 /*!
  * transpose src with contiguous layout (k, n, c) into dst with shape
  * (n, c, k), with given stride (\p n_stride) on first dimension
  */
 template <typename dtype>
-void transpose_knc2nsck(const dtype* src, dtype* dst, size_t k, size_t n,
-                        size_t c, size_t n_stride);
+void transpose_knc2nsck(
+        const dtype* src, dtype* dst, size_t k, size_t n, size_t c, size_t n_stride);
 
 /*!
  * \brief divide get result ceiled to int; both dividend and divisor shoud be
@@ -221,16 +246,16 @@ std::unique_ptr<T> make_unique(Args&&... args) {
 /*!
  * \brief check whether the source enum contain the target data type enum
  */
-bool inline contain_data_type(detail::AlgoDataType source,
-                       detail::AlgoDataType target) {
-    return static_cast<bool>(static_cast<uint32_t>(source) &
-                             static_cast<uint32_t>(target));
+bool inline contain_data_type(
+        detail::AlgoDataType source, detail::AlgoDataType target) {
+    return static_cast<bool>(
+            static_cast<uint32_t>(source) & static_cast<uint32_t>(target));
 }
 
 /*!
  * \brief get the source enum contain the data type number
  */
-template<typename T>
+template <typename T>
 size_t nr_type_contain(T index) {
     uint32_t sr_index = static_cast<uint32_t>(index);
     size_t nr_type = 0;
@@ -248,8 +273,8 @@ size_t nr_type_contain(T index) {
  */
 class WorkspaceBundle {
 public:
-    WorkspaceBundle(void* ptr, SmallVector<size_t> sizes_in_bytes,
-                    size_t align_in_bytes = 512);
+    WorkspaceBundle(
+            void* ptr, SmallVector<size_t> sizes_in_bytes, size_t align_in_bytes = 512);
     /**
      * \returns raw workspace ptr.
      *
@@ -321,17 +346,21 @@ size_t count_not_ones_in_shape(const TensorShape& shape);
  */
 bool is_nhwc_contig_wc(const TensorLayout& layout);
 
-static inline void copy_plane_in_bytes(void* dst, const void* src,
-                                       size_t height, size_t width,
-                                       size_t stride_dst, size_t stride_src) {
+static inline void copy_plane_in_bytes(
+        void* dst, const void* src, size_t height, size_t width, size_t stride_dst,
+        size_t stride_src) {
     for (size_t h = 0; h < height; ++h) {
-        std::memcpy(static_cast<unsigned char*>(dst) + h * stride_dst,
-                    static_cast<const unsigned char*>(src) + h * stride_src,
-                    width);
+        std::memcpy(
+                static_cast<unsigned char*>(dst) + h * stride_dst,
+                static_cast<const unsigned char*>(src) + h * stride_src, width);
     }
 }
 
 megcoreDeviceHandle_t get_device_handle(Handle* handle);
+
+static inline void incr_refp(RefPtr& ptr, ptrdiff_t delta) {
+    ptr += (size_t)delta;
+}
 
 static inline void incr_voidp(void*& ptr, ptrdiff_t delta) {
     ptr = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(ptr) + delta);
@@ -455,8 +484,9 @@ struct _SafeMultipliesImplUnsigned : public std::binary_function<T, T, T> {
         t += yodd ? x : 0;
         overflow |= yodd & (t < x);
 
-        megdnn_assert(!overflow, "multiply overflow: %s %s",
-                      std::to_string(x).c_str(), std::to_string(y).c_str());
+        megdnn_assert(
+                !overflow, "multiply overflow: %s %s", std::to_string(x).c_str(),
+                std::to_string(y).c_str());
         return t;
     }
 
@@ -468,7 +498,7 @@ struct _SafeMultipliesImplUnsigned : public std::binary_function<T, T, T> {
                 "implicit conversion disallowed in SafeMultiplies");
         megdnn_trap();
     }
-};
+};  // namespace megdnn
 
 template <>
 struct SafeMultiplies<size_t> : public _SafeMultipliesImplUnsigned<size_t> {};
@@ -484,6 +514,8 @@ bool vec_contains(const SmallVector<T>& vec, const T& elem) {
 }
 
 float mul_scale(DType lhs, DType rhs);
+
+float get_scale(DType dt);
 
 template <typename stype, typename dtype>
 dtype convert(stype src, dtype dst, size_t offset);
@@ -504,11 +536,10 @@ dt_qint4 convert<int8_t, dt_qint4>(int8_t src, dt_qint4 dst, size_t offset);
  * \brief check float equal within given ULP(unit in the last place)
  */
 template <class T>
-static inline
-        typename std::enable_if<!std::numeric_limits<T>::is_integer, bool>::type
-        almost_equal(T x, T y, int unit_last_place = 1) {
-    return std::abs(x - y) < (std::numeric_limits<T>::epsilon() *
-                              std::abs(x + y) * unit_last_place) ||
+static inline typename std::enable_if<!std::numeric_limits<T>::is_integer, bool>::type
+almost_equal(T x, T y, int unit_last_place = 1) {
+    return std::abs(x - y) < (std::numeric_limits<T>::epsilon() * std::abs(x + y) *
+                              unit_last_place) ||
            std::abs(x - y) < std::numeric_limits<T>::min();
 }
 
@@ -526,8 +557,9 @@ private:
 
 public:
     //! \brief Constructs seven-dimensional range.
-    CpuNDRange(size_t size0, size_t size1, size_t size2, size_t size3,
-               size_t size4, size_t size5, size_t size6)
+    CpuNDRange(
+            size_t size0, size_t size1, size_t size2, size_t size3, size_t size4,
+            size_t size5, size_t size6)
             : m_dimension(7) {
         m_dim[0] = size0;
         m_dim[1] = size1;
@@ -541,13 +573,10 @@ public:
     CpuNDRange() : CpuNDRange(1, 1, 1, 1, 1, 1, 1) { m_dimension = 0; }
 
     //! \brief Constructs one-dimensional range.
-    CpuNDRange(size_t size0) : CpuNDRange(size0, 1, 1, 1, 1, 1, 1) {
-        m_dimension = 1;
-    }
+    CpuNDRange(size_t size0) : CpuNDRange(size0, 1, 1, 1, 1, 1, 1) { m_dimension = 1; }
 
     //! \brief Constructs two-dimensional range.
-    CpuNDRange(size_t size0, size_t size1)
-            : CpuNDRange(size0, size1, 1, 1, 1, 1, 1) {
+    CpuNDRange(size_t size0, size_t size1) : CpuNDRange(size0, size1, 1, 1, 1, 1, 1) {
         m_dimension = 2;
     }
 
@@ -564,15 +593,15 @@ public:
     }
 
     //! \brief Constructs five-dimensional range.
-    CpuNDRange(size_t size0, size_t size1, size_t size2, size_t size3,
-               size_t size4)
+    CpuNDRange(size_t size0, size_t size1, size_t size2, size_t size3, size_t size4)
             : CpuNDRange(size0, size1, size2, size3, size4, 1, 1) {
         m_dimension = 5;
     }
 
     //! \brief Constructs six-dimensional range.
-    CpuNDRange(size_t size0, size_t size1, size_t size2, size_t size3,
-               size_t size4, size_t size5)
+    CpuNDRange(
+            size_t size0, size_t size1, size_t size2, size_t size3, size_t size4,
+            size_t size5)
             : CpuNDRange(size0, size1, size2, size3, size4, size5, 1) {
         m_dimension = 6;
     }
@@ -645,7 +674,8 @@ struct CompTypeCvter {
                 comp.layout.dtype.enumv() != DTypeTrait<CompType>::enumv) {
                 comp.layout.dtype = CompType();
                 comp.layout.init_contiguous_stride();
-                comp.raw_ptr = m_workspace_bundle->get(m_workspace_idx++);
+                comp = TensorND{
+                        m_workspace_bundle->get(m_workspace_idx++), comp.layout};
                 if (src.layout.ndim) {
                     m_cvt_opr->exec(src, comp);
                 }
@@ -663,10 +693,24 @@ struct CompTypeCvter {
         return *this;
     }
 
-    Workspace workspace() {
-        return m_workspace_bundle->get_workspace(m_workspace_idx);
-    }
+    Workspace workspace() { return m_workspace_bundle->get_workspace(m_workspace_idx); }
 };
+
+/*!
+ * \brief get TensorND raw_ptr+low_byte pointer.
+ */
+inline dt_byte* get_low_ptr(const TensorND* tensor) {
+    return static_cast<dt_byte*>(tensor->raw_ptr()) + tensor->layout.span().low_byte;
+}
+
+/*!
+ * \brief get the zero element pointer of TensorND.
+ */
+inline void* get_origin_ptr(const TensorND* tensor, void* ptr) {
+    return static_cast<void*>(
+            static_cast<dt_byte*>(ptr) - tensor->layout.span().low_byte);
+}
+
 }  // namespace megdnn
 
 // vim: syntax=cpp.doxygen

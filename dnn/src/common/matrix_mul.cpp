@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/common/matrix_mul.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "megdnn/oprs.h"
 
 #include "src/common/utils.h"
@@ -39,23 +29,32 @@ void MatrixMulForward::deduce_dtype(DType A, DType B, DType& C) {
     if (!C.valid()) {
         C = C_candi;
     }
-    megdnn_assert(C.valid() && (C == C_candi || C == C_candi2),
-                  "unsupported MatMul(%s, %s) -> %s", A.name(), B.name(),
-                  C.name());
+    megdnn_assert(
+            C.valid() && (C == C_candi || C == C_candi2),
+            "runtime does not support MatMul(%s, %s) -> %s\n"
+            "now support case list: MatMul(FLOAT, FLOAT)\n"
+            "                       MatMul(Int8, Int8)\n"
+            "                       MatMul(Int16, Int16)\n"
+            "                       MatMul(QuantizedS8, QuantizedS8)\n"
+            "                       MatMul(Quantized8Asymm, Quantized8Asymm)\n"
+            "                       MatMul(Quantized4Asymm, Quantized4Asymm)\n"
+            "                       MatMul(QuantizedS4, QuantizedS4)\n",
+            A.name(), B.name(), C.name());
 }
 
-void MatrixMulForward::deduce_layout(const TensorLayout& A,
-                                     const TensorLayout& B, TensorLayout& C) {
-    megdnn_assert(A.dtype.enumv() == B.dtype.enumv(),
-                  "matmul input should be of same dtype, got %s and %s",
-                  A.dtype.name(), B.dtype.name());
+void MatrixMulForward::deduce_layout(
+        const TensorLayout& A, const TensorLayout& B, TensorLayout& C) {
+    megdnn_assert(
+            A.dtype.enumv() == B.dtype.enumv(),
+            "matmul input should be of same dtype, got %s and %s", A.dtype.name(),
+            B.dtype.name());
     deduce_dtype(A.dtype, B.dtype, C.dtype);
     size_t A0, A1, B0, B1;
     if (param().format == param::MatrixMul::Format::DEFAULT) {
-        megdnn_assert(A.ndim == 2 && B.ndim == 2,
-                      "matmul requires input to be 2-dimensional; get: %s %s",
-                      A.TensorShape::to_string().c_str(),
-                      B.TensorShape::to_string().c_str());
+        megdnn_assert(
+                A.ndim == 2 && B.ndim == 2,
+                "matmul requires input to be 2-dimensional; get: %s %s",
+                A.TensorShape::to_string().c_str(), B.TensorShape::to_string().c_str());
         A0 = A.shape[0];
         A1 = A.shape[1];
         B0 = B.shape[0];
@@ -64,18 +63,29 @@ void MatrixMulForward::deduce_layout(const TensorLayout& A,
             std::swap(A0, A1);
         if (m_param.transposeB)
             std::swap(B0, B1);
-        megdnn_assert(A1 == B0,
-                      "shape mismatch in matmal: (transposed) A is (%zu,%zu), "
-                      "(transposed) B is (%zu,%zu)",
-                      A0, A1, B0, B1);
+        megdnn_assert(
+                A1 == B0,
+                "shape mismatch in matmal: (transposed) A is (%zu,%zu), "
+                "(transposed) B is (%zu,%zu)",
+                A0, A1, B0, B1);
         C = TensorLayout(TensorShape({A0, B1}), C.dtype);
+    } else if (param().format == param::MatrixMul::Format::N32K4_DOT) {
+        A0 = A.shape[0];
+        A1 = A.shape[1];
+        B0 = B.shape[0];
+        B1 = B.shape[1];
+        megdnn_assert(!m_param.transposeA && !m_param.transposeB);
+        megdnn_assert(A0 == 1 && A1 % 4 == 0);
+        megdnn_assert(B.ndim == 4);
+        C = TensorLayout(TensorShape({A0, B0 * 32}), C.dtype);
     } else {
         auto do_deduce = [&](size_t pack_size) {
-            megdnn_assert(A.ndim == 4 && B.ndim == 3,
-                          "matmul requires input dimension to be A(4), B(3); "
-                          "get: %s %s",
-                          A.TensorShape::to_string().c_str(),
-                          B.TensorShape::to_string().c_str());
+            megdnn_assert(
+                    A.ndim == 4 && B.ndim == 3,
+                    "matmul requires input dimension to be A(4), B(3); "
+                    "get: %s %s",
+                    A.TensorShape::to_string().c_str(),
+                    B.TensorShape::to_string().c_str());
             A0 = A.shape[0];
             A1 = A.shape[1];
             B0 = B.shape[0];
@@ -84,31 +94,32 @@ void MatrixMulForward::deduce_layout(const TensorLayout& A,
                 std::swap(A0, A1);
             if (m_param.transposeB)
                 std::swap(B0, B1);
-            megdnn_assert(A1 == B0,
-                          "shape mismatch in matmal: (transposed) A is "
-                          "(%zu,%zu,4,4), "
-                          "(transposed) B is (%zu,%zu,4)",
-                          A0, A1, B0, B1);
+            megdnn_assert(
+                    A1 == B0,
+                    "shape mismatch in matmal: (transposed) A is "
+                    "(%zu,%zu,4,4), "
+                    "(transposed) B is (%zu,%zu,4)",
+                    A0, A1, B0, B1);
             C = TensorLayout(TensorShape({A0, B1, pack_size}), C.dtype);
         };
         do_deduce(pack_size(param().format));
     }
 }
 
-void MatrixMulForward::check_exec(const TensorLayout& A, const TensorLayout& B,
-                                  const TensorLayout& C,
-                                  size_t workspace_in_bytes) {
+void MatrixMulForward::check_exec(
+        const TensorLayout& A, const TensorLayout& B, const TensorLayout& C,
+        size_t workspace_in_bytes) {
     auto errmsg = [&]() {
         std::string msg;
-        msg.append(megdnn_mangle("A="));
+        msg.append("A=");
         msg.append(A.to_string());
-        msg.append(megdnn_mangle(", B="));
+        msg.append(", B=");
         msg.append(B.to_string());
-        msg.append(megdnn_mangle(", C="));
+        msg.append(", C=");
         msg.append(C.to_string());
-        msg.append(megdnn_mangle(", transposeA="));
+        msg.append(", transposeA=");
         msg.append(std::to_string(param().transposeA));
-        msg.append(megdnn_mangle(", transposeB="));
+        msg.append(", transposeB=");
         msg.append(std::to_string(param().transposeB));
         return msg;
     };
@@ -138,6 +149,18 @@ void MatrixMulForward::check_exec(const TensorLayout& A, const TensorLayout& B,
         megdnn_assert(A0 == C0, "%s", errmsg().c_str());
         megdnn_assert(B1 == C1, "%s", errmsg().c_str());
         megdnn_assert(A1 == B0, "%s", errmsg().c_str());
+    } else if (param().format == param::MatrixMul::Format::N32K4_DOT) {
+        size_t A0 = A.shape[0];
+        size_t A1 = A.shape[1];
+        size_t B2 = B.shape[2];
+        size_t B3 = B.shape[3];
+        megdnn_assert(!m_param.transposeA && !m_param.transposeB);
+        megdnn_assert(A0 == 1 && A1 % 4 == 0);
+        megdnn_assert(B.ndim == 4);
+        megdnn_assert(B2 == 32 && B3 == 4);
+        megdnn_assert_contiguous(A);
+        megdnn_assert_contiguous(B);
+        megdnn_assert_contiguous(C);
     } else {
         megdnn_assert_eq_size_t(A.ndim, 4_z);
         megdnn_assert_eq_size_t(B.ndim, 3_z);
@@ -167,19 +190,20 @@ void MatrixMulForward::check_exec(const TensorLayout& A, const TensorLayout& B,
         megdnn_assert(A.dtype == C.dtype);
     } else if (A.dtype == dtype::Int8()) {
         megdnn_assert(C.dtype == dtype::Int16() || C.dtype == dtype::Int32());
-    } else if (A.dtype.enumv() == DTypeEnum::QuantizedS8 ||
-               A.dtype.enumv() == DTypeEnum::Quantized8Asymm ||
-               A.dtype.enumv() == DTypeEnum::Quantized4Asymm) {
+    } else if (
+            A.dtype.enumv() == DTypeEnum::QuantizedS8 ||
+            A.dtype.enumv() == DTypeEnum::Quantized8Asymm ||
+            A.dtype.enumv() == DTypeEnum::Quantized4Asymm) {
         megdnn_assert(C.dtype.enumv() == DTypeEnum::QuantizedS32);
-    } else if(A.dtype.enumv() == DTypeEnum::QuantizedS4){
+    } else if (A.dtype.enumv() == DTypeEnum::QuantizedS4) {
         megdnn_assert(C.dtype.enumv() == DTypeEnum::QuantizedS16);
     }
-    megdnn_assert(param().compute_mode !=
-                          Param::ComputeMode::FLOAT32 MEGDNN_INC_FLOAT16(
-                                  || A.dtype == dtype::Float16() ||
-                                  A.dtype == dtype::BFloat16()),
-                  "ComputeMode::FLOAT32 is only available for Float16/BFloat16 "
-                  "input / output.");
+    megdnn_assert(
+            param().compute_mode != Param::ComputeMode::FLOAT32 DNN_INC_FLOAT16(
+                                            || A.dtype == dtype::Float16() ||
+                                            A.dtype == dtype::BFloat16()),
+            "ComputeMode::FLOAT32 is only available for Float16/BFloat16 "
+            "input / output.");
     auto required_workspace_in_bytes = get_workspace_in_bytes(A, B, C);
     megdnn_assert(workspace_in_bytes >= required_workspace_in_bytes);
 }
@@ -195,7 +219,7 @@ size_t MatrixMulForward::pack_size(const Param::Format format) {
         case Param::Format::MK8:
             return 8;
         default:
-            megdnn_throw(megdnn_mangle("Unknown matmul format."));
+            megdnn_throw("Unknown matmul format.");
     }
 }
 

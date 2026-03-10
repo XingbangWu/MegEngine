@@ -1,17 +1,6 @@
-/**
- * \file dnn/src/arm_common/conv_bias/fp32/helper.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
-#include "src/common/unroll_macro.h"
 #include "src/arm_common/simd_macro/marm_neon.h"
+#include "src/common/unroll_macro.h"
 
 namespace megdnn {
 namespace arm_common {
@@ -55,127 +44,89 @@ inline void transpose_4x4(const float* src, float* dst, int lda, int ldb) {
 
 #if MEGDNN_AARCH64
 //! ret and a are type Vector<float, 8>
-#define TRANSPOSE_8x8(a, ret)                                  \
-    do {                                                       \
-        auto b0 = vzipq_f32(CONCAT(a, 0).value.val[0],         \
-                            CONCAT(a, 1).value.val[0]);        \
-        auto b1 = vzipq_f32(CONCAT(a, 0).value.val[1],         \
-                            CONCAT(a, 1).value.val[1]);        \
-        auto b2 = vzipq_f32(CONCAT(a, 2).value.val[0],         \
-                            CONCAT(a, 3).value.val[0]);        \
-        auto b3 = vzipq_f32(CONCAT(a, 2).value.val[1],         \
-                            CONCAT(a, 3).value.val[1]);        \
-        auto b4 = vzipq_f32(CONCAT(a, 4).value.val[0],         \
-                            CONCAT(a, 5).value.val[0]);        \
-        auto b5 = vzipq_f32(CONCAT(a, 4).value.val[1],         \
-                            CONCAT(a, 5).value.val[1]);        \
-        auto b6 = vzipq_f32(CONCAT(a, 6).value.val[0],         \
-                            CONCAT(a, 7).value.val[0]);        \
-        auto b7 = vzipq_f32(CONCAT(a, 6).value.val[1],         \
-                            CONCAT(a, 7).value.val[1]);        \
-        CONCAT(ret, 0).value.val[0] = vreinterpretq_f32_s64(   \
-                vzip1q_s64(vreinterpretq_s64_f32(b0.val[0]),   \
-                           vreinterpretq_s64_f32(b2.val[0]))); \
-        CONCAT(ret, 0).value.val[1] = vreinterpretq_f32_s64(   \
-                vzip1q_s64(vreinterpretq_s64_f32(b4.val[0]),   \
-                           vreinterpretq_s64_f32(b6.val[0]))); \
-        CONCAT(ret, 1).value.val[0] = vreinterpretq_f32_s64(   \
-                vzip2q_s64(vreinterpretq_s64_f32(b0.val[0]),   \
-                           vreinterpretq_s64_f32(b2.val[0]))); \
-        CONCAT(ret, 1).value.val[1] = vreinterpretq_f32_s64(   \
-                vzip2q_s64(vreinterpretq_s64_f32(b4.val[0]),   \
-                           vreinterpretq_s64_f32(b6.val[0]))); \
-        CONCAT(ret, 2).value.val[0] = vreinterpretq_f32_s64(   \
-                vzip1q_s64(vreinterpretq_s64_f32(b0.val[1]),   \
-                           vreinterpretq_s64_f32(b2.val[1]))); \
-        CONCAT(ret, 2).value.val[1] = vreinterpretq_f32_s64(   \
-                vzip1q_s64(vreinterpretq_s64_f32(b4.val[1]),   \
-                           vreinterpretq_s64_f32(b6.val[1]))); \
-        CONCAT(ret, 3).value.val[0] = vreinterpretq_f32_s64(   \
-                vzip2q_s64(vreinterpretq_s64_f32(b0.val[1]),   \
-                           vreinterpretq_s64_f32(b2.val[1]))); \
-        CONCAT(ret, 3).value.val[1] = vreinterpretq_f32_s64(   \
-                vzip2q_s64(vreinterpretq_s64_f32(b4.val[1]),   \
-                           vreinterpretq_s64_f32(b6.val[1]))); \
-        CONCAT(ret, 4).value.val[0] = vreinterpretq_f32_s64(   \
-                vzip1q_s64(vreinterpretq_s64_f32(b1.val[0]),   \
-                           vreinterpretq_s64_f32(b3.val[0]))); \
-        CONCAT(ret, 4).value.val[1] = vreinterpretq_f32_s64(   \
-                vzip1q_s64(vreinterpretq_s64_f32(b5.val[0]),   \
-                           vreinterpretq_s64_f32(b7.val[0]))); \
-        CONCAT(ret, 5).value.val[0] = vreinterpretq_f32_s64(   \
-                vzip2q_s64(vreinterpretq_s64_f32(b1.val[0]),   \
-                           vreinterpretq_s64_f32(b3.val[0]))); \
-        CONCAT(ret, 5).value.val[1] = vreinterpretq_f32_s64(   \
-                vzip2q_s64(vreinterpretq_s64_f32(b5.val[0]),   \
-                           vreinterpretq_s64_f32(b7.val[0]))); \
-        CONCAT(ret, 6).value.val[0] = vreinterpretq_f32_s64(   \
-                vzip1q_s64(vreinterpretq_s64_f32(b1.val[1]),   \
-                           vreinterpretq_s64_f32(b3.val[1]))); \
-        CONCAT(ret, 6).value.val[1] = vreinterpretq_f32_s64(   \
-                vzip1q_s64(vreinterpretq_s64_f32(b5.val[1]),   \
-                           vreinterpretq_s64_f32(b7.val[1]))); \
-        CONCAT(ret, 7).value.val[0] = vreinterpretq_f32_s64(   \
-                vzip2q_s64(vreinterpretq_s64_f32(b1.val[1]),   \
-                           vreinterpretq_s64_f32(b3.val[1]))); \
-        CONCAT(ret, 7).value.val[1] = vreinterpretq_f32_s64(   \
-                vzip2q_s64(vreinterpretq_s64_f32(b5.val[1]),   \
-                           vreinterpretq_s64_f32(b7.val[1]))); \
+#define TRANSPOSE_8x8(a, ret)                                                         \
+    do {                                                                              \
+        auto b0 = vzipq_f32(CONCAT(a, 0).value.val[0], CONCAT(a, 1).value.val[0]);    \
+        auto b1 = vzipq_f32(CONCAT(a, 0).value.val[1], CONCAT(a, 1).value.val[1]);    \
+        auto b2 = vzipq_f32(CONCAT(a, 2).value.val[0], CONCAT(a, 3).value.val[0]);    \
+        auto b3 = vzipq_f32(CONCAT(a, 2).value.val[1], CONCAT(a, 3).value.val[1]);    \
+        auto b4 = vzipq_f32(CONCAT(a, 4).value.val[0], CONCAT(a, 5).value.val[0]);    \
+        auto b5 = vzipq_f32(CONCAT(a, 4).value.val[1], CONCAT(a, 5).value.val[1]);    \
+        auto b6 = vzipq_f32(CONCAT(a, 6).value.val[0], CONCAT(a, 7).value.val[0]);    \
+        auto b7 = vzipq_f32(CONCAT(a, 6).value.val[1], CONCAT(a, 7).value.val[1]);    \
+        CONCAT(ret, 0).value.val[0] = vreinterpretq_f32_s64(vzip1q_s64(               \
+                vreinterpretq_s64_f32(b0.val[0]), vreinterpretq_s64_f32(b2.val[0]))); \
+        CONCAT(ret, 0).value.val[1] = vreinterpretq_f32_s64(vzip1q_s64(               \
+                vreinterpretq_s64_f32(b4.val[0]), vreinterpretq_s64_f32(b6.val[0]))); \
+        CONCAT(ret, 1).value.val[0] = vreinterpretq_f32_s64(vzip2q_s64(               \
+                vreinterpretq_s64_f32(b0.val[0]), vreinterpretq_s64_f32(b2.val[0]))); \
+        CONCAT(ret, 1).value.val[1] = vreinterpretq_f32_s64(vzip2q_s64(               \
+                vreinterpretq_s64_f32(b4.val[0]), vreinterpretq_s64_f32(b6.val[0]))); \
+        CONCAT(ret, 2).value.val[0] = vreinterpretq_f32_s64(vzip1q_s64(               \
+                vreinterpretq_s64_f32(b0.val[1]), vreinterpretq_s64_f32(b2.val[1]))); \
+        CONCAT(ret, 2).value.val[1] = vreinterpretq_f32_s64(vzip1q_s64(               \
+                vreinterpretq_s64_f32(b4.val[1]), vreinterpretq_s64_f32(b6.val[1]))); \
+        CONCAT(ret, 3).value.val[0] = vreinterpretq_f32_s64(vzip2q_s64(               \
+                vreinterpretq_s64_f32(b0.val[1]), vreinterpretq_s64_f32(b2.val[1]))); \
+        CONCAT(ret, 3).value.val[1] = vreinterpretq_f32_s64(vzip2q_s64(               \
+                vreinterpretq_s64_f32(b4.val[1]), vreinterpretq_s64_f32(b6.val[1]))); \
+        CONCAT(ret, 4).value.val[0] = vreinterpretq_f32_s64(vzip1q_s64(               \
+                vreinterpretq_s64_f32(b1.val[0]), vreinterpretq_s64_f32(b3.val[0]))); \
+        CONCAT(ret, 4).value.val[1] = vreinterpretq_f32_s64(vzip1q_s64(               \
+                vreinterpretq_s64_f32(b5.val[0]), vreinterpretq_s64_f32(b7.val[0]))); \
+        CONCAT(ret, 5).value.val[0] = vreinterpretq_f32_s64(vzip2q_s64(               \
+                vreinterpretq_s64_f32(b1.val[0]), vreinterpretq_s64_f32(b3.val[0]))); \
+        CONCAT(ret, 5).value.val[1] = vreinterpretq_f32_s64(vzip2q_s64(               \
+                vreinterpretq_s64_f32(b5.val[0]), vreinterpretq_s64_f32(b7.val[0]))); \
+        CONCAT(ret, 6).value.val[0] = vreinterpretq_f32_s64(vzip1q_s64(               \
+                vreinterpretq_s64_f32(b1.val[1]), vreinterpretq_s64_f32(b3.val[1]))); \
+        CONCAT(ret, 6).value.val[1] = vreinterpretq_f32_s64(vzip1q_s64(               \
+                vreinterpretq_s64_f32(b5.val[1]), vreinterpretq_s64_f32(b7.val[1]))); \
+        CONCAT(ret, 7).value.val[0] = vreinterpretq_f32_s64(vzip2q_s64(               \
+                vreinterpretq_s64_f32(b1.val[1]), vreinterpretq_s64_f32(b3.val[1]))); \
+        CONCAT(ret, 7).value.val[1] = vreinterpretq_f32_s64(vzip2q_s64(               \
+                vreinterpretq_s64_f32(b5.val[1]), vreinterpretq_s64_f32(b7.val[1]))); \
     } while (0);
 
-#define TRANSPOSE_8x3(a, ret)                                    \
-    auto b0 = vzipq_f32(CONCAT(a, 0).value, CONCAT(a, 1).value); \
-    auto b1 = vzipq_f32(CONCAT(a, 2).value, CONCAT(a, 3).value); \
-    auto b2 = vzipq_f32(CONCAT(a, 4).value, CONCAT(a, 5).value); \
-    auto b3 = vzipq_f32(CONCAT(a, 6).value, CONCAT(a, 7).value); \
-    CONCAT(ret, 0).value.val[0] = vreinterpretq_f32_s64(         \
-            vzip1q_s64(vreinterpretq_s64_f32(b0.val[0]),         \
-                       vreinterpretq_s64_f32(b1.val[0])));       \
-    CONCAT(ret, 0).value.val[1] = vreinterpretq_f32_s64(         \
-            vzip1q_s64(vreinterpretq_s64_f32(b2.val[0]),         \
-                       vreinterpretq_s64_f32(b3.val[0])));       \
-    CONCAT(ret, 1).value.val[0] = vreinterpretq_f32_s64(         \
-            vzip2q_s64(vreinterpretq_s64_f32(b0.val[0]),         \
-                       vreinterpretq_s64_f32(b1.val[0])));       \
-    CONCAT(ret, 1).value.val[1] = vreinterpretq_f32_s64(         \
-            vzip2q_s64(vreinterpretq_s64_f32(b2.val[0]),         \
-                       vreinterpretq_s64_f32(b3.val[0])));       \
-    CONCAT(ret, 2).value.val[0] = vreinterpretq_f32_s64(         \
-            vzip1q_s64(vreinterpretq_s64_f32(b0.val[1]),         \
-                       vreinterpretq_s64_f32(b1.val[1])));       \
-    CONCAT(ret, 2).value.val[1] = vreinterpretq_f32_s64(         \
-            vzip1q_s64(vreinterpretq_s64_f32(b2.val[1]),         \
-                       vreinterpretq_s64_f32(b3.val[1])));
+#define TRANSPOSE_8x3(a, ret)                                                     \
+    auto b0 = vzipq_f32(CONCAT(a, 0).value, CONCAT(a, 1).value);                  \
+    auto b1 = vzipq_f32(CONCAT(a, 2).value, CONCAT(a, 3).value);                  \
+    auto b2 = vzipq_f32(CONCAT(a, 4).value, CONCAT(a, 5).value);                  \
+    auto b3 = vzipq_f32(CONCAT(a, 6).value, CONCAT(a, 7).value);                  \
+    CONCAT(ret, 0).value.val[0] = vreinterpretq_f32_s64(vzip1q_s64(               \
+            vreinterpretq_s64_f32(b0.val[0]), vreinterpretq_s64_f32(b1.val[0]))); \
+    CONCAT(ret, 0).value.val[1] = vreinterpretq_f32_s64(vzip1q_s64(               \
+            vreinterpretq_s64_f32(b2.val[0]), vreinterpretq_s64_f32(b3.val[0]))); \
+    CONCAT(ret, 1).value.val[0] = vreinterpretq_f32_s64(vzip2q_s64(               \
+            vreinterpretq_s64_f32(b0.val[0]), vreinterpretq_s64_f32(b1.val[0]))); \
+    CONCAT(ret, 1).value.val[1] = vreinterpretq_f32_s64(vzip2q_s64(               \
+            vreinterpretq_s64_f32(b2.val[0]), vreinterpretq_s64_f32(b3.val[0]))); \
+    CONCAT(ret, 2).value.val[0] = vreinterpretq_f32_s64(vzip1q_s64(               \
+            vreinterpretq_s64_f32(b0.val[1]), vreinterpretq_s64_f32(b1.val[1]))); \
+    CONCAT(ret, 2).value.val[1] = vreinterpretq_f32_s64(vzip1q_s64(               \
+            vreinterpretq_s64_f32(b2.val[1]), vreinterpretq_s64_f32(b3.val[1])));
 
-#define TRANSPOSE_8x4(a, ret)                                    \
-    auto b0 = vzipq_f32(CONCAT(a, 0).value, CONCAT(a, 1).value); \
-    auto b1 = vzipq_f32(CONCAT(a, 2).value, CONCAT(a, 3).value); \
-    auto b2 = vzipq_f32(CONCAT(a, 4).value, CONCAT(a, 5).value); \
-    auto b3 = vzipq_f32(CONCAT(a, 6).value, CONCAT(a, 7).value); \
-    CONCAT(ret, 0).value.val[0] = vreinterpretq_f32_s64(         \
-            vzip1q_s64(vreinterpretq_s64_f32(b0.val[0]),         \
-                       vreinterpretq_s64_f32(b1.val[0])));       \
-    CONCAT(ret, 0).value.val[1] = vreinterpretq_f32_s64(         \
-            vzip1q_s64(vreinterpretq_s64_f32(b2.val[0]),         \
-                       vreinterpretq_s64_f32(b3.val[0])));       \
-    CONCAT(ret, 1).value.val[0] = vreinterpretq_f32_s64(         \
-            vzip2q_s64(vreinterpretq_s64_f32(b0.val[0]),         \
-                       vreinterpretq_s64_f32(b1.val[0])));       \
-    CONCAT(ret, 1).value.val[1] = vreinterpretq_f32_s64(         \
-            vzip2q_s64(vreinterpretq_s64_f32(b2.val[0]),         \
-                       vreinterpretq_s64_f32(b3.val[0])));       \
-    CONCAT(ret, 2).value.val[0] = vreinterpretq_f32_s64(         \
-            vzip1q_s64(vreinterpretq_s64_f32(b0.val[1]),         \
-                       vreinterpretq_s64_f32(b1.val[1])));       \
-    CONCAT(ret, 2).value.val[1] = vreinterpretq_f32_s64(         \
-            vzip1q_s64(vreinterpretq_s64_f32(b2.val[1]),         \
-                       vreinterpretq_s64_f32(b3.val[1])));       \
-    CONCAT(ret, 3).value.val[0] = vreinterpretq_f32_s64(         \
-            vzip2q_s64(vreinterpretq_s64_f32(b0.val[1]),         \
-                       vreinterpretq_s64_f32(b1.val[1])));       \
-    CONCAT(ret, 3).value.val[1] = vreinterpretq_f32_s64(         \
-            vzip2q_s64(vreinterpretq_s64_f32(b2.val[1]),         \
-                       vreinterpretq_s64_f32(b3.val[1])));
+#define TRANSPOSE_8x4(a, ret)                                                     \
+    auto b0 = vzipq_f32(CONCAT(a, 0).value, CONCAT(a, 1).value);                  \
+    auto b1 = vzipq_f32(CONCAT(a, 2).value, CONCAT(a, 3).value);                  \
+    auto b2 = vzipq_f32(CONCAT(a, 4).value, CONCAT(a, 5).value);                  \
+    auto b3 = vzipq_f32(CONCAT(a, 6).value, CONCAT(a, 7).value);                  \
+    CONCAT(ret, 0).value.val[0] = vreinterpretq_f32_s64(vzip1q_s64(               \
+            vreinterpretq_s64_f32(b0.val[0]), vreinterpretq_s64_f32(b1.val[0]))); \
+    CONCAT(ret, 0).value.val[1] = vreinterpretq_f32_s64(vzip1q_s64(               \
+            vreinterpretq_s64_f32(b2.val[0]), vreinterpretq_s64_f32(b3.val[0]))); \
+    CONCAT(ret, 1).value.val[0] = vreinterpretq_f32_s64(vzip2q_s64(               \
+            vreinterpretq_s64_f32(b0.val[0]), vreinterpretq_s64_f32(b1.val[0]))); \
+    CONCAT(ret, 1).value.val[1] = vreinterpretq_f32_s64(vzip2q_s64(               \
+            vreinterpretq_s64_f32(b2.val[0]), vreinterpretq_s64_f32(b3.val[0]))); \
+    CONCAT(ret, 2).value.val[0] = vreinterpretq_f32_s64(vzip1q_s64(               \
+            vreinterpretq_s64_f32(b0.val[1]), vreinterpretq_s64_f32(b1.val[1]))); \
+    CONCAT(ret, 2).value.val[1] = vreinterpretq_f32_s64(vzip1q_s64(               \
+            vreinterpretq_s64_f32(b2.val[1]), vreinterpretq_s64_f32(b3.val[1]))); \
+    CONCAT(ret, 3).value.val[0] = vreinterpretq_f32_s64(vzip2q_s64(               \
+            vreinterpretq_s64_f32(b0.val[1]), vreinterpretq_s64_f32(b1.val[1]))); \
+    CONCAT(ret, 3).value.val[1] = vreinterpretq_f32_s64(vzip2q_s64(               \
+            vreinterpretq_s64_f32(b2.val[1]), vreinterpretq_s64_f32(b3.val[1])));
 
 #elif MEGDNN_ARMV7
 #define TRANSPOSE_8x4(a, ret)                                                 \

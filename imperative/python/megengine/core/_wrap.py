@@ -1,14 +1,8 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import numpy as np
 
 from ._imperative_rt import CompNode
+from ._imperative_rt.core2 import set_py_device_type
 
 
 class Device:
@@ -49,7 +43,10 @@ class Device:
         return self._cn == rhs._cn
 
 
-def device(obj):
+def as_device(obj):
     if isinstance(obj, Device):
         return obj
     return Device(obj)
+
+
+set_py_device_type(Device)

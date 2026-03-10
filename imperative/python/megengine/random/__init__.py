@@ -1,13 +1,30 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-from .distribution import normal, uniform
-from .rng import seed
+from .rng import (
+    RNG,
+    beta,
+    exponential,
+    gamma,
+    multinomial,
+    normal,
+    permutation,
+    poisson,
+    seed,
+    shuffle,
+    uniform,
+)
 
+__all__ = [
+    "RNG",
+    "beta",
+    "gamma",
+    "normal",
+    "permutation",
+    "poisson",
+    "seed",
+    "uniform",
+    "shuffle",
+    "exponential",
+    "multinomial",
+]
 # pylint: disable=undefined-variable
-del distribution, rng  # type: ignore[name-defined]
+del rng  # type: ignore[name-defined]

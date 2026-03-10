@@ -1,14 +1,3 @@
-/**
- * \file src/jit/include/megbrain/jit/mlir/ir/utils.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain_build_config.h"
@@ -32,8 +21,8 @@ std::string mlir_type_to_string(T&& t) {
     return ret;
 }
 
-mlir::Value insert_alloc_and_dealloc(mlir::MemRefType type, mlir::Location loc,
-                                     mlir::PatternRewriter& rewriter);
+mlir::Value insert_alloc_and_dealloc(
+        mlir::MemRefType type, mlir::Location loc, mlir::PatternRewriter& rewriter);
 
 mlir::Type deduce_elemwise_res_type(mlir::ValueRange operands);
 
@@ -45,8 +34,8 @@ megdnn::TensorLayout mlir_type_to_layout(mlir::Type type);
 /**
  * \brief convert TensorLayout to MLIR Type
  */
-mlir::MemRefType layout_to_mlir_type(const megdnn::TensorLayout& layout,
-                                     mlir::Builder& builder);
+mlir::MemRefType layout_to_mlir_type(
+        const megdnn::TensorLayout& layout, mlir::Builder& builder);
 
 }  // namespace jit
 }  // namespace mgb

@@ -1,23 +1,12 @@
-/**
- * \file dnn/src/cuda/warp_affine/helper.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
+#include "src/cuda/warp_affine/helper.h"
 #include "megdnn/oprs.h"
 #include "src/common/utils.h"
-#include "src/cuda/warp_affine/helper.h"
 
 namespace megdnn {
 namespace cuda {
 namespace warp_affine {
 
-BorderMode get_bmode(param::WarpAffine::BorderMode bmode)
-{
+BorderMode get_bmode(param::WarpAffine::BorderMode bmode) {
     using BMode = WarpAffine::BorderMode;
     switch (bmode) {
         case BMode::REFLECT_101:
@@ -39,7 +28,6 @@ BorderMode get_bmode(param::WarpAffine::BorderMode bmode)
     }
 }
 
-
 InterpolationMode get_imode(param::WarpAffine::InterpolationMode imode) {
     using IMode = param::WarpAffine::InterpolationMode;
     switch (imode) {
@@ -58,8 +46,8 @@ InterpolationMode get_imode(param::WarpAffine::InterpolationMode imode) {
     }
 }
 
-} // namespace warp_affine
-} // namespace cuda
-} // namespace megdnn
+}  // namespace warp_affine
+}  // namespace cuda
+}  // namespace megdnn
 
 // vim: syntax=cpp.doxygen

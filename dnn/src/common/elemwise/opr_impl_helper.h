@@ -1,15 +1,3 @@
-/**
- * \file dnn/src/common/elemwise/opr_impl_helper.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #pragma once
 
 #include "megdnn/oprs/general.h"
@@ -49,9 +37,8 @@ public:
     template <int arity>
     static ElemwiseOpParamN<arity> make_elemwise_op_param(
             void* opr,
-            void (*check_layout_and_broadcast)(void*,
-                                               const TensorLayoutPtrArray&,
-                                               const TensorLayout&),
+            void (*check_layout_and_broadcast)(
+                    void*, const TensorLayoutPtrArray&, const TensorLayout&),
             const TensorNDArray& src, const TensorND& dst);
 
     //! check whether given layout is 1D contig
@@ -67,8 +54,7 @@ public:
      *
      * Note: input can be one-dimensional.
      */
-    static bool is_broadcasted_1x(const TensorLayout& layout,
-                                  Broadcast1xInfo& binfo);
+    static bool is_broadcasted_1x(const TensorLayout& layout, Broadcast1xInfo& binfo);
 
     //! check whether given layout is broadcasted scalar
     static bool is_broadcasted_scalar(const TensorLayout& layout);
@@ -79,8 +65,26 @@ public:
      * Note that Input can also be 2-dimensional, and must be [y, 1] broadacsted
      * into [y, z]; in such case x would be set to 1.
      */
-    static bool is_broadcasted_channel_like(const TensorLayout& layout,
-                                            BroadcastChannelInfo& info);
+    static bool is_broadcasted_channel_like(
+            const TensorLayout& layout, BroadcastChannelInfo& info);
+
+    /*!
+     * \brief check whether layout matches BroadcastChannelInfo like N1HW
+     *
+     * Note layout should be [N, 1, H*W] like
+     */
+    static bool is_broadcasted_3dim_like(
+            const TensorLayout& layout, BroadcastChannelInfo& info);
+
+    /*!
+     * \brief check whether layout matches BroadcastChannelInfo under NHWC
+     * layout
+     *
+     * Note that Input must be 2-dimensional, and must be [1, y] broadacsted
+     * into [z, y] and x would be set to 1.
+     */
+    static bool is_NHWC_broadcasted_channel_like(
+            const TensorLayout& layout, BroadcastChannelInfo& info);
 
     /*!
      * \brief check whether layout matches BroadcastChannelInfo
@@ -89,17 +93,16 @@ public:
      * broadacsted into [x, y, z]
      */
     template <size_t slice_size>
-    static bool is_broadcastedx_channel_like(const TensorLayout& layout,
-                                             BroadcastChannelInfo& info);
+    static bool is_broadcastedx_channel_like(
+            const TensorLayout& layout, BroadcastChannelInfo& info);
 };
 
 class ElemwiseForwardImplHelper : public ElemwiseForward,
                                   protected ElemwiseLayoutHelper {
-    static void call_check_layout_and_broadcast(void* opr,
-                                                const TensorLayoutPtrArray& src,
-                                                const TensorLayout& dst) {
-        return static_cast<ElemwiseForwardImplHelper*>(opr)
-                ->check_layout_and_broadcast(src, dst);
+    static void call_check_layout_and_broadcast(
+            void* opr, const TensorLayoutPtrArray& src, const TensorLayout& dst) {
+        return static_cast<ElemwiseForwardImplHelper*>(opr)->check_layout_and_broadcast(
+                src, dst);
     }
 
 protected:

@@ -12,7 +12,8 @@ decl_opr(
     params='WarpPerspective',
     desc='Apply perspective transformation to batched 2D images; '
     'see http://docs.opencv.org/2.4/modules/imgproc/doc/geometric_transformations.html '
-    'for details on perspective transformations.')
+    'for details on perspective transformations.',
+    version=2)
 
 decl_opr(
     'WarpPerspective',
@@ -23,8 +24,8 @@ decl_opr(
     params='WarpPerspective',
     desc='like :func:`warp_perspective`, but the **mat** param does not have '
     'to have the same batch size as **src**; instead, **mat_idx** specifies '
-    'the batch number of each matrix in **mat**'
-)
+    'the batch number of each matrix in **mat**',
+    version=2)
 
 decl_opr('Rotate',
     inputs=[
@@ -51,6 +52,13 @@ decl_opr('GaussianBlur',
          'http://docs.opencv.org/2.4/modules/imgproc/doc/filtering.html?highlight=gaussianblur#gaussianblur'
          ' for details.')
 
+decl_opr('Flip',
+    inputs=[
+        Doc('src', 'source image, in (batch, row, col, channel) format. '
+            'Note the channel size must be 1 or 3')],
+    params='Flip',
+    desc='Implement horizontal flipping of the input image.')
+
 decl_opr('Resize',
     inputs=[
         Doc('src', 'source image, in (batch, row, col, channel), '
@@ -62,7 +70,7 @@ decl_opr('Resize',
          desc='Resize an image. '
          'see http://docs.opencv.org/2.4/modules/imgproc/doc/geometric_transformations.html?highlight=resize#cv2.resize'
          ' for details.',
-    version=1)
+    version=2)
 
 decl_opr(
     'WarpAffine',
@@ -77,7 +85,7 @@ decl_opr(
     desc='Apply affine transformation to batched 2D images; '
     'see http://docs.opencv.org/2.4/modules/imgproc/doc/geometric_transformations.html '
     'for details on affine transformations.',
-    version=1)
+    version=2)
 
 decl_opr(
     'Remap',
@@ -89,7 +97,8 @@ decl_opr(
     params='Remap',
     desc='Remap transformation to batched 2D images; '
     'see https://docs.opencv.org/2.4/modules/imgproc/doc/geometric_transformations.html?highlight=remap'
-    'for details on remap transformations.')
+    'for details on remap transformations.',
+    version=1)
 
 decl_raw_opr(
     'dct_channel_select',
@@ -109,7 +118,7 @@ decl_raw_opr(
         'assert not kwargs, "extra kwargs: {}".format(kwargs)',
         'all_params = []',
         'all_params.append(param.serialize())',
-        'output = _mgb._create_opr("DctChannelSelect", all_inputs, all_params, config)',
+        'output = _mgb._create_opr("DctChannelSelectV1", all_inputs, all_params, config)',
     ],
     has_out_dtype=True,
     desc='DctChannelSelect do DCT with channel select'

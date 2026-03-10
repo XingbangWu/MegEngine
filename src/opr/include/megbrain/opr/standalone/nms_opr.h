@@ -10,8 +10,8 @@ namespace standalone {
  *
  * See the docs in the python operator
  */
-MGB_DEFINE_OPR_CLASS(NMSKeep,
-                     cg::SingleCNOutshapePureByInshapeOprBase) // {
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(
+        NMSKeep, cg::SingleCNOutshapePureByInshapeOprBase) // {
 public:
     struct Param {
         //! TAG is used by the serializer to check Param type; here we
@@ -22,15 +22,14 @@ public:
         float iou_thresh;     //!< IoU threshold for overlapping
         uint32_t max_output;  //!< max number of output boxes per batch
     };
-    
 
-    NMSKeep(VarNode * boxes, const Param& param,
-            const OperatorNodeConfig& config);
-    ~NMSKeep() noexcept;
+    MGE_WIN_DECLSPEC_FUC NMSKeep(
+            VarNode* boxes, const Param& param, const OperatorNodeConfig& config);
+    MGE_WIN_DECLSPEC_FUC ~NMSKeep() noexcept;
 
     //! factory method to insert the operator into a graph
-    static SymbolVar make(SymbolVar boxes, const Param& param,
-                          const OperatorNodeConfig& config = {});
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar boxes, const Param& param, const OperatorNodeConfig& config = {});
 
     const Param& param() const { return m_param; }
 
@@ -40,19 +39,23 @@ private:
     class Kern;
     class CUDAKern;
     class CPUKern;
+    class CambriconKern;
 
     std::unique_ptr<Kern> m_kern;
 
     //! override output shape infer func provided by
     //! SingleCNOutshapePureByInshapeOprBase
-    void get_output_var_shape(const TensorShapeArray& inp_shape,
-                              TensorShapeArray& out_shape) const override;
+    void get_output_var_shape(
+            const TensorShapeArray& inp_shape,
+            TensorShapeArray& out_shape) const override;
 
     //! this opr requires inputs to be contiguous
     void add_input_layout_constraint() override;
 
     //! execute the operator
     void scn_do_execute() override;
+
+    NodeProp* do_make_node_prop() const override;
 };
 
 }  // namespace standalone

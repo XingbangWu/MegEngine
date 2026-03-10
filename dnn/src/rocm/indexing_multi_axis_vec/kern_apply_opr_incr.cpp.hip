@@ -1,11 +1,3 @@
-/**
- * \file src/rocm/indexing_multi_axis_vec/kern_apply_opr_incr.cpp.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
 #include "hcc_detail/hcc_defs_prologue.h"
 
 #include "hip_header.h"
@@ -34,6 +26,11 @@ __device__ void atomicAdd(megdnn::dt_uint8 *, megdnn::dt_uint8) {
 }
 
 __device__ void atomicAdd(megdnn::dt_int16 *, megdnn::dt_int16) {
+    asm("s_trap 2;");
+    ((int*)0)[0] = 1;
+}
+
+__device__ void atomicAdd(megdnn::dt_bool *, megdnn::dt_bool) {
     asm("s_trap 2;");
     ((int*)0)[0] = 1;
 }

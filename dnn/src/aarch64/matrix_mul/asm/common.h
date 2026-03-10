@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/aarch64/matrix_mul/asm/common.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #pragma once
 #include <cmath>
 #include <cstdint>
@@ -21,9 +10,9 @@ namespace megdnn {
 namespace aarch64 {
 
 /* ======================== Prefetch ======================== */
-#define ASM_PREFETCH(address) "PRFM PLDL1KEEP, " address "\n"
-#define ASM_PREFETCHL2(address) "PRFM PLDL2KEEP, " address "\n"
-#define ASM_PREFETCHW(address) "PRFM PSTL1KEEP, " address "\n"
+#define ASM_PREFETCH(address)    "PRFM PLDL1KEEP, " address "\n"
+#define ASM_PREFETCHL2(address)  "PRFM PLDL2KEEP, " address "\n"
+#define ASM_PREFETCHW(address)   "PRFM PSTL1KEEP, " address "\n"
 #define ASM_PREFETCHWL2(address) "PRFM PSTL2KEEP, " address "\n"
 
 static inline void prefetch_6x(const void* pfp) {
@@ -267,11 +256,10 @@ static inline void interleave_16x1_8_h_helper(
 }
 
 template <typename T>
-static inline void interleave_8x1_8_h(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      const T*& inptr4, const T*& inptr5,
-                                      const T*& inptr6, const T*& inptr7,
-                                      T*& outptr, int skippf = 0) {
+static inline void interleave_8x1_8_h(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T*& outptr, int skippf = 0) {
     static_assert(sizeof(T) == 2, "only support size == 2");
     asm volatile(
        // Load up 8 elements (1 vector) from each of 8 sources.
@@ -347,9 +335,9 @@ static inline void interleave_8x1_8_h(const T*& inptr0, const T*& inptr1,
 }
 
 template <typename T>
-static inline void interleave_4x1_4_h(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      T*& outptr) {
+static inline void interleave_4x1_4_h(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T*& outptr) {
     static_assert(sizeof(T) == 2, "only support size == 2");
     asm volatile(
             "ldr d0, [%[inptr0]], #8\n"   // d0 = A0A1A2A3
@@ -368,19 +356,16 @@ static inline void interleave_4x1_4_h(const T*& inptr0, const T*& inptr1,
             "zip1 v10.4h, v8.4h, v9.4h\n"  // d10 = A2B2C2D2
             "zip2 v11.4h, v8.4h, v9.4h\n"  // d11 = A3B3C3D3
             "stp d10, d11, [%[outptr]], #16\n"
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr)
             :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "memory");
 }
 
-static inline void interleave_4x1_2_d(const int64_t*& inptr0,
-                                      const int64_t*& inptr1,
-                                      const int64_t*& inptr2,
-                                      const int64_t*& inptr3,
-                                      int64_t*& outptr) {
+static inline void interleave_4x1_2_d(
+        const int64_t*& inptr0, const int64_t*& inptr1, const int64_t*& inptr2,
+        const int64_t*& inptr3, int64_t*& outptr) {
     asm volatile(
             "ld1 {v0.2d}, [%[inptr0]], #16\n"  // d0 = A0A1
             "ld1 {v1.2d}, [%[inptr1]], #16\n"  // d1 = B0B1
@@ -396,18 +381,15 @@ static inline void interleave_4x1_2_d(const int64_t*& inptr0,
             "st1 {v6.2d}, [%[outptr]], #16\n"
             "st1 {v5.2d}, [%[outptr]], #16\n"
             "st1 {v7.2d}, [%[outptr]], #16\n"
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr)
             :
             : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "cc", "memory");
 }
 
-static inline void interleave_4x2_2_d(const int64_t*& inptr0,
-                                      const int64_t*& inptr1,
-                                      const int64_t*& inptr2,
-                                      const int64_t*& inptr3,
-                                      int64_t*& outptr) {
+static inline void interleave_4x2_2_d(
+        const int64_t*& inptr0, const int64_t*& inptr1, const int64_t*& inptr2,
+        const int64_t*& inptr3, int64_t*& outptr) {
     asm volatile(
             "ld1 {v0.2d}, [%[inptr0]], #16\n"  // d0 = A0
             "ld1 {v1.2d}, [%[inptr0]], #16\n"  // d1 = A1
@@ -426,9 +408,8 @@ static inline void interleave_4x2_2_d(const int64_t*& inptr0,
             "st1 {v3.2d}, [%[outptr]], #16\n"
             "st1 {v5.2d}, [%[outptr]], #16\n"
             "st1 {v7.2d}, [%[outptr]], #16\n"
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr)
             :
             : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "cc", "memory");
 }
@@ -437,8 +418,8 @@ static inline void interleave_12x1_4_s(
         const int32_t*& inptr0, const int32_t*& inptr1, const int32_t*& inptr2,
         const int32_t*& inptr3, const int32_t*& inptr4, const int32_t*& inptr5,
         const int32_t*& inptr6, const int32_t*& inptr7, const int32_t*& inptr8,
-        const int32_t*& inptr9, const int32_t*& inptr10,
-        const int32_t*& inptr11, int32_t*& outptr) {
+        const int32_t*& inptr9, const int32_t*& inptr10, const int32_t*& inptr11,
+        int32_t*& outptr) {
     asm volatile(
             "ld1 {v0.4s}, [%[inptr0]], #16\n"  // d0 = A0A1A2A3
             "ld1 {v1.4s}, [%[inptr1]], #16\n"  // d1 = B0B1B2B3
@@ -492,23 +473,22 @@ static inline void interleave_12x1_4_s(
             "st1 {v7.4s}, [%[outptr]], #16\n"
             "st1 {v11.4s}, [%[outptr]], #16\n"
 
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [inptr8] "+r"(inptr8),
+              [inptr9] "+r"(inptr9), [inptr10] "+r"(inptr10), [inptr11] "+r"(inptr11),
+              [outptr] "+r"(outptr)
             :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
-            [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-            [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [inptr8] "+r"(inptr8),
-            [inptr9] "+r"(inptr9), [inptr10] "+r"(inptr10),
-            [inptr11] "+r"(inptr11), [outptr] "+r"(outptr)
-            :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19",
-              "v20", "v21", "v22", "v23", "cc", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
+              "v22", "v23", "cc", "memory");
 }
 
 template <typename T>
 static inline void interleave_12x1_4_h(
-        const T*& in0, const T*& in1, const T*& in2, const T*& in3,
-        const T*& in4, const T*& in5, const T*& in6, const T*& in7,
-        const T*& in8, const T*& in9, const T*& in10, const T*& in11, T*& out) {
+        const T*& in0, const T*& in1, const T*& in2, const T*& in3, const T*& in4,
+        const T*& in5, const T*& in6, const T*& in7, const T*& in8, const T*& in9,
+        const T*& in10, const T*& in11, T*& out) {
     static_assert(
             std::is_same<T, int16_t>::value || std::is_same<T, uint16_t>::value,
             "interleave_12x1_4_h only support uint16_t and int16_t");
@@ -578,54 +558,50 @@ static inline void interleave_12x1_4_h(
             "st1 {v7.4h}, [%[outptr]], #8\n"   // d7 = E3F3G3H3
             "st1 {v11.4h}, [%[outptr]], #8\n"  // d11 = I3J3K3L3
 
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [inptr8] "+r"(inptr8),
+              [inptr9] "+r"(inptr9), [inptr10] "+r"(inptr10), [inptr11] "+r"(inptr11),
+              [outptr] "+r"(outptr)
             :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
-            [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-            [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [inptr8] "+r"(inptr8),
-            [inptr9] "+r"(inptr9), [inptr10] "+r"(inptr10),
-            [inptr11] "+r"(inptr11), [outptr] "+r"(outptr)
-            :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19",
-              "v20", "v21", "v22", "v23", "cc", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
+              "v22", "v23", "cc", "memory");
 }
 
 template <typename T>
-static inline void interleave_12x4_4_b(const T*& inptr0, const T*& inptr1,
-                                       const T*& inptr2, const T*& inptr3,
-                                       const T*& inptr4, const T*& inptr5,
-                                       const T*& inptr6, const T*& inptr7,
-                                       const T*& inptr8, const T*& inptr9,
-                                       const T*& inptr10, const T*& inptr11,
-                                       T*& outptr) {
+static inline void interleave_12x4_4_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        const T*& inptr8, const T*& inptr9, const T*& inptr10, const T*& inptr11,
+        T*& outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "interleave_12x4_4_b only support uint8_t and int8_t");
-    interleave_12x1_4_s(reinterpret_cast<const int32_t*&>(inptr0),
-                        reinterpret_cast<const int32_t*&>(inptr1),
-                        reinterpret_cast<const int32_t*&>(inptr2),
-                        reinterpret_cast<const int32_t*&>(inptr3),
-                        reinterpret_cast<const int32_t*&>(inptr4),
-                        reinterpret_cast<const int32_t*&>(inptr5),
-                        reinterpret_cast<const int32_t*&>(inptr6),
-                        reinterpret_cast<const int32_t*&>(inptr7),
-                        reinterpret_cast<const int32_t*&>(inptr8),
-                        reinterpret_cast<const int32_t*&>(inptr9),
-                        reinterpret_cast<const int32_t*&>(inptr10),
-                        reinterpret_cast<const int32_t*&>(inptr11),
-                        reinterpret_cast<int32_t*&>(outptr));
+    interleave_12x1_4_s(
+            reinterpret_cast<const int32_t*&>(inptr0),
+            reinterpret_cast<const int32_t*&>(inptr1),
+            reinterpret_cast<const int32_t*&>(inptr2),
+            reinterpret_cast<const int32_t*&>(inptr3),
+            reinterpret_cast<const int32_t*&>(inptr4),
+            reinterpret_cast<const int32_t*&>(inptr5),
+            reinterpret_cast<const int32_t*&>(inptr6),
+            reinterpret_cast<const int32_t*&>(inptr7),
+            reinterpret_cast<const int32_t*&>(inptr8),
+            reinterpret_cast<const int32_t*&>(inptr9),
+            reinterpret_cast<const int32_t*&>(inptr10),
+            reinterpret_cast<const int32_t*&>(inptr11),
+            reinterpret_cast<int32_t*&>(outptr));
 }
 
-static inline void interleave_2x1_4_s(const int32_t*& inptr0,
-                                      const int32_t*& inptr1,
-                                      int32_t*& outptr) {
+static inline void interleave_2x1_4_s(
+        const int32_t*& inptr0, const int32_t*& inptr1, int32_t*& outptr) {
     asm volatile(
             "ld1 {v0.4s}, [%[inptr0]], #16\n"  // d0 = A0A1A2A3
             "ld1 {v1.4s}, [%[inptr1]], #16\n"  // d1 = B0B1B2B3
             "st1 {v0.4s}, [%[outptr]], #16\n"
             "st1 {v1.4s}, [%[outptr]], #16\n"
-            :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [outptr] "+r"(outptr)
             :
             : "v0", "v1", "cc", "memory");
 }
@@ -670,14 +646,13 @@ static inline void interleave_8x1_4_s(
             "st1 {v15.4s}, [%[outptr]], #16\n"
             "st1 {v23.4s}, [%[outptr]], #16\n"
 
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
             :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
-            [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-            [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
-            :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19",
-              "v20", "v21", "v22", "v23", "cc", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
+              "v22", "v23", "cc", "memory");
 }
 
 static inline void interleave_8x1_2_d(
@@ -711,13 +686,12 @@ static inline void interleave_8x1_2_d(
             "st1 {v11.2d}, [%[outptr]], #16\n"
             "st1 {v13.2d}, [%[outptr]], #16\n"
             "st1 {v15.2d}, [%[outptr]], #16\n"
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
             :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
-            [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-            [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
-            :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v13", "v14", "v15", "cc", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "cc", "memory");
 }
 
 static inline void interleave_8x2_2_d(
@@ -758,49 +732,48 @@ static inline void interleave_8x2_2_d(
             "st1 {v11.2d}, [%[outptr]], #16\n"
             "st1 {v13.2d}, [%[outptr]], #16\n"
             "st1 {v15.2d}, [%[outptr]], #16\n"
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
             :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
-            [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-            [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
-            :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v13", "v14", "v15", "cc", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "cc", "memory");
 }
 
 template <typename T>
-static inline void interleave_2x4_4_b(const T*& inptr0, const T*& inptr1,
-                                      T*& outptr) {
+static inline void interleave_2x4_4_b(const T*& inptr0, const T*& inptr1, T*& outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "interleave_2x4_4_b only support uint8_t and int8_t");
-    interleave_2x1_4_s(reinterpret_cast<const int32_t*&>(inptr0),
-                       reinterpret_cast<const int32_t*&>(inptr1),
-                       reinterpret_cast<int32_t*&>(outptr));
+    interleave_2x1_4_s(
+            reinterpret_cast<const int32_t*&>(inptr0),
+            reinterpret_cast<const int32_t*&>(inptr1),
+            reinterpret_cast<int32_t*&>(outptr));
 }
 
 template <typename T>
-static inline void interleave_8x4_4_b(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      const T*& inptr4, const T*& inptr5,
-                                      const T*& inptr6, const T*& inptr7,
-                                      T*& outptr) {
+static inline void interleave_8x4_4_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T*& outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "interleave_8x4_4_b only support uint8_t and int8_t");
-    interleave_8x1_4_s(reinterpret_cast<const int32_t*&>(inptr0),
-                       reinterpret_cast<const int32_t*&>(inptr1),
-                       reinterpret_cast<const int32_t*&>(inptr2),
-                       reinterpret_cast<const int32_t*&>(inptr3),
-                       reinterpret_cast<const int32_t*&>(inptr4),
-                       reinterpret_cast<const int32_t*&>(inptr5),
-                       reinterpret_cast<const int32_t*&>(inptr6),
-                       reinterpret_cast<const int32_t*&>(inptr7),
-                       reinterpret_cast<int32_t*&>(outptr));
+    interleave_8x1_4_s(
+            reinterpret_cast<const int32_t*&>(inptr0),
+            reinterpret_cast<const int32_t*&>(inptr1),
+            reinterpret_cast<const int32_t*&>(inptr2),
+            reinterpret_cast<const int32_t*&>(inptr3),
+            reinterpret_cast<const int32_t*&>(inptr4),
+            reinterpret_cast<const int32_t*&>(inptr5),
+            reinterpret_cast<const int32_t*&>(inptr6),
+            reinterpret_cast<const int32_t*&>(inptr7),
+            reinterpret_cast<int32_t*&>(outptr));
 }
 
 template <typename T>
-static inline void interleave_8x4_1_h(const T*& in0, const T*& in1,
-                                      const T*& in2, const T*& in3, T* out) {
+static inline void interleave_8x4_1_h(
+        const T*& in0, const T*& in1, const T*& in2, const T*& in3, T* out) {
     static_assert(sizeof(T) == 2, "only support size == 2");
     asm volatile(
             "ldr q0, [%[in0]], #16\n"  // A1A2A3A4A5A6A7A8
@@ -827,79 +800,78 @@ static inline void interleave_8x4_1_h(const T*& in0, const T*& in1,
             "st1 {v13.2d}, [%[out]], #16\n"
             "st1 {v14.2d}, [%[out]], #16\n"
             "st1 {v15.2d}, [%[out]], #16\n"
-            : [in0] "+r"(in0), [in1] "+r"(in1), [in2] "+r"(in2),
-              [in3] "+r"(in3), [out] "+r"(out)
+            : [in0] "+r"(in0), [in1] "+r"(in1), [in2] "+r"(in2), [in3] "+r"(in3),
+              [out] "+r"(out)
             :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v13", "v14", "v15", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "memory");
 }
 
 template <typename T>
-static inline void interleave_8x8_2_b(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      const T*& inptr4, const T*& inptr5,
-                                      const T*& inptr6, const T*& inptr7,
-                                      T*& outptr) {
+static inline void interleave_8x8_2_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T*& outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "interleave_8x8_2_b only support uint8_t and int8_t");
-    interleave_8x1_2_d(reinterpret_cast<const int64_t*&>(inptr0),
-                       reinterpret_cast<const int64_t*&>(inptr1),
-                       reinterpret_cast<const int64_t*&>(inptr2),
-                       reinterpret_cast<const int64_t*&>(inptr3),
-                       reinterpret_cast<const int64_t*&>(inptr4),
-                       reinterpret_cast<const int64_t*&>(inptr5),
-                       reinterpret_cast<const int64_t*&>(inptr6),
-                       reinterpret_cast<const int64_t*&>(inptr7),
-                       reinterpret_cast<int64_t*&>(outptr));
+    interleave_8x1_2_d(
+            reinterpret_cast<const int64_t*&>(inptr0),
+            reinterpret_cast<const int64_t*&>(inptr1),
+            reinterpret_cast<const int64_t*&>(inptr2),
+            reinterpret_cast<const int64_t*&>(inptr3),
+            reinterpret_cast<const int64_t*&>(inptr4),
+            reinterpret_cast<const int64_t*&>(inptr5),
+            reinterpret_cast<const int64_t*&>(inptr6),
+            reinterpret_cast<const int64_t*&>(inptr7),
+            reinterpret_cast<int64_t*&>(outptr));
 }
 
 template <typename T>
-static inline void interleave_8x8_2_h(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      const T*& inptr4, const T*& inptr5,
-                                      const T*& inptr6, const T*& inptr7,
-                                      T*& outptr) {
+static inline void interleave_8x8_2_h(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T*& outptr) {
     static_assert(
             std::is_same<T, int16_t>::value || std::is_same<T, uint16_t>::value,
             "interleave_8x8_2_h only support uint16_t and int16_t");
-    interleave_8x2_2_d(reinterpret_cast<const int64_t*&>(inptr0),
-                       reinterpret_cast<const int64_t*&>(inptr1),
-                       reinterpret_cast<const int64_t*&>(inptr2),
-                       reinterpret_cast<const int64_t*&>(inptr3),
-                       reinterpret_cast<const int64_t*&>(inptr4),
-                       reinterpret_cast<const int64_t*&>(inptr5),
-                       reinterpret_cast<const int64_t*&>(inptr6),
-                       reinterpret_cast<const int64_t*&>(inptr7),
-                       reinterpret_cast<int64_t*&>(outptr));
+    interleave_8x2_2_d(
+            reinterpret_cast<const int64_t*&>(inptr0),
+            reinterpret_cast<const int64_t*&>(inptr1),
+            reinterpret_cast<const int64_t*&>(inptr2),
+            reinterpret_cast<const int64_t*&>(inptr3),
+            reinterpret_cast<const int64_t*&>(inptr4),
+            reinterpret_cast<const int64_t*&>(inptr5),
+            reinterpret_cast<const int64_t*&>(inptr6),
+            reinterpret_cast<const int64_t*&>(inptr7),
+            reinterpret_cast<int64_t*&>(outptr));
 }
 
 template <typename T>
-static inline void interleave_8x2_8_b(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      const T*& inptr4, const T*& inptr5,
-                                      const T*& inptr6, const T*& inptr7,
-                                      T*& outptr) {
+static inline void interleave_8x2_8_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T*& outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "interleave_8x2_8_b only support uint8_t and int8_t");
-    interleave_8x1_8_h(reinterpret_cast<const int16_t*&>(inptr0),
-                       reinterpret_cast<const int16_t*&>(inptr1),
-                       reinterpret_cast<const int16_t*&>(inptr2),
-                       reinterpret_cast<const int16_t*&>(inptr3),
-                       reinterpret_cast<const int16_t*&>(inptr4),
-                       reinterpret_cast<const int16_t*&>(inptr5),
-                       reinterpret_cast<const int16_t*&>(inptr6),
-                       reinterpret_cast<const int16_t*&>(inptr7),
-                       reinterpret_cast<int16_t*&>(outptr));
+    interleave_8x1_8_h(
+            reinterpret_cast<const int16_t*&>(inptr0),
+            reinterpret_cast<const int16_t*&>(inptr1),
+            reinterpret_cast<const int16_t*&>(inptr2),
+            reinterpret_cast<const int16_t*&>(inptr3),
+            reinterpret_cast<const int16_t*&>(inptr4),
+            reinterpret_cast<const int16_t*&>(inptr5),
+            reinterpret_cast<const int16_t*&>(inptr6),
+            reinterpret_cast<const int16_t*&>(inptr7),
+            reinterpret_cast<int16_t*&>(outptr));
 }
 
 template <typename T>
-static inline void interleave_8x8_1_b(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      const T*& inptr4, const T*& inptr5,
-                                      const T*& inptr6, const T*& inptr7,
-                                      T*& outptr) {
+static inline void interleave_8x8_1_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T*& outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "interleave_8x8_1_b only support uint8_t and int8_t");
@@ -917,14 +889,12 @@ static inline void interleave_8x8_1_b(const T*& inptr0, const T*& inptr1,
             "st1 {v1.2d},  [%[outptr]], 16\n"  // C1C2C3C4C5C6C7C8D1D2D3D4D5D6D7D8
             "st1 {v2.2d},  [%[outptr]], 16\n"  // E1E2E3E4E5E6E7E8F1F2F3F4F5F6F7F8
             "st1 {v3.2d},  [%[outptr]], 16\n"  // G1G2G3G4G5G6G7G8H1H2H3H4H5H6H7H8
-            :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
-            [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-            [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
             :
             : "v0", "v1", "v2", "v3", "memory");
 }
-
 
 template <typename T>
 static inline void interleave_8x4_1_b_with_shift(
@@ -952,21 +922,19 @@ static inline void interleave_8x4_1_b_with_shift(
             "zip1 v10.16b, v7.16b,   v6.16b\n"
             "zip2 v11.16b, v7.16b,   v6.16b\n"
             "st1 {v8.16b-v11.16b},[%[outptr]],#64"
-            : [ inptr0 ] "+r"(inptr0), [ inptr1 ] "+r"(inptr1),
-              [ inptr2 ] "+r"(inptr2), [ inptr3 ] "+r"(inptr3),
-              [ inptr4 ] "+r"(inptr4), [ inptr5 ] "+r"(inptr5),
-              [ inptr6 ] "+r"(inptr6), [ inptr7 ] "+r"(inptr7),
-              [ outptr ] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
             :
-            : "v0", "v1","v2","v3","v4","v5","v6","v7","v8","v9","v10","v11","memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "memory");
 }
 
 template <typename T>
-static inline void interleave_8x8_1_h(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      const T*& inptr4, const T*& inptr5,
-                                      const T*& inptr6, const T*& inptr7,
-                                      T*& outptr) {
+static inline void interleave_8x8_1_h(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T*& outptr) {
     static_assert(
             std::is_same<T, int16_t>::value || std::is_same<T, uint16_t>::value,
             "interleave_8x8_1_h only support uint16_t and int16_t");
@@ -988,19 +956,16 @@ static inline void interleave_8x8_1_h(const T*& inptr0, const T*& inptr1,
             "st1 {v5.8h},  [%[outptr]], #16\n"  // F1F2F3F4F5F6F7F8
             "st1 {v6.8h},  [%[outptr]], #16\n"  // G1G2G3G4G5G6G7G8
             "st1 {v7.8h},  [%[outptr]], #16\n"  // H1H2H3H4H5H6H7H8
-            :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
-            [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-            [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
             :
             : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "memory");
 }
 
-static inline void interleave_4x1_4_s(const int32_t*& inptr0,
-                                      const int32_t*& inptr1,
-                                      const int32_t*& inptr2,
-                                      const int32_t*& inptr3,
-                                      int32_t*& outptr) {
+static inline void interleave_4x1_4_s(
+        const int32_t*& inptr0, const int32_t*& inptr1, const int32_t*& inptr2,
+        const int32_t*& inptr3, int32_t*& outptr) {
     asm volatile(
             "ld1 {v0.4s}, [%[inptr0]], #16\n"  // d0 = A0A1A2A3
             "ld1 {v1.4s}, [%[inptr1]], #16\n"  // d1 = B0B1B2B3
@@ -1020,18 +985,17 @@ static inline void interleave_4x1_4_s(const int32_t*& inptr0,
             "st1 {v14.4s}, [%[outptr]], #16\n"
             "st1 {v15.4s}, [%[outptr]], #16\n"
 
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr)
             :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v13", "v14", "v15", "cc", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "cc", "memory");
 }
 
 template <typename T>
-static inline void interleave_4x8_1_s(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      T*& outptr) {
+static inline void interleave_4x8_1_s(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T*& outptr) {
     static_assert(sizeof(T) == 4, "only support size == 4");
     asm volatile(
             "ld1 {v0.4s, v1.4s}, [%[inptr0]], #32\n"
@@ -1043,17 +1007,16 @@ static inline void interleave_4x8_1_s(const T*& inptr0, const T*& inptr1,
             "st1 {v4.4s, v5.4s}, [%[outptr]], #32\n"
             "st1 {v6.4s, v7.4s}, [%[outptr]], #32\n"
 
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr)
             :
             : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "cc", "memory");
 }
 
 template <typename T>
-static inline void interleave_4x12_1_s(const T*& inptr0, const T*& inptr1,
-                                       const T*& inptr2, const T*& inptr3,
-                                       T*& outptr) {
+static inline void interleave_4x12_1_s(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T*& outptr) {
     static_assert(sizeof(T) == 4, "only support size == 4");
     asm volatile(
             "ld1 {v0.4s, v1.4s, v2.4s}, [%[inptr0]], #48\n"
@@ -1065,18 +1028,17 @@ static inline void interleave_4x12_1_s(const T*& inptr0, const T*& inptr1,
             "st1 {v8.4s, v9.4s, v10.4s}, [%[outptr]], #48\n"
             "st1 {v12.4s, v13.4s, v14.4s}, [%[outptr]], #48\n"
 
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr)
             :
-            : "v0", "v1", "v2", "v4", "v5", "v6", "v8", "v9", "v10", "v12",
-              "v13", "v14", "cc", "memory");
+            : "v0", "v1", "v2", "v4", "v5", "v6", "v8", "v9", "v10", "v12", "v13",
+              "v14", "cc", "memory");
 }
 
 template <typename T>
-static inline void interleave_4x16_1_b(const T*& inptr0, const T*& inptr1,
-                                       const T*& inptr2, const T*& inptr3,
-                                       T*& outptr) {
+static inline void interleave_4x16_1_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T*& outptr) {
     static_assert(sizeof(T) == 1, "only support size == 1");
     asm volatile(
             "ld1 {v0.4s}, [%[inptr0]], #16\n"  // d0 = A0A1A2A3
@@ -1088,18 +1050,16 @@ static inline void interleave_4x16_1_b(const T*& inptr0, const T*& inptr1,
             "st1 {v2.4s}, [%[outptr]], #16\n"
             "st1 {v3.4s}, [%[outptr]], #16\n"
 
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr)
             :
             : "v0", "v1", "v2", "v3", "v4", "cc", "memory");
 }
 
-
 template <typename T>
-static inline void interleave_4x16_1_s(const T*& inptr0, const T*& inptr1,
-                                       const T*& inptr2, const T*& inptr3,
-                                       T*& outptr) {
+static inline void interleave_4x16_1_s(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T*& outptr) {
     static_assert(sizeof(T) == 4, "only support size == 4");
     asm volatile(
             "ld1 {v0.4s, v1.4s, v2.4s, v3.4s}, [%[inptr0]], #64\n"
@@ -1111,46 +1071,47 @@ static inline void interleave_4x16_1_s(const T*& inptr0, const T*& inptr1,
             "st1 {v8.4s, v9.4s, v10.4s, v11.4s}, [%[outptr]], #64\n"
             "st1 {v12.4s, v13.4s, v14.4s, v15.4s}, [%[outptr]], #64\n"
 
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr)
             :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v13", "v14", "v15", "cc", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "cc", "memory");
 }
 
 template <typename T>
-static inline void interleave_4x2_4_b(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      T*& outptr) {
+static inline void interleave_4x2_4_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T*& outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "interleave_4x2_4_b only support uint8_t and int8_t");
-    interleave_4x1_4_h(reinterpret_cast<const int16_t*&>(inptr0),
-                       reinterpret_cast<const int16_t*&>(inptr1),
-                       reinterpret_cast<const int16_t*&>(inptr2),
-                       reinterpret_cast<const int16_t*&>(inptr3),
-                       reinterpret_cast<int16_t*&>(outptr));
+    interleave_4x1_4_h(
+            reinterpret_cast<const int16_t*&>(inptr0),
+            reinterpret_cast<const int16_t*&>(inptr1),
+            reinterpret_cast<const int16_t*&>(inptr2),
+            reinterpret_cast<const int16_t*&>(inptr3),
+            reinterpret_cast<int16_t*&>(outptr));
 }
 
 template <typename T>
-static inline void interleave_4x4_4_b(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      T*& outptr) {
+static inline void interleave_4x4_4_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T*& outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "interleave_4x4_4_b only support uint8_t and int8_t");
-    interleave_4x1_4_s(reinterpret_cast<const int32_t*&>(inptr0),
-                       reinterpret_cast<const int32_t*&>(inptr1),
-                       reinterpret_cast<const int32_t*&>(inptr2),
-                       reinterpret_cast<const int32_t*&>(inptr3),
-                       reinterpret_cast<int32_t*&>(outptr));
+    interleave_4x1_4_s(
+            reinterpret_cast<const int32_t*&>(inptr0),
+            reinterpret_cast<const int32_t*&>(inptr1),
+            reinterpret_cast<const int32_t*&>(inptr2),
+            reinterpret_cast<const int32_t*&>(inptr3),
+            reinterpret_cast<int32_t*&>(outptr));
 }
 
 template <typename T>
-static inline void interleave_4x4_1_s(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      T*& outptr) {
+static inline void interleave_4x4_1_s(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T*& outptr) {
     static_assert(sizeof(T) == 4, "interleave_4x4_1_s only support size == 4");
     asm volatile(
             "ld1 {v0.4s}, [%[inptr0]], #16\n"
@@ -1159,16 +1120,14 @@ static inline void interleave_4x4_1_s(const T*& inptr0, const T*& inptr1,
             "ld1 {v3.4s}, [%[inptr3]], #16\n"
             "st1 {v0.4s, v1.4s, v2.4s, v3.4s}, [%[outptr]], #64\n"
 
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr)
             :
             : "v0", "v1", "v2", "v3", "cc", "memory");
 }
 
 template <typename T>
-static inline void interleave_2x4_4_s(const T*& inptr0, const T*& inptr1,
-                                      T* outptr) {
+static inline void interleave_2x4_4_s(const T*& inptr0, const T*& inptr1, T* outptr) {
     static_assert(sizeof(T) == 4, "interleave_2x4_4_s only support size == 4");
     asm volatile(
             "ld1 {v0.4s, v1.4s, v2.4s, v3.4s}, [%[inptr0]], #64\n"
@@ -1178,10 +1137,32 @@ static inline void interleave_2x4_4_s(const T*& inptr0, const T*& inptr1,
             "stp q2, q6, [%[outptr], #64]\n"
             "stp q3, q7, [%[outptr], #96]\n"
 
-            :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [outptr] "+r"(outptr)
             :
             : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "memory");
+}
+
+template <typename T>
+static inline void interleave_2x8_2_h(const T*& inptr0, const T*& inptr1, T* outptr) {
+    static_assert(sizeof(T) == 2, "interleave_2x8_2_s only support size == 2");
+    asm volatile(
+            "ld1 {v0.8h, v1.8h, v2.8h, v3.8h}, [%[inptr0]], #64\n"
+            "ld1 {v4.8h, v5.8h, v6.8h, v7.8h}, [%[inptr0]], #64\n"
+            "ld1 {v8.8h, v9.8h, v10.8h, v11.8h}, [%[inptr1]], #64\n"
+            "ld1 {v12.8h, v13.8h, v14.8h, v15.8h}, [%[inptr1]], #64\n"
+            "stp q0, q8, [%[outptr]]\n"
+            "stp q1, q9, [%[outptr], #32]\n"
+            "stp q2, q10, [%[outptr], #64]\n"
+            "stp q3, q11, [%[outptr], #96]\n"
+            "stp q4, q12, [%[outptr], #128]\n"
+            "stp q5, q13, [%[outptr], #160]\n"
+            "stp q6, q14, [%[outptr], #192]\n"
+            "stp q7, q15, [%[outptr], #224]\n"
+
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [outptr] "+r"(outptr)
+            :
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "memory");
 }
 
 template <typename T>
@@ -1197,31 +1178,47 @@ static inline void interleave_1x4_4_s(const T*& inptr0, T* outptr) {
 }
 
 template <typename T>
-static inline void interleave_4x8_2_b(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      T*& outptr) {
-    static_assert(
-            std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
-            "interleave_4x8_2_b only support uint8_t and int8_t");
-    interleave_4x1_2_d(reinterpret_cast<const int64_t*&>(inptr0),
-                       reinterpret_cast<const int64_t*&>(inptr1),
-                       reinterpret_cast<const int64_t*&>(inptr2),
-                       reinterpret_cast<const int64_t*&>(inptr3),
-                       reinterpret_cast<int64_t*&>(outptr));
+static inline void interleave_1x8_2_h(const T*& inptr0, T* outptr) {
+    static_assert(sizeof(T) == 2, "interleave_1x8_2_s only support size == 2");
+    asm volatile(
+            "ld1 {v0.8h, v1.8h, v2.8h, v3.8h}, [%[inptr0]], #64\n"
+            "ld1 {v4.8h, v5.8h, v6.8h, v7.8h}, [%[inptr0]], #64\n"
+            "st1 {v0.8h, v1.8h, v2.8h, v3.8h}, [%[outptr]], #64\n"
+            "st1 {v4.8h, v5.8h, v6.8h, v7.8h}, [%[outptr]], #64\n"
+
+            : [inptr0] "+r"(inptr0), [outptr] "+r"(outptr)
+            :
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "memory");
 }
 
 template <typename T>
-static inline void interleave_4x8_2_h(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      T*& outptr) {
+static inline void interleave_4x8_2_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T*& outptr) {
+    static_assert(
+            std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
+            "interleave_4x8_2_b only support uint8_t and int8_t");
+    interleave_4x1_2_d(
+            reinterpret_cast<const int64_t*&>(inptr0),
+            reinterpret_cast<const int64_t*&>(inptr1),
+            reinterpret_cast<const int64_t*&>(inptr2),
+            reinterpret_cast<const int64_t*&>(inptr3),
+            reinterpret_cast<int64_t*&>(outptr));
+}
+
+template <typename T>
+static inline void interleave_4x8_2_h(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T*& outptr) {
     static_assert(
             std::is_same<T, int16_t>::value || std::is_same<T, uint16_t>::value,
             "interleave_4x8_2_h only support uint16_t and int16_t");
-    interleave_4x2_2_d(reinterpret_cast<const int64_t*&>(inptr0),
-                       reinterpret_cast<const int64_t*&>(inptr1),
-                       reinterpret_cast<const int64_t*&>(inptr2),
-                       reinterpret_cast<const int64_t*&>(inptr3),
-                       reinterpret_cast<int64_t*&>(outptr));
+    interleave_4x2_2_d(
+            reinterpret_cast<const int64_t*&>(inptr0),
+            reinterpret_cast<const int64_t*&>(inptr1),
+            reinterpret_cast<const int64_t*&>(inptr2),
+            reinterpret_cast<const int64_t*&>(inptr3),
+            reinterpret_cast<int64_t*&>(outptr));
 }
 
 template <typename T>
@@ -1272,8 +1269,8 @@ static inline void interleave_1x4_1_s(const T*& inptr0, T*& outptr) {
 }
 
 template <typename T>
-static inline void interleave_helper(const T*& inptr, T*& outptr, int unroll_k,
-                                     int ksize, T val = 0) {
+static inline void interleave_helper(
+        const T*& inptr, T*& outptr, int unroll_k, int ksize, T val = 0) {
     int k = 0;
     for (; k < ksize; k++) {
         *outptr++ = *inptr++;
@@ -1284,8 +1281,8 @@ static inline void interleave_helper(const T*& inptr, T*& outptr, int unroll_k,
 }
 
 template <typename T>
-static inline void interleave_1(const T*& inptr0, T*& outptr, int unroll_k,
-                                int ksize, T val = 0) {
+static inline void interleave_1(
+        const T*& inptr0, T*& outptr, int unroll_k, int ksize, T val = 0) {
     for (int k = 0; k < ksize; k += unroll_k) {
         int size = std::min(unroll_k, ksize - k);
         interleave_helper(inptr0, outptr, unroll_k, size, val);
@@ -1293,9 +1290,9 @@ static inline void interleave_1(const T*& inptr0, T*& outptr, int unroll_k,
 }
 
 template <typename T>
-static inline void interleave_4(const T*& inptr0, const T*& inptr1,
-                                const T*& inptr2, const T*& inptr3, T*& outptr,
-                                int unroll_k, int ksize, T val = 0) {
+static inline void interleave_4(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T*& outptr, int unroll_k, int ksize, T val = 0) {
     for (int k = 0; k < ksize; k += unroll_k) {
         int size = std::min(unroll_k, ksize - k);
         interleave_helper(inptr0, outptr, unroll_k, size, val);
@@ -1306,11 +1303,10 @@ static inline void interleave_4(const T*& inptr0, const T*& inptr1,
 }
 
 template <typename T>
-static inline void interleave_8(const T*& inptr0, const T*& inptr1,
-                                const T*& inptr2, const T*& inptr3,
-                                const T*& inptr4, const T*& inptr5,
-                                const T*& inptr6, const T*& inptr7, T*& outptr,
-                                int unroll_k, int ksize, T val = 0) {
+static inline void interleave_8(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T*& outptr, int unroll_k, int ksize, T val = 0) {
     for (int k = 0; k < ksize; k += unroll_k) {
         int size = std::min(unroll_k, ksize - k);
         interleave_helper(inptr0, outptr, unroll_k, size, val);
@@ -1325,13 +1321,11 @@ static inline void interleave_8(const T*& inptr0, const T*& inptr1,
 }
 
 template <typename T>
-static inline void interleave_12(const T*& inptr0, const T*& inptr1,
-                                 const T*& inptr2, const T*& inptr3,
-                                 const T*& inptr4, const T*& inptr5,
-                                 const T*& inptr6, const T*& inptr7,
-                                 const T*& inptr8, const T*& inptr9,
-                                 const T*& inptr10, const T*& inptr11,
-                                 T*& outptr, int unroll_k, int ksize) {
+static inline void interleave_12(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        const T*& inptr8, const T*& inptr9, const T*& inptr10, const T*& inptr11,
+        T*& outptr, int unroll_k, int ksize) {
     for (int k = 0; k < ksize; k += unroll_k) {
         int size = std::min(unroll_k, ksize - k);
         interleave_helper(inptr0, outptr, unroll_k, size);
@@ -1359,8 +1353,8 @@ static inline void interleave_12(const T*& inptr0, const T*& inptr1,
  * rep(j, 0, INTERLEAVE) rep(i, 0, UNROLL_K) *ouptr++ = inptr[i, j]
  */
 template <typename T>
-static inline void transpose_24x4_1_h(const T*& in0, const T*& in1,
-                                      const T*& in2, const T*& in3, T* out) {
+static inline void transpose_24x4_1_h(
+        const T*& in0, const T*& in1, const T*& in2, const T*& in3, T* out) {
     static_assert(sizeof(T) == 2, "only support size == 2");
     asm volatile(
         "ldp q0, q1, [%[in0]], #32\n"
@@ -1390,8 +1384,8 @@ static inline void transpose_24x4_1_h(const T*& in0, const T*& in1,
 }
 
 template <typename T>
-static inline void transpose_16x4_1_h(const T*& in0, const T*& in1,
-                                      const T*& in2, const T*& in3, T* out) {
+static inline void transpose_16x4_1_h(
+        const T*& in0, const T*& in1, const T*& in2, const T*& in3, T* out) {
     static_assert(sizeof(T) == 2, "only support size == 2");
     asm volatile(
             "ldp q0, q1, [%[in0]], #32\n"
@@ -1402,15 +1396,15 @@ static inline void transpose_16x4_1_h(const T*& in0, const T*& in1,
             "stp q4, q5, [%[out], #64]\n"
             "ldp q6, q7, [%[in3]], #32\n"
             "stp q6, q7, [%[out], #96]\n"
-            : [in0] "+r"(in0), [in1] "+r"(in1), [in2] "+r"(in2),
-              [in3] "+r"(in3), [out] "+r"(out)
+            : [in0] "+r"(in0), [in1] "+r"(in1), [in2] "+r"(in2), [in3] "+r"(in3),
+              [out] "+r"(out)
             :
             : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "memory");
 }
 
 template <typename T>
-static inline void transpose_8x4_1_h(const T*& in0, const T*& in1,
-                                     const T*& in2, const T*& in3, T* out) {
+static inline void transpose_8x4_1_h(
+        const T*& in0, const T*& in1, const T*& in2, const T*& in3, T* out) {
     static_assert(sizeof(T) == 2, "only support size == 2");
     asm volatile(
             "ldr q0, [%[in0]], #16\n"
@@ -1421,8 +1415,8 @@ static inline void transpose_8x4_1_h(const T*& in0, const T*& in1,
             "str q2, [%[out], #32]\n"
             "ldr q3, [%[in3]], #16\n"
             "str q3, [%[out], #48]\n"
-            : [in0] "+r"(in0), [in1] "+r"(in1), [in2] "+r"(in2),
-              [in3] "+r"(in3), [out] "+r"(out)
+            : [in0] "+r"(in0), [in1] "+r"(in1), [in2] "+r"(in2), [in3] "+r"(in3),
+              [out] "+r"(out)
             :
             : "v0", "v1", "v2", "v3", "memory");
 }
@@ -1538,11 +1532,10 @@ static inline void transpose_4x1_1_h(const T*& in0, T* out) {
 }
 
 template <typename T>
-static inline void transpose_4x4_1_s(const T*& inptr0, const T*& inptr1,
-                                     const T*& inptr2, const T*& inptr3,
-                                     T* outptr, int stride = 16) {
-    static_assert(sizeof(T) == 4,
-                  "transpose_4x4_1_s only support sizeof(T) == 4");
+static inline void transpose_4x4_1_s(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T* outptr, int stride = 16) {
+    static_assert(sizeof(T) == 4, "transpose_4x4_1_s only support sizeof(T) == 4");
 
     asm volatile(
             "ld1 {v0.4s},  [%[inptr0]], 16\n"  // A0A1A2A3
@@ -1564,18 +1557,16 @@ static inline void transpose_4x4_1_s(const T*& inptr0, const T*& inptr1,
             "st1 {v10.4s},  [%[outptr]], %x[stride]\n"
             "st1 {v9.4s},  [%[outptr]], %x[stride]\n"
             "st1 {v11.4s},  [%[outptr]], %x[stride]\n"
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr), [stride] "+r"(stride)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr), [stride] "+r"(stride)
             :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "memory");
 }
 
 template <typename T>
 static inline void transpose_1x12_4_s(const T*& inptr0, T* outptr) {
-    static_assert(sizeof(T) == 4,
-                  "transpose_1x12_4_s only support sizeof(T) == 4");
+    static_assert(sizeof(T) == 4, "transpose_1x12_4_s only support sizeof(T) == 4");
 
     asm volatile(
             "ld4 {v0.4s, v1.4s, v2.4s, v3.4s},  [%[inptr0]], #64\n"
@@ -1590,14 +1581,56 @@ static inline void transpose_1x12_4_s(const T*& inptr0, T* outptr) {
             "stp q7, q11, [%[outptr], #160] \n"
             : [inptr0] "+r"(inptr0), [outptr] "+r"(outptr)
             :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "memory");
+}
+
+template <typename T>
+static inline void transpose_1x12_2_h(const T*& inptr, T* outptr) {
+    static_assert(sizeof(T) == 2, "transpose_1x12_2_s only support sizeof(T) == 2");
+
+    asm volatile(
+            "ld4 {v0.4s, v1.4s, v2.4s, v3.4s}, [%[inptr]], #64\n"
+            "ld4 {v4.4s, v5.4s, v6.4s, v7.4s}, [%[inptr]], #64\n"
+            "ld4 {v8.4s, v9.4s, v10.4s, v11.4s}, [%[inptr]], #64\n"
+            "uzp1 v12.8h, v0.8h, v4.8h\n"
+            "st1 {v12.8h}, [%[outptr]], #16\n"  // line[0][0-7]
+            "uzp1 v14.8h, v8.8h, v9.8h\n"
+            "st1 {v14.d}[0], [%[outptr]], #8\n"  // line[0][8-11]
+            "uzp2 v13.8h, v0.8h, v4.8h\n"
+            "st1 {v13.8h}, [%[outptr]], #16\n"  // line[1][0-7]
+            "uzp2 v15.8h, v8.8h, v9.8h\n"
+            "st1 {v15.d}[0], [%[outptr]], #8\n"  // line[1][8-11]
+            "uzp1 v16.8h, v1.8h, v5.8h\n"
+            "st1 {v16.8h}, [%[outptr]], #16\n"   // line[2][0-7]
+            "st1 {v14.d}[1], [%[outptr]], #8\n"  // line[2][8-11]
+            "uzp2 v17.8h, v1.8h, v5.8h\n"
+            "st1 {v17.8h}, [%[outptr]], #16\n"   // line[3][0-7]
+            "st1 {v15.d}[1], [%[outptr]], #8\n"  // line[3][8-11]
+            "uzp1 v18.8h, v2.8h, v6.8h\n"
+            "st1 {v18.8h}, [%[outptr]], #16\n"  // line[4][0-7]
+            "uzp1 v19.8h, v10.8h, v11.8h\n"
+            "st1 {v19.d}[0], [%[outptr]], #8\n"  // line[4][8-11]
+            "uzp2 v20.8h, v2.8h, v6.8h\n"
+            "st1 {v20.8h}, [%[outptr]], #16\n"  // line[5][0-7]
+            "uzp2 v21.8h, v10.8h, v11.8h\n"
+            "st1 {v21.d}[0], [%[outptr]], #8\n"  // line[5][8-11]
+            "uzp1 v22.8h, v3.8h, v7.8h\n"
+            "st1 {v22.8h}, [%[outptr]], #16\n"   // line[6][0-7]
+            "st1 {v19.d}[1], [%[outptr]], #8\n"  // line[6][8-11]
+            "uzp2 v23.8h, v3.8h, v7.8h\n"
+            "st1 {v23.8h}, [%[outptr]], #16\n"   // line[7][0-7]
+            "st1 {v21.d}[1], [%[outptr]], #8\n"  // line[7][8-11]
+            : [inptr] "+r"(inptr), [outptr] "+r"(outptr)
+            :
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
+              "v22", "v23", "memory");
 }
 
 template <typename T>
 static inline void transpose_1x4_4_s(const T*& inptr0, T* outptr) {
-    static_assert(sizeof(T) == 4,
-                  "transpose_1x4_4_s only support sizeof(T) == 4");
+    static_assert(sizeof(T) == 4, "transpose_1x4_4_s only support sizeof(T) == 4");
 
     asm volatile(
             "ld4 {v0.4s, v1.4s, v2.4s, v3.4s},  [%[inptr0]], #64\n"
@@ -1608,13 +1641,11 @@ static inline void transpose_1x4_4_s(const T*& inptr0, T* outptr) {
 }
 
 template <typename T>
-static inline void transpose_8x4_1_s(const T*& inptr0, const T*& inptr1,
-                                     const T*& inptr2, const T*& inptr3,
-                                     const T*& inptr4, const T*& inptr5,
-                                     const T*& inptr6, const T*& inptr7,
-                                     T* outptr) {
-    static_assert(sizeof(T) == 4,
-                  "transpose_8x4_1_s only support sizeof(T) == 4");
+static inline void transpose_8x4_1_s(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T* outptr) {
+    static_assert(sizeof(T) == 4, "transpose_8x4_1_s only support sizeof(T) == 4");
 
     asm volatile(
             "ld1 {v0.4s},  [%[inptr0]], 16\n"  // A0A1A2A3
@@ -1649,25 +1680,21 @@ static inline void transpose_8x4_1_s(const T*& inptr0, const T*& inptr1,
 
             "st1 {v0.4s,v1.4s,v2.4s,v3.4s},  [%[outptr]], #64\n"
             "st1 {v4.4s,v5.4s,v6.4s,v7.4s},  [%[outptr]], #64\n"
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
             :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
-            [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-            [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
-            :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v13", "v14", "v15", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "memory");
 }
 
 template <typename T>
-static inline void transpose_12x4_1_s(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      const T*& inptr4, const T*& inptr5,
-                                      const T*& inptr6, const T*& inptr7,
-                                      const T*& inptr8, const T*& inptr9,
-                                      const T*& inptr10, const T*& inptr11,
-                                      T* outptr) {
-    static_assert(sizeof(T) == 4,
-                  "transpose_12x4_1_s only support sizeof(T) == 4");
+static inline void transpose_12x4_1_s(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        const T*& inptr8, const T*& inptr9, const T*& inptr10, const T*& inptr11,
+        T* outptr) {
+    static_assert(sizeof(T) == 4, "transpose_12x4_1_s only support sizeof(T) == 4");
     asm volatile(
             "ld1 {v0.4s},  [%[inptr0]], 16\n"    // A0A1A2A3
             "ld1 {v1.4s},  [%[inptr1]], 16\n"    // B0B1B2B3
@@ -1719,22 +1746,21 @@ static inline void transpose_12x4_1_s(const T*& inptr0, const T*& inptr1,
             "st1 {v3.4s,v4.4s,v5.4s},  [%[outptr]], #48\n"
             "st1 {v6.4s,v7.4s,v8.4s},  [%[outptr]], #48\n"
             "st1 {v24.4s,v25.4s,v26.4s},  [%[outptr]], #48\n"
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [inptr8] "+r"(inptr8),
+              [inptr9] "+r"(inptr9), [inptr10] "+r"(inptr10), [inptr11] "+r"(inptr11),
+              [outptr] "+r"(outptr)
             :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
-            [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-            [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [inptr8] "+r"(inptr8),
-            [inptr9] "+r"(inptr9), [inptr10] "+r"(inptr10),
-            [inptr11] "+r"(inptr11), [outptr] "+r"(outptr)
-            :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19",
-              "v20", "v21", "v22", "v23", "v24", "v25", "v26", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v20", "v21",
+              "v22", "v23", "v24", "v25", "v26", "memory");
 }
 
 template <typename T>
-static inline void transpose_12x4_1_b(const T*& inptr0, const T*& inptr1,
-                                      const T*& inptr2, const T*& inptr3,
-                                      T* outptr) {
+static inline void transpose_12x4_1_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T* outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "transpose_12x4_1_b only support uint8_t and int8_t");
@@ -1772,19 +1798,17 @@ static inline void transpose_12x4_1_b(const T*& inptr0, const T*& inptr1,
 
             "stp q17, q18, [%[outptr]], #32\n"
             "str q19, [%[outptr]], #16\n"
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr)
             :
-            : "w1", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9",
-              "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
-              "v19", "memory");
+            : "w1", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
+              "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "memory");
 }
 
 template <typename T>
-static inline void transpose_8x4_1_b(const T*& inptr0, const T*& inptr1,
-                                     const T*& inptr2, const T*& inptr3,
-                                     T* outptr) {
+static inline void transpose_8x4_1_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T* outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "transpose_8x4_1_b only support uint8_t and int8_t");
@@ -1802,20 +1826,17 @@ static inline void transpose_8x4_1_b(const T*& inptr0, const T*& inptr1,
 
             "st1 {v4.2d}, [%[outptr]], #16\n"
             "st1 {v5.2d}, [%[outptr]], #16\n"
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr)
             :
             : "v0", "v1", "v2", "v3", "v4", "v5", "memory");
 }
 
 template <typename T>
-static inline void transpose_4x8_1_b_with_shift(const T*& inptr0, const T*& inptr1,
-                                     const T*& inptr2, const T*& inptr3,
-                                     const T*& inptr4, const T*& inptr5,
-                                     const T*& inptr6, const T*& inptr7,
-                                     T*& outptr) {
-
+static inline void transpose_4x8_1_b_with_shift(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T*& outptr) {
     static int8x16_t shuffle_idx = {0, 4, 8,  12, 1, 5, 9,  13,
                                     2, 6, 10, 14, 3, 7, 11, 15};
     static_assert(
@@ -1831,8 +1852,8 @@ static inline void transpose_4x8_1_b_with_shift(const T*& inptr0, const T*& inpt
             "ld1 {v1.s}[2],  [%[inptr6]], #4\n"  // G1G2G3G4
             "ld1 {v1.s}[3],  [%[inptr7]], #4\n"  // H1H2H3H4
 
-            "tbl v2.16b, {v0.16b}, %[shuffle_idx].16b \n" // A1B1C1D1A2B2C2D2A3B3C3D3A4B4C4D4
-            "tbl v3.16b, {v1.16b}, %[shuffle_idx].16b \n" // E1F1G1H1E2F2G2H2E3F3G3H3E4F4G4H4
+            "tbl v2.16b, {v0.16b}, %[shuffle_idx].16b \n"  // A1B1C1D1A2B2C2D2A3B3C3D3A4B4C4D4
+            "tbl v3.16b, {v1.16b}, %[shuffle_idx].16b \n"  // E1F1G1H1E2F2G2H2E3F3G3H3E4F4G4H4
 
             "zip1 v4.4s, v2.4s, v3.4s\n"  // A1B1C1D1E1F1G1H1 A2B2C2D2E2F2G2H2
             "zip2 v5.4s, v2.4s, v3.4s\n"  // A3B3C3D3E3F3G3H3 A4B4C4D4E4F4G4H4
@@ -1849,20 +1870,19 @@ static inline void transpose_4x8_1_b_with_shift(const T*& inptr0, const T*& inpt
             "zip2 v3.2d,v11.2d,v10.2d\n"
             "st1 {v0.2d-v3.2d},[%[outptr]],#64\n"
 
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [shuffle_idx]"+w"(shuffle_idx),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7),
+              [shuffle_idx] "+w"(shuffle_idx), [outptr] "+r"(outptr)
             :
-            : "v0", "v1", "v2", "v3", "v4", "v5","v6","v7","v8","v9","v10","v11","memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "memory");
 }
 template <typename T>
-static inline void transpose_8x8_1_b(const T*& inptr0, const T*& inptr1,
-                                     const T*& inptr2, const T*& inptr3,
-                                     const T*& inptr4, const T*& inptr5,
-                                     const T*& inptr6, const T*& inptr7,
-                                     T* outptr) {
+static inline void transpose_8x8_1_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T* outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "transpose_8x8_1_b only support uint8_t and int8_t");
@@ -1911,22 +1931,19 @@ static inline void transpose_8x8_1_b(const T*& inptr0, const T*& inptr1,
                                                   // A6B6C6D6E6F6G6H6
             "st1 {v19.16b},  [%[outptr]], #16\n"  // A7B7C7D7E7F7G7H7
                                                   // A8B8C8D8E8F8G8H8
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
             :
-            [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
-            [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-            [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr)
-            :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19",
-              "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "memory");
 }
 
 template <typename T>
-static inline void transpose_4x16_1_b_helper(const T*& inptr0, const T*& inptr1,
-                                             const T*& inptr2, const T*& inptr3,
-                                             const T*& inptr4, const T*& inptr5,
-                                             const T*& inptr6, const T*& inptr7,
-                                             T* outptr) {
+static inline void transpose_4x16_1_b_helper(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T* outptr) {
     static_assert(sizeof(T) == 1, "only support size == 1");
     static int8x16_t shuffle_idx = {0, 4, 8,  12, 1, 5, 9,  13,
                                     2, 6, 10, 14, 3, 7, 11, 15};
@@ -1954,19 +1971,18 @@ static inline void transpose_4x16_1_b_helper(const T*& inptr0, const T*& inptr1,
             "str d5, [%[outptr]], #16\n"
             "str d7, [%[outptr]], #16\n"
 
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
-              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7),
-              [outptr] "+r"(outptr), [shuffle_idx] "+w"(shuffle_idx)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [inptr4] "+r"(inptr4), [inptr5] "+r"(inptr5),
+              [inptr6] "+r"(inptr6), [inptr7] "+r"(inptr7), [outptr] "+r"(outptr),
+              [shuffle_idx] "+w"(shuffle_idx)
             :
             : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "memory");
 }
 
 template <typename T>
-static inline void transpose_4(const T*& inptr0, const T*& inptr1,
-                               const T*& inptr2, const T*& inptr3, T* outptr,
-                               int interleave, int size, T val = 0) {
+static inline void transpose_4(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T* outptr, int interleave, int size, T val = 0) {
     megdnn_assert(size <= interleave);
     int i = 0;
     for (; i < size; i++) {
@@ -1984,11 +2000,10 @@ static inline void transpose_4(const T*& inptr0, const T*& inptr1,
 }
 
 template <typename T>
-static inline void transpose_8(const T*& inptr0, const T*& inptr1,
-                               const T*& inptr2, const T*& inptr3,
-                               const T*& inptr4, const T*& inptr5,
-                               const T*& inptr6, const T*& inptr7, T* outptr,
-                               int interleave, int size, T val = 0) {
+static inline void transpose_8(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        const T*& inptr4, const T*& inptr5, const T*& inptr6, const T*& inptr7,
+        T* outptr, int interleave, int size, T val = 0) {
     megdnn_assert(size <= interleave);
     int i = 0;
     for (; i < size; i++) {
@@ -2016,13 +2031,11 @@ static inline void transpose_8(const T*& inptr0, const T*& inptr1,
 
 //! pack form {1, 4(icb), 4(ic), 4(oc)} to {1, 1, 4(oc), 16(ic)}
 template <typename T>
-static inline void transpose_interleave_4x4_4_b(const T*& inptr0,
-                                                const T*& inptr1,
-                                                const T*& inptr2,
-                                                const T*& inptr3, T* outptr,
-                                                int stride = 64) {
-    static_assert(sizeof(T) == 1,
-                  "transpose_interleave_4x4_4_b only support sizeof(T) == 1");
+static inline void transpose_interleave_4x4_4_b(
+        const T*& inptr0, const T*& inptr1, const T*& inptr2, const T*& inptr3,
+        T* outptr, int stride = 64) {
+    static_assert(
+            sizeof(T) == 1, "transpose_interleave_4x4_4_b only support sizeof(T) == 1");
 
     asm volatile(
             "ld4 {v0.16b, v1.16b, v2.16b, v3.16b},[%[inptr0]], 64\n"
@@ -2034,34 +2047,30 @@ static inline void transpose_interleave_4x4_4_b(const T*& inptr0,
             "st1 {v4.16b, v5.16b, v6.16b, v7.16b},[%[outptr]], %x[stride]\n"
             "st1 {v8.16b, v9.16b, v10.16b, v11.16b},[%[outptr]], %x[stride]\n"
             "st1 {v12.16b, v13.16b, v14.16b, v15.16b},[%[outptr]], %x[stride]\n"
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [inptr2] "+r"(inptr2), [inptr3] "+r"(inptr3),
-              [outptr] "+r"(outptr), [stride] "+r"(stride)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [inptr2] "+r"(inptr2),
+              [inptr3] "+r"(inptr3), [outptr] "+r"(outptr), [stride] "+r"(stride)
             :
-            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-              "v11", "v12", "v14", "v15", "memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11",
+              "v12", "v14", "v15", "memory");
 }
 
 template <typename T>
-static inline void transpose_interleave_1x4_4_b(const T*& inptr0, T* outptr,
-                                                int stride = 64) {
-    static_assert(sizeof(T) == 1,
-                  "transpose_interleave_1x4_4_b only support sizeof(T) == 1");
+static inline void transpose_interleave_1x4_4_b(
+        const T*& inptr0, T* outptr, int stride = 64) {
+    static_assert(
+            sizeof(T) == 1, "transpose_interleave_1x4_4_b only support sizeof(T) == 1");
 
     asm volatile(
             "ld4 {v0.16b, v1.16b, v2.16b, v3.16b},[%[inptr0]], 64\n"
             "st1 {v0.16b, v1.16b, v2.16b, v3.16b},[%[outptr]], %x[stride]\n"
-            :
-            [inptr0] "+r"(inptr0), [outptr] "+r"(outptr), [stride] "+r"(stride)
+            : [inptr0] "+r"(inptr0), [outptr] "+r"(outptr), [stride] "+r"(stride)
             :
             : "v0", "v1", "v2", "v3", "v4", "memory");
 }
 
-static inline void interleave_4x4_16x4_s8_s16(const int8_t* inptr0,
-                                              const int8_t* inptr1,
-                                              const int8_t* inptr2,
-                                              const int8_t* inptr3,
-                                              int16_t* outptr) {
+static inline void interleave_4x4_16x4_s8_s16(
+        const int8_t* inptr0, const int8_t* inptr1, const int8_t* inptr2,
+        const int8_t* inptr3, int16_t* outptr) {
     int8x16_t row0 = vld1q_s8(inptr0);
     int16x8_t row0_01 = vmovl_low_s8(row0);
     int16x8_t row0_23 = vmovl_high_s8(row0);
@@ -2111,9 +2120,8 @@ static inline void interleave_4x4_16x4_s8_s16(const int8_t* inptr0,
     vst1_s16(outptr + 14 * 4, row2_3);
     vst1_s16(outptr + 15 * 4, row3_3);
 };
-static inline void interleave_4x4_8x4_s8_s16(const int8_t* inptr0,
-                                             const int8_t* inptr1,
-                                             int16_t* outptr) {
+static inline void interleave_4x4_8x4_s8_s16(
+        const int8_t* inptr0, const int8_t* inptr1, int16_t* outptr) {
     int8x16_t row0 = vld1q_s8(inptr0);
     int16x8_t row0_01 = vmovl_low_s8(row0);
     int16x8_t row0_23 = vmovl_high_s8(row0);
@@ -2140,8 +2148,7 @@ static inline void interleave_4x4_8x4_s8_s16(const int8_t* inptr0,
     vst1_s16(outptr + 7 * 4, row1_3);
 };
 
-static inline void memcpy_s8_s16(const int8_t* inptr, int16_t* outptr,
-                                 int count) {
+static inline void memcpy_s8_s16(const int8_t* inptr, int16_t* outptr, int count) {
     for (; count >= 32; count -= 32) {
         int8x8_t in0 = vld1_s8(inptr);
         int8x8_t in1 = vld1_s8(inptr + 1 * 8);
@@ -2173,24 +2180,25 @@ static inline void transpos_12x4_s8(const int8_t* inptr0, int8_t* outptr) {
     int8x16_t input2 = vqtbl1q_s8(vld1q_s8(inptr0 + 4 * 8), vtbl);
 
     vst1_s8(outptr, input.val[0]);
-    vst1q_lane_s32(reinterpret_cast<int32_t*>(outptr + 8),
-                   vreinterpretq_s32_s8(input2), 0);
+    vst1q_lane_s32(
+            reinterpret_cast<int32_t*>(outptr + 8), vreinterpretq_s32_s8(input2), 0);
     vst1_s8(outptr + 1 * 12, input.val[1]);
-    vst1q_lane_s32(reinterpret_cast<int32_t*>(outptr + 1 * 12 + 8),
-                   vreinterpretq_s32_s8(input2), 1);
+    vst1q_lane_s32(
+            reinterpret_cast<int32_t*>(outptr + 1 * 12 + 8),
+            vreinterpretq_s32_s8(input2), 1);
     vst1_s8(outptr + 2 * 12, input.val[2]);
-    vst1q_lane_s32(reinterpret_cast<int32_t*>(outptr + 2 * 12 + 8),
-                   vreinterpretq_s32_s8(input2), 2);
+    vst1q_lane_s32(
+            reinterpret_cast<int32_t*>(outptr + 2 * 12 + 8),
+            vreinterpretq_s32_s8(input2), 2);
     vst1_s8(outptr + 3 * 12, input.val[3]);
-    vst1q_lane_s32(reinterpret_cast<int32_t*>(outptr + 3 * 12 + 8),
-                   vreinterpretq_s32_s8(input2), 3);
+    vst1q_lane_s32(
+            reinterpret_cast<int32_t*>(outptr + 3 * 12 + 8),
+            vreinterpretq_s32_s8(input2), 3);
 }
 
-
 template <typename T>
-static inline void interleave_8x8_mk4_b(const T*& inptr0, const T*& inptr1,
-                                     T*& outptr) {
-
+static inline void interleave_8x8_mk4_b(
+        const T*& inptr0, const T*& inptr1, T*& outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "transpose_8x4_1_b only support uint8_t and int8_t");
@@ -2211,16 +2219,13 @@ static inline void interleave_8x8_mk4_b(const T*& inptr0, const T*& inptr1,
             "st1 {v6.4s},[%[outptr]],#16\n"
             "st1 {v7.4s},[%[outptr]],#16\n"
 
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [outptr] "+r"(outptr)
             :
-            : "v0", "v1", "v2", "v3", "v4", "v5","v6","v7","memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "memory");
 }
 
 template <typename T>
-static inline void transpose_8x8_mk4_b(const T*& inptr0, const T*& inptr1,
-                                     T* outptr) {
-
+static inline void transpose_8x8_mk4_b(const T*& inptr0, const T*& inptr1, T* outptr) {
     static_assert(
             std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value,
             "transpose_8x4_1_b only support uint8_t and int8_t");
@@ -2236,10 +2241,9 @@ static inline void transpose_8x8_mk4_b(const T*& inptr0, const T*& inptr1,
             "st1 {v6.2s},[%[outptr]],#8\n"
             "st1 {v7.2s},[%[outptr]],#8\n"
 
-            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1),
-              [outptr] "+r"(outptr)
+            : [inptr0] "+r"(inptr0), [inptr1] "+r"(inptr1), [outptr] "+r"(outptr)
             :
-            : "v0", "v1", "v2", "v3", "v4", "v5","v6","v7","memory");
+            : "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "memory");
 }
 
 }  // namespace aarch64

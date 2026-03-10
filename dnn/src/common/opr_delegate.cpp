@@ -1,19 +1,9 @@
-/**
- * \file dnn/src/common/opr_delegate.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "src/common/opr_delegate.h"
 
 using namespace megdnn;
 
-const std::shared_ptr<Handle>& megdnn::inplace_cpu_handle(int debug_level) {
+MGE_WIN_DECLSPEC_FUC const std::shared_ptr<Handle>& megdnn::inplace_cpu_handle(
+        int debug_level) {
     auto make = [](int deb_level) {
         megcoreDeviceHandle_t dev_handle;
         megcoreCreateDeviceHandle(&dev_handle, megcorePlatformCPU);

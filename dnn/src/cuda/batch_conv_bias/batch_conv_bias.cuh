@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/cuda/batch_conv_bias/batch_conv_bias.cuh
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "src/cuda/convolution_helper/parameter.cuh"
 #include "src/cuda/utils.cuh"
 
@@ -34,33 +24,30 @@ struct LaunchConfig {
 };
 
 template <typename BiasVisitor, typename Epilogue>
-void do_batch_conv_bias_int8_gemm_ncdiv4hw4(const int8_t* d_src,
-                                            const int8_t* d_filter,
-                                            BiasVisitor bias, Epilogue epilogue,
-                                            const convolution::ConvParam& param,
-                                            float alpha, float beta,
-                                            cudaStream_t stream);
+void do_batch_conv_bias_int8_gemm_ncdiv4hw4(
+        const int8_t* d_src, const int8_t* d_filter, BiasVisitor bias,
+        Epilogue epilogue, const convolution::ConvParam& param, float alpha, float beta,
+        cudaStream_t stream);
 
 template <typename BiasVisitor, typename Epilogue>
 void do_batch_conv_bias_int8_gemm_ncdiv4hw4_ldg_128(
         const int8_t* d_src, const int8_t* d_filter, BiasVisitor bias,
-        Epilogue epilogue, const convolution::ConvParam& param, float alpha,
-        float beta, cudaStream_t stream);
+        Epilogue epilogue, const convolution::ConvParam& param, float alpha, float beta,
+        cudaStream_t stream);
 
 template <typename BiasVisitor, typename Epilogue>
 void do_batch_conv_bias_int8_implicit_gemm_precomp_ncdiv4hw4(
-        const int8_t* d_src, const int8_t* d_filter, int* workspace,
-        BiasVisitor bias, Epilogue epilogue,
-        const convolution::ConvParam& param, float alpha, float beta,
+        const int8_t* d_src, const int8_t* d_filter, int* workspace, BiasVisitor bias,
+        Epilogue epilogue, const convolution::ConvParam& param, float alpha, float beta,
         cudaStream_t stream);
 
 }  // namespace batch_conv_bias
 }  // namespace cuda
 }  // namespace megdnn
 
-#define MARK_USED_VAR                                                          \
-    MEGDNN_MARK_USED_VAR(n + ci + hi + wi + co + fh + fw + ho + wo + ph + pw + \
-                         sh + sw + dh + dw);
+#define MARK_USED_VAR     \
+    MEGDNN_MARK_USED_VAR( \
+            n + ci + hi + wi + co + fh + fw + ho + wo + ph + pw + sh + sw + dh + dw);
 
 #define UNPACK_BATCH_CONV_PARAMETER(_param)            \
     size_t ph = _param.pad_h, pw = _param.pad_w;       \

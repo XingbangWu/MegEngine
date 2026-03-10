@@ -1,14 +1,3 @@
-/**
- * \file src/tensorrt/include/megbrain/tensorrt/tensorrt_engine_cache.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/tensorrt/tensorrt_opr.h"
@@ -30,7 +19,7 @@ namespace mgb {
  * opr in the same computing graph are different.
  */
 class TensorRTEngineCache : public NonCopyableObj {
-    static std::shared_ptr<TensorRTEngineCache> sm_impl;
+    static MGE_WIN_DECLSPEC_DATA std::shared_ptr<TensorRTEngineCache> sm_impl;
     static bool sm_enable_engine_cache;
 
 public:
@@ -46,15 +35,17 @@ public:
     virtual void dump_cache() = 0;
 
     //! get the key of the TensorRTOpr
-    static std::string make_key_from_trt_opr(const opr::TensorRTOpr* opr);
+    MGE_WIN_DECLSPEC_FUC static std::string make_key_from_trt_opr(
+            const opr::TensorRTOpr* opr);
 
     //! enable the tensorrt engine cache, or query whether the cache is used
-    static bool enable_engine_cache(bool enable_engine_cache = false);
+    MGE_WIN_DECLSPEC_FUC static bool enable_engine_cache(
+            bool enable_engine_cache = false);
     //! disable the tensorrt engine cache
-    static void disable_engine_cache();
+    MGE_WIN_DECLSPEC_FUC static void disable_engine_cache();
 
     //! set an implementation; return the original implementation
-    static std::shared_ptr<TensorRTEngineCache> set_impl(
+    MGE_WIN_DECLSPEC_FUC static std::shared_ptr<TensorRTEngineCache> set_impl(
             std::shared_ptr<TensorRTEngineCache> impl);
 
     //! get the instance; the default implementation is an InMemoryCache
@@ -80,27 +71,30 @@ class TensorRTEngineCacheIO final : public TensorRTEngineCache {
     void read(T& val) {
         auto ret = fread(&val, sizeof(T), 1, m_ptr);
         MGB_MARK_USED_VAR(ret);
-        mgb_throw_if(ret != 1, SystemError,
-                     "failed to read block with size (%zu) from file %s %s",
-                     sizeof(T), m_filename.c_str(), strerror(errno));
+        mgb_throw_if(
+                ret != 1, SystemError,
+                "failed to read block with size (%zu) from file %s %s", sizeof(T),
+                m_filename.c_str(), strerror(errno));
     }
 
     template <typename T>
     void read(T* buf, size_t size) {
         auto ret = fread(buf, size, 1, m_ptr);
         MGB_MARK_USED_VAR(ret);
-        mgb_throw_if(ret != 1, SystemError,
-                     "failed to read block with size (%zu) from file %s %s",
-                     size, m_filename.c_str(), strerror(errno));
+        mgb_throw_if(
+                ret != 1, SystemError,
+                "failed to read block with size (%zu) from file %s %s", size,
+                m_filename.c_str(), strerror(errno));
     }
 
     template <typename T>
     void write(T val) {
         auto ret = fwrite(&val, sizeof(T), 1, m_ptr);
         MGB_MARK_USED_VAR(ret);
-        mgb_throw_if(ret != 1, SystemError,
-                     "failed to write block with size (%zu) to file %s %s",
-                     sizeof(T), m_filename.c_str(), strerror(errno));
+        mgb_throw_if(
+                ret != 1, SystemError,
+                "failed to write block with size (%zu) to file %s %s", sizeof(T),
+                m_filename.c_str(), strerror(errno));
     }
 
     template <typename T>
@@ -108,9 +102,10 @@ class TensorRTEngineCacheIO final : public TensorRTEngineCache {
         static_assert(sizeof(T) == 1, "only support write bytes");
         auto ret = fwrite(buf, size, 1, m_ptr);
         MGB_MARK_USED_VAR(ret);
-        mgb_throw_if(ret != 1, SystemError,
-                     "failed to write block with size (%zu) to file %s %s", size,
-                     m_filename.c_str(), strerror(errno));
+        mgb_throw_if(
+                ret != 1, SystemError,
+                "failed to write block with size (%zu) to file %s %s", size,
+                m_filename.c_str(), strerror(errno));
     }
 
     void read_cache();
@@ -147,14 +142,14 @@ class TensorRTEngineCacheIO final : public TensorRTEngineCache {
     std::mutex m_mtx;
 
 public:
-    TensorRTEngineCacheIO(std::string filename);
-    ~TensorRTEngineCacheIO() = default;
+    MGE_WIN_DECLSPEC_FUC TensorRTEngineCacheIO(std::string filename);
+    MGE_WIN_DECLSPEC_FUC ~TensorRTEngineCacheIO() = default;
 
-    void dump_cache() override;
+    MGE_WIN_DECLSPEC_FUC void dump_cache() override;
 
-    Maybe<Engine> get(const std::string& key) override;
+    MGE_WIN_DECLSPEC_FUC Maybe<Engine> get(const std::string& key) override;
 
-    void put(const std::string& key, const Engine& value) override;
+    MGE_WIN_DECLSPEC_FUC void put(const std::string& key, const Engine& value) override;
 };
 }  // namespace mgb
 #endif

@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/common/cv/aligned_allocator.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include <cstdlib>
@@ -22,8 +11,7 @@
 #include "malloc.h"
 #endif
 
-
-#if defined(__ANDROID__) || defined(ANDROID)
+#if defined(__ANDROID__) || defined(ANDROID) || defined(__OHOS__)
 #include "malloc.h"
 #define HAS_MEMALIGN
 #elif !defined(_MSC_VER) && !defined(__MINGW32__)
@@ -98,14 +86,14 @@ public:
 };
 
 template <typename _T1, typename _T2, size_t _A1, size_t _A2>
-inline bool operator==(const aligned_allocator<_T1, _A1>&,
-                       const aligned_allocator<_T2, _A2>&) {
+inline bool operator==(
+        const aligned_allocator<_T1, _A1>&, const aligned_allocator<_T2, _A2>&) {
     return true;
 }
 
 template <typename _T1, typename _T2, size_t _A1, size_t _A2>
-inline bool operator!=(const aligned_allocator<_T1, _A1>&,
-                       const aligned_allocator<_T2, _A2>&) {
+inline bool operator!=(
+        const aligned_allocator<_T1, _A1>&, const aligned_allocator<_T2, _A2>&) {
     return false;
 }
 

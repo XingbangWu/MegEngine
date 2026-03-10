@@ -1,14 +1,3 @@
-/**
- * \file src/tensorrt/include/megbrain/tensorrt/tensorrt_opr.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/comp_node_env.h"
@@ -25,6 +14,32 @@
 #define NV_TENSOR_RT_VERSION                                  \
     ((NV_TENSORRT_MAJOR * 1000) + (NV_TENSORRT_MINOR * 100) + \
      NV_TENSORRT_PATCH)  // major, minor, patch
+
+// some api has been changed in TentorRT8
+#if (NV_TENSOR_RT_VERSION >= 8001)
+enum class Empty : int32_t {};
+#define TENSORRT_NO_DIMENSIONTYPE(api) Empty
+#define TENSORRT_NO_DIMENSIONTYPE_VALUE(api) \
+    {}
+#define TENSORRT_NO_EXCEPT(api) api
+#else
+#define TENSORRT_NO_DIMENSIONTYPE(api)       api
+#define TENSORRT_NO_DIMENSIONTYPE_VALUE(api) api
+#define TENSORRT_NO_EXCEPT(api)
+#endif
+
+#if (NV_TENSOR_RT_VERSION >= 7000)
+//! FIXME: trt7.2.2.3 leak memory in setDeviceMemory API, now trt malloc workspace
+//! self, megengine do not alloc any workspace
+#define TENSOR_RT_MANAGE_ALL_WORKSPACE 1
+#else
+#define TENSOR_RT_MANAGE_ALL_WORKSPACE 0
+#endif
+
+//! issue detail: https://github.com/NVIDIA/TensorRT/issues/2290
+#if NV_TENSOR_RT_VERSION >= 8400
+#define TENSOR_RT_MANAGE_ALL_WORKSPACE 0
+#endif
 
 namespace mgb {
 namespace opr {
@@ -50,11 +65,19 @@ class TensorRTManager {
     std::vector<void*> m_trt_iobuf;
     TensorRTUniquePtr<nvinfer1::IExecutionContext> m_context;
     void* m_device_workspace_memory_ptr;
-    bool m_has_profiler;
+    int m_offset = 0;
 
 public:
-    void exec(cg::SingleCNOperatorNodeBase* opr, CompNode comp_node_check,
-              nvinfer1::ICudaEngine* engine, size_t batch = 1);
+    void create_trt_context(
+            mgb::CompNode cn, const TensorShapeArray& inp_shape,
+            nvinfer1::ICudaEngine* engine);
+#if NV_TENSOR_RT_VERSION >= 6001
+    nvinfer1::Dims get_binding_dimensions(int binding_idx) const;
+#endif
+    void exec(
+            cg::SingleCNOperatorNodeBase* opr, CompNode comp_node_check,
+            nvinfer1::ICudaEngine* engine, size_t batch = 1,
+            bool use_trt_profiler = false);
 
     void clear_trt_context() { m_context.reset(); }
 
@@ -63,28 +86,32 @@ public:
 };
 
 static inline size_t workspace_size(nvinfer1::ICudaEngine* engine) {
+#if TENSOR_RT_MANAGE_ALL_WORKSPACE
+    MGB_MARK_USED_VAR(engine);
+    return 0;
+#else
     return engine->getDeviceMemorySize();
+#endif
 }
 }  // namespace intl
-
 
 /*!
  * \brief an operator that evaluates a nvinfer::INetworkDefinition object
  *
  * This operator allows input shapes to be changed.
  */
-MGB_DEFINE_OPR_CLASS(TensorRTOpr,
-                           mgb::cg::SingleCNOutshapePureByInshapeOprBase) // {
+MGB_DEFINE_OPR_CLASS(TensorRTOpr, mgb::cg::SingleCNOutshapePureByInshapeOprBase) // {
     void init_output_dtype() override;
-    void get_output_var_shape(const TensorShapeArray& inp_shape,
-                              TensorShapeArray& out_shape) const override;
-    
+    void get_output_var_shape(
+            const TensorShapeArray& inp_shape,
+            TensorShapeArray& out_shape) const override;
+
     void add_input_layout_constraint() override;
-    
+
     void scn_do_execute() override;
-    
-    void set_input_by_tensor_shape(nvinfer1::ITensor* const input,
-                               const TensorShape& tensor_shape) const;
+
+    void set_input_by_tensor_shape(
+            nvinfer1::ITensor* const input, const TensorShape& tensor_shape) const;
 
 public:
     template <typename T>
@@ -100,22 +127,19 @@ public:
 
     //! sharing a network across builders is not recommended.
     //! use shared_ptr instead of unique_ptr for builder
-    TensorRTOpr(std::shared_ptr<nvinfer1::IBuilder> builder,
-                std::shared_ptr<nvinfer1::INetworkDefinition> network,
-                TensorRTGraphFeatureBits feature_bits,
-                std::shared_ptr<GpuAllocator> gpu_allocator,
-                const VarNodeArray& inputs,
-                std::shared_ptr<nvinfer1::ICudaEngine> engine,
-                const OperatorNodeConfig& config);
+    TensorRTOpr(
+            std::shared_ptr<nvinfer1::IBuilder> builder,
+            std::shared_ptr<nvinfer1::INetworkDefinition> network,
+            TensorRTGraphFeatureBits feature_bits,
+            std::shared_ptr<GpuAllocator> gpu_allocator, const VarNodeArray& inputs,
+            std::shared_ptr<nvinfer1::ICudaEngine> engine,
+            const OperatorNodeConfig& config);
 
     //! get underlying TensorRT IBuilder object
-    const std::shared_ptr<nvinfer1::IBuilder>& trt_builder() const {
-        return m_builder;
-    }
+    const std::shared_ptr<nvinfer1::IBuilder>& trt_builder() const { return m_builder; }
 
     //! get underlying TensorRT INetworkDefinition object
-    const std::shared_ptr<nvinfer1::INetworkDefinition>& trt_network_def()
-            const {
+    const std::shared_ptr<nvinfer1::INetworkDefinition>& trt_network_def() const {
         return m_network;
     }
 
@@ -128,16 +152,13 @@ public:
         return m_gpu_allocator;
     }
 
-    TensorRTGraphFeatureBits trt_graph_feature_bits() const {
-        return m_feature_bits;
-    }
+    TensorRTGraphFeatureBits trt_graph_feature_bits() const { return m_feature_bits; }
 
     static SymbolVarArray make(
             std::shared_ptr<nvinfer1::IBuilder> builder,
             std::shared_ptr<nvinfer1::INetworkDefinition> network,
             TensorRTGraphFeatureBits feature_bits,
-            std::shared_ptr<GpuAllocator> gpu_allocator,
-            const SymbolVarArray& src,
+            std::shared_ptr<GpuAllocator> gpu_allocator, const SymbolVarArray& src,
             std::shared_ptr<nvinfer1::ICudaEngine> engine =
                     {nullptr, TensorRTDeleter<nvinfer1::ICudaEngine>()},
             const OperatorNodeConfig& config = {});
@@ -166,9 +187,9 @@ public:
 
 private:
     // note: gpu allocator must be released after other trt objects
+    std::shared_ptr<nvinfer1::IBuilder> m_builder;
     std::shared_ptr<GpuAllocator> m_gpu_allocator;
     std::shared_ptr<nvinfer1::INetworkDefinition> m_network;
-    std::shared_ptr<nvinfer1::IBuilder> m_builder;
     std::shared_ptr<nvinfer1::ICudaEngine> m_engine;
 #if NV_TENSOR_RT_VERSION >= 6001
     TensorRTUniquePtr<nvinfer1::IBuilderConfig> m_builder_config;
@@ -181,7 +202,8 @@ class TensorRTOpr::Logger final : public nvinfer1::ILogger, NonCopyableObj {
     Logger();
 
 public:
-    void log(nvinfer1::ILogger::Severity severity, const char* msg) override;
+    void log(nvinfer1::ILogger::Severity severity, const char* msg)
+            TENSORRT_NO_EXCEPT(noexcept) override;
     static Logger& instance();
 };
 
@@ -194,12 +216,12 @@ public:
     explicit GpuAllocator(CompNode cn);
     ~GpuAllocator() noexcept;
 
-    void* allocate(uint64_t size, uint64_t alignment, uint32_t flags) override;
-    void free(void* memory) override;
+    void* allocate(uint64_t size, uint64_t alignment, uint32_t flags)
+            TENSORRT_NO_EXCEPT(noexcept) override;
+    void free(void* memory) TENSORRT_NO_EXCEPT(noexcept) override;
 
     CompNode comp_node() const { return m_cn; }
 };
-
 
 }  // namespace opr
 }  // namespace mgb

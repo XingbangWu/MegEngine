@@ -1,20 +1,9 @@
-/**
- * \file dnn/src/arm_common/conv_bias/f16/do_conv_stride1.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include <algorithm>
 
 #if __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
 #include "./do_conv_stride1.h"
-#include "src/arm_common/simd_macro/marm_neon.h"
 #include "src/arm_common/conv_bias/postprocess_helper.h"
+#include "src/arm_common/simd_macro/marm_neon.h"
 
 using namespace megdnn;
 using namespace arm_common;
@@ -24,10 +13,9 @@ using namespace conv_stride1;
 using NCBKernSizeParam = fallback::ConvBiasImpl::NCBKernSizeParam;
 using NCBKernParam = fallback::ConvBiasImpl::NCBKernParam;
 
-
-void conv_stride1::do_conv_2x2_stride1(const __fp16* src, const __fp16* filter, __fp16* dst,
-                         size_t IH, size_t IW, size_t OH, size_t OW,
-                         size_t IC) {
+void conv_stride1::do_conv_2x2_stride1(
+        const __fp16* src, const __fp16* filter, __fp16* dst, size_t IH, size_t IW,
+        size_t OH, size_t OW, size_t IC) {
     const size_t tail_step = IW - OW;
     //! unroll of 2
     size_t ic = 0;
@@ -130,9 +118,9 @@ void conv_stride1::do_conv_2x2_stride1(const __fp16* src, const __fp16* filter, 
     }
 }
 
-void conv_stride1::do_conv_3x3_stride1(const __fp16* src, const __fp16* filter, __fp16* dst,
-                         size_t IH, size_t IW, size_t OH, size_t OW,
-                         size_t IC) {
+void conv_stride1::do_conv_3x3_stride1(
+        const __fp16* src, const __fp16* filter, __fp16* dst, size_t IH, size_t IW,
+        size_t OH, size_t OW, size_t IC) {
     const size_t tail_step = IW - OW;
 
     rep(ic, IC) {
@@ -271,9 +259,9 @@ void conv_stride1::do_conv_3x3_stride1(const __fp16* src, const __fp16* filter, 
     }
 }
 
-void conv_stride1::do_conv_5x5_stride1(const __fp16* src, const __fp16* filter, __fp16* dst,
-                         size_t IH, size_t IW, size_t OH, size_t OW,
-                         size_t IC) {
+void conv_stride1::do_conv_5x5_stride1(
+        const __fp16* src, const __fp16* filter, __fp16* dst, size_t IH, size_t IW,
+        size_t OH, size_t OW, size_t IC) {
     const size_t tail_step = IW - OW;
 
     rep(ic, IC) {

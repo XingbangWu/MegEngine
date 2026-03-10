@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/cambricon/megcore/cambricon_computing_context.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "megcore.h"
 
 #include "src/cambricon/utils.h"
@@ -23,24 +13,31 @@ CambriconComputingContext::CambriconComputingContext(
         const CambriconContext& ctx)
         : ComputingContext(dev_handle, flags),
           own_queue{ctx.queue == nullptr},
+          own_cnnl_handle(ctx.cnnl_handle == nullptr),
           context_{ctx} {
     megcorePlatform_t platform;
     megcoreGetPlatform(dev_handle, &platform);
     megdnn_assert(platform == megcorePlatformCambricon);
     if (own_queue) {
-        cnrt_check(cnrtCreateQueue(&context_.queue));
+        cnrt_check(cnrtQueueCreate(&context_.queue));
+    }
+    if (own_cnnl_handle) {
+        cnnl_check(cnnlCreate(&context_.cnnl_handle));
+        cnnl_check(cnnlSetQueue(context_.cnnl_handle, context_.queue));
     }
 }
 
 CambriconComputingContext::~CambriconComputingContext() {
+    if (own_cnnl_handle) {
+        cnnl_check(cnnlDestroy(context_.cnnl_handle));
+    }
     if (own_queue) {
-        cnrt_check(cnrtDestroyQueue(context_.queue));
+        cnrt_check(cnrtQueueDestroy(context_.queue));
     }
 }
 
-void CambriconComputingContext::memcpy(void* dst, const void* src,
-                                       size_t size_in_bytes,
-                                       megcoreMemcpyKind_t kind) {
+void CambriconComputingContext::memcpy(
+        void* dst, const void* src, size_t size_in_bytes, megcoreMemcpyKind_t kind) {
     cnrtMemTransDir_t dir;
     switch (kind) {
         case megcoreMemcpyDeviceToHost:
@@ -53,26 +50,31 @@ void CambriconComputingContext::memcpy(void* dst, const void* src,
             dir = CNRT_MEM_TRANS_DIR_DEV2DEV;
             break;
         default:
-            megdnn_throw(megdnn_mangle("bad cnrt mem trans dir"));
+            megdnn_throw("bad cnrt mem trans dir");
     }
-    if (kind == megcoreMemcpyDeviceToDevice) {
-        cnrt_check(cnrtSyncQueue(context_.queue));
-        cnrt_check(cnrtMemcpy(dst, const_cast<void*>(src), size_in_bytes, dir));
-        return;
-    }
-    cnrt_check(cnrtMemcpyAsync(dst, const_cast<void*>(src), size_in_bytes,
-                               context_.queue, dir));
+    cnrt_check(cnrtMemcpyAsync(
+            dst, const_cast<void*>(src), size_in_bytes, context_.queue, dir));
 }
 
-void CambriconComputingContext::memset(void* dst, int value,
-                                       size_t size_in_bytes) {
-    cnrt_check(cnrtSyncQueue(context_.queue));
-    cnrt_check(cnrtMemset(dst, value, size_in_bytes));
+void CambriconComputingContext::memcpy_peer_async_d2d(
+        void* dst, int dst_dev, const void* src, int src_dev, size_t size_in_bytes) {
+    unsigned int can_access = -1;
+    cnrt_check(cnrtGetPeerAccessibility(&can_access, src_dev, dst_dev));
+    if (can_access == -1) {
+        megdnn_throw("there is no enough MLU devices for memory copy");
+    }
+
+    cnrt_check(cnrtMemcpyPeerAsync(
+            dst, dst_dev, const_cast<void*>(src), src_dev, size_in_bytes,
+            context_.queue));
+}
+
+void CambriconComputingContext::memset(void* dst, int value, size_t size_in_bytes) {
+    cnrt_check(cnrtMemsetAsync(dst, value, size_in_bytes, context_.queue));
 }
 
 void CambriconComputingContext::synchronize() {
-    cnrt_check(cnrtSyncQueue(context_.queue));
+    cnrt_check(cnrtQueueSync(context_.queue));
 }
 
 // vim: syntax=cpp.doxygen
-

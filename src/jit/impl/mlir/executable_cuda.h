@@ -1,15 +1,3 @@
-/**
- * \file src/jit/impl/mlir/executable_cuda.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #pragma once
 
 #include "megbrain_build_config.h"
@@ -30,8 +18,7 @@ namespace jit {
  */
 class MLIRCUDAExecutable final : public Executable {
 public:
-    MLIRCUDAExecutable(mlir::OwningModuleRef& module,
-                       const std::string& kernel_name);
+    MLIRCUDAExecutable(mlir::OwningModuleRef& module, const std::string& kernel_name);
     ~MLIRCUDAExecutable();
 
     /*!
@@ -41,6 +28,7 @@ public:
     void execute(JITExecutor* fusion_opr) override final;
 
     const static std::string sm_blob_annotation;
+
 private:
     //! cache for a func on a specific device
     struct FuncCache {
@@ -54,8 +42,7 @@ private:
         std::string kernel_data;
         CompNode::UnorderedMap<Func> cn2func;
 
-        void exec(const JITExecutor* fusion_opr,
-                  const MLIRCUDAExecutable* cuda_exe);
+        void exec(const JITExecutor* fusion_opr, const MLIRCUDAExecutable* cuda_exe);
     };
 
     std::string m_kernel_name;

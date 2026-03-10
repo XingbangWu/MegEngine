@@ -1,11 +1,3 @@
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-import warnings
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 from typing import Any, Callable, Iterable, Optional, Set, Tuple, Union
@@ -17,13 +9,14 @@ from ..logger import get_logger
 from ..tensor import Parameter, Tensor
 from ..utils.deprecation import deprecated
 from ..utils.hook import HookHandler
+from ..utils.naming import AutoNaming
 
 logger = get_logger(__name__)
 
 
-def _expand_structure(key, obj):
+def _expand_structure(prefix, obj):
     if isinstance(obj, (Tensor, Module)):
-        return [(key, obj)]
+        return [(prefix, obj)]
     elif isinstance(obj, (list, tuple, dict)):
         ret = []
         if isinstance(obj, dict):
@@ -37,14 +30,36 @@ def _expand_structure(key, obj):
                     "keys for Tensor and Module must be str, error key: {}".format(k)
                 )
             for kt, vt in sub_ret:
-                ret.extend([(key + "." + kt, vt)])
+                ret.extend([(prefix + "." + kt, vt)])
         return ret
     else:
         return []
 
 
+def _access_structure(obj, key, callback=None):
+    key_list = key.split(".")
+    cur = obj
+    parent = None
+    for k in key_list:
+        parent = cur
+        if isinstance(cur, (list, tuple)):
+            k = int(k)
+            cur = cur[k]
+        elif isinstance(cur, dict):
+            cur = cur[k]
+        else:
+            cur = getattr(cur, k)
+    if callable is None:
+        return cur
+    return callback(parent, k, cur)
+
+
 def _is_parameter(obj):
     return isinstance(obj, Parameter)
+
+
+def _is_tensor(obj):
+    return isinstance(obj, Tensor)
 
 
 def _is_buffer(obj):
@@ -57,18 +72,30 @@ def _is_module(obj):
 
 def _get_XNorm_typeclass():
     from .batchnorm import _BatchNorm
-    from .normalization import GroupNorm, InstanceNorm, LayerNorm
+    from .normalization import GroupNorm, InstanceNorm, LayerNorm, GeneralNorm
 
     XNorm_types = (_BatchNorm, GroupNorm, LayerNorm, InstanceNorm)
     return XNorm_types
 
 
 class Module(metaclass=ABCMeta):
-    """
-    Base Module class.
+    r"""Base Module class.
+
+    Args:
+        name: module's name, can be initialized by the ``kwargs`` parameter
+            of child class.
     """
 
-    def __init__(self):
+    def __init__(self, name=None):
+        self._modules = []
+
+        if name is not None:
+            assert (
+                isinstance(name, str) and name.strip()
+            ), "Module's name must be a non-empty string"
+
+        self.name = name
+
         # runtime attributes
         self.training = True
         self.quantize_disabled = False
@@ -77,25 +104,28 @@ class Module(metaclass=ABCMeta):
         self._forward_pre_hooks = OrderedDict()
         self._forward_hooks = OrderedDict()
 
-        self._modules = []
+        # used for profiler and automatic naming
+        self._name = None
+        self._short_name = None
 
     @abstractmethod
     def forward(self, inputs):
         pass
 
     def register_forward_pre_hook(self, hook: Callable) -> HookHandler:
-        """
-        Registers a hook to handle forward inputs. `hook` should be a function.
+        """Registers a hook to handle forward inputs. `hook` should be a function.
 
-        :param hook: a function that receive `module` and `inputs`, then return
-        a modified `inputs` or `None`.
-        :return: a handler with :meth:`~.HookHandler.remove` interface to delete the hook.
+        Args:
+            hook: a function that receive `module` and `inputs`, then return
+                a modified `inputs` or `None`.
+
+        Returns:
+            a handler with :meth:`~.HookHandler.remove` interface to delete the hook.
         """
         return HookHandler(self._forward_pre_hooks, hook)
 
     def register_forward_hook(self, hook: Callable) -> HookHandler:
-        """
-        Registers a hook to handle forward results. `hook` should be a function that
+        """Registers a hook to handle forward results. `hook` should be a function that
         receive `module`, `inputs` and `outputs`, then return a modified `outputs` or `None`.
 
         This method return a handler with :meth:`~.HookHandler.remove` interface to delete the hook.
@@ -103,6 +133,7 @@ class Module(metaclass=ABCMeta):
         return HookHandler(self._forward_hooks, hook)
 
     def __call__(self, *inputs, **kwargs):
+        AutoNaming.push_scope(self.name if self.name is not None else self._short_name)
         for hook in self._forward_pre_hooks.values():
             modified_inputs = hook(self, inputs)
             if modified_inputs is not None:
@@ -116,6 +147,7 @@ class Module(metaclass=ABCMeta):
             modified_outputs = hook(self, inputs, outputs)
             if modified_outputs is not None:
                 outputs = modified_outputs
+        AutoNaming.pop_scope()
         return outputs
 
     def _flatten(
@@ -128,19 +160,19 @@ class Module(metaclass=ABCMeta):
         predicate: Callable[[Any], bool] = lambda _: True,
         seen: Optional[Set[int]] = None
     ) -> Union[Iterable[Any], Iterable[Tuple[str, Any]]]:
-        """
-        Scans the module object and returns an iterable for the :class:`~.Tensor`
+        """Scans the module object and returns an iterable for the :class:`~.Tensor`
         and :class:`~.Module` attributes that agree with the ``predicate``. For multiple
         calls of this function with same arguments, the order of objects within the
         returned iterable is guaranteed to be identical, as long as all the involved
         module objects' ``__dict__`` does not change thoughout those calls.
 
-        :param recursive: whether to recursively scan all the submodules.
-        :param with_key: whether to yield keys along with yielded objects.
-        :param with_parent: whether to yield ``self`` along with yielded objects.
-        :param prefix: prefix appended to the yielded keys.
-        :param predicate: the predication function applied to scanned objects.
-        :param seen: a dict that records whether a module has been traversed yet.
+        Args:
+            recursive: whether to recursively scan all the submodules.
+            with_key: whether to yield keys along with yielded objects.
+            with_parent: whether to yield ``self`` along with yielded objects.
+            prefix: prefix appended to the yielded keys.
+            predicate: the predication function applied to scanned objects.
+            seen: a dict that records whether a module has been traversed yet.
         """
         if seen is None:
             seen = set([id(self)])
@@ -176,20 +208,19 @@ class Module(metaclass=ABCMeta):
                     )
 
     def parameters(self, recursive: bool = True, **kwargs) -> Iterable[Parameter]:
-        r"""
-        Returns an iterable for the :class:`~.Parameter` of the module.
+        r"""Returns an iterable for the :class:`~.Parameter` of the module.
 
-        :param recursive: If ``True``, returns all :class:`~.Parameter` within this
-            module, else only returns :class:`~.Parameter` that are direct attributes
-            of this module.
+        Args:
+            recursive: If ``True``, returns all :class:`~.Parameter` within this
+                module, else only returns :class:`~.Parameter` that are direct attributes
+                of this module.
         """
 
         if "requires_grad" in kwargs:
             del kwargs["requires_grad"]
-            warnings.warn(
+            logger.warning(
                 "Tensor currently has no requires_grad attribute "
-                "so requires_grad argument is ignored here",
-                DeprecationWarning,
+                "so requires_grad argument is ignored here"
             )
 
         def predicate(obj) -> bool:
@@ -202,22 +233,21 @@ class Module(metaclass=ABCMeta):
     def named_parameters(
         self, prefix: Optional[str] = None, recursive: bool = True, **kwargs
     ) -> Iterable[Tuple[str, Parameter]]:
-        """
-        Returns an iterable for key :class:`~.Parameter` pairs of the module, where
+        r"""Returns an iterable for key :class:`~.Parameter` pairs of the module, where
         ``key`` is the dotted path from this module to the :class:`~.Parameter`.
 
-        :param prefix: prefix prepended to the keys.
-        :param recursive: if ``True``, returns all :class:`~.Parameter` within this
-            module, else only returns :class:`~.Parameter` that are direct attributes
-            of this module.
+        Args:
+            prefix: prefix prepended to the keys.
+            recursive: if ``True``, returns all :class:`~.Parameter` within this
+                module, else only returns :class:`~.Parameter` that are direct attributes
+                of this module.
         """
 
         if "requires_grad" in kwargs:
             del kwargs["requires_grad"]
-            warnings.warn(
+            logger.warning(
                 "Tensor currently has no requires_grad attribute "
-                "so requires_grad argument is ignored here",
-                DeprecationWarning,
+                "so requires_grad argument is ignored here"
             )
 
         def predicate(obj) -> bool:
@@ -232,14 +262,13 @@ class Module(metaclass=ABCMeta):
         )
 
     def buffers(self, recursive: bool = True, **kwargs) -> Iterable[Tensor]:
-        """
-        Returns an iterable for the buffers of the module.
+        r"""Returns an iterable for the buffers of the module.
 
         Buffer is defined to be :class:`~.Tensor` excluding :class:`~.Parameter`.
 
-        :param recursive: if ``True``, returns all buffers within this
-            module, else only returns buffers that are direct attributes
-            of this module.
+        Args:
+            recursive: if ``True``, returns all buffers within this
+                module, else only returns buffers that are direct attributes
         """
         yield from self._flatten(
             with_key=False, predicate=_is_buffer, recursive=recursive, **kwargs
@@ -248,16 +277,17 @@ class Module(metaclass=ABCMeta):
     def named_buffers(
         self, prefix: Optional[str] = None, recursive: bool = True, **kwargs
     ) -> Iterable[Tuple[str, Tensor]]:
-        """
-        Returns an iterable for key buffer pairs of the module, where
+        r"""Returns an iterable for key buffer pairs of the module, where
         ``key`` is the dotted path from this module to the buffer.
 
         Buffer is defined to be :class:`~.Tensor` excluding :class:`~.Parameter`.
 
-        :param prefix: prefix prepended to the keys.
-        :param recursive: if ``True``, returns all buffers within this
-            module, else only returns buffers that are direct attributes
-            of this module.
+        Args:
+            prefix: prefix prepended to the keys.
+            recursive: if ``True``, returns all buffers within this
+                module, else only returns buffers that are direct attributes
+                of this module.
+            prefix: Optional[str]:
         """
         yield from self._flatten(
             with_key=True,
@@ -267,9 +297,40 @@ class Module(metaclass=ABCMeta):
             **kwargs,
         )
 
-    def children(self, **kwargs) -> "Iterable[Module]":
+    def tensors(self, recursive: bool = True, **kwargs) -> Iterable[Parameter]:
+        r"""
+        Returns an iterable for the :class:`~.Tensor` of the module.
+
+        :param recursive: If ``True``, returns all :class:`~.Tensor` within this
+            module, else only returns :class:`~.Tensor` that are direct attributes
+            of this module.
         """
-        Returns an iterable for all the submodules that are direct attributes of this
+        yield from self._flatten(
+            with_key=False, predicate=_is_tensor, recursive=recursive, **kwargs
+        )
+
+    def named_tensors(
+        self, prefix: Optional[str] = None, recursive: bool = True, **kwargs
+    ) -> Iterable[Tuple[str, Tensor]]:
+        """
+        Returns an iterable for key tensor pairs of the module, where
+        ``key`` is the dotted path from this module to the tensor.
+
+        :param prefix: prefix prepended to the keys.
+        :param recursive: if ``True``, returns all tensors within this
+            module, else only returns tensors that are direct attributes
+            of this module.
+        """
+        yield from self._flatten(
+            with_key=True,
+            prefix=prefix,
+            predicate=_is_tensor,
+            recursive=recursive,
+            **kwargs,
+        )
+
+    def children(self, **kwargs) -> "Iterable[Module]":
+        r"""Returns an iterable for all the submodules that are direct attributes of this
         module.
         """
         yield from self._flatten(
@@ -277,8 +338,7 @@ class Module(metaclass=ABCMeta):
         )
 
     def named_children(self, **kwargs) -> "Iterable[Tuple[str, Module]]":
-        """
-        Returns an iterable of key-submodule pairs for all the submodules that are
+        r"""Returns an iterable of key-submodule pairs for all the submodules that are
         direct attributes of this module, where 'key' is the attribute name of
         submodules.
         """
@@ -287,9 +347,7 @@ class Module(metaclass=ABCMeta):
         )
 
     def modules(self, **kwargs) -> "Iterable[Module]":
-        """
-        Returns an iterable for all the modules within this module, including itself.
-        """
+        r"""Returns an iterable for all the modules within this module, including itself."""
         if "with_parent" in kwargs and kwargs["with_parent"]:
             yield self, None
         else:
@@ -299,12 +357,12 @@ class Module(metaclass=ABCMeta):
     def named_modules(
         self, prefix: Optional[str] = None, **kwargs
     ) -> "Iterable[Tuple[str, Module]]":
-        """
-        Returns an iterable of key-module pairs for all the modules within this
+        r"""Returns an iterable of key-module pairs for all the modules within this
         module, including itself, where 'key' is the dotted path from this module to the
         submodules.
 
-        :param prefix: prefix prepended to the path.
+        Args:
+            prefix: prefix prepended to the path.
         """
         if "with_parent" in kwargs and kwargs["with_parent"]:
             yield ("" if prefix is None else prefix), self, None
@@ -315,33 +373,31 @@ class Module(metaclass=ABCMeta):
         )
 
     def apply(self, fn: "Callable[[Module], Any]") -> None:
-        """
-        Applies function ``fn`` to all the modules within this module, including
+        r"""Applies function ``fn`` to all the modules within this module, including
         itself.
 
-        :param fn: the function to be applied on modules.
+        Args:
+            fn: the function to be applied on modules.
         """
         for it in self.modules():
             fn(it)
 
     @deprecated(version="1.0")
     def zero_grad(self) -> None:
-        """
-        Sets all parameters' grads to zero
-        """
+        r"""Sets all parameters' grads to zero"""
         for param in self.parameters():
             if param.grad is not None:
                 param.grad.reset_zero()
 
     def train(self, mode: bool = True, recursive: bool = True) -> None:
-        """
-        Sets training mode of all the modules within this module (including itself) to
+        r"""Sets training mode of all the modules within this module (including itself) to
         ``mode``. This effectively sets the ``training`` attributes of those modules
         to ``mode``, but only has effect on certain modules (e.g.
         :class:`~.BatchNorm2d`, :class:`~.Dropout`, :class:`~.Observer`)
 
-        :param mode: the training mode to be set on modules.
-        :param recursive: whether to recursively call submodules' ``train()``.
+        Args:
+            mode: the training mode to be set on modules.
+            recursive: whether to recursively call submodules' ``train()``.
         """
         if not recursive:
             self.training = mode
@@ -353,15 +409,13 @@ class Module(metaclass=ABCMeta):
         self.apply(fn)
 
     def eval(self) -> None:
-        """
-        Sets training mode of all the modules within this module (including itself) to
+        r"""Sets training mode of all the modules within this module (including itself) to
         ``False``. See :meth:`~.Module.train` for details.
         """
         self.train(False)
 
     def disable_quantize(self, value=True):
-        r"""
-        Sets ``module``'s ``quantize_disabled`` attribute and return ``module``.
+        r"""Sets ``module``'s ``quantize_disabled`` attribute and return ``module``.
         Could be used as a decorator.
         """
 
@@ -374,8 +428,7 @@ class Module(metaclass=ABCMeta):
     def replace_param(
         self, params: dict, start_pos: int, seen: Optional[Set[int]] = None
     ):
-        """
-        Replaces module's parameters with ``params``, used by :class:`~.ParamPack` to
+        r"""Replaces module's parameters with ``params``, used by :class:`~.ParamPack` to
         speedup multimachine training.
         """
         offset = 0
@@ -401,6 +454,7 @@ class Module(metaclass=ABCMeta):
         return offset
 
     def state_dict(self, rst=None, prefix="", keep_var=False):
+        r"""Returns a dictionary containing whole states of the module."""
         _rst = self._state_dict(rst=rst, prefix=prefix, keep_var=keep_var)
         rst = OrderedDict()
         XNorm_typeclass = _get_XNorm_typeclass()
@@ -413,9 +467,7 @@ class Module(metaclass=ABCMeta):
         return rst
 
     def _state_dict(self, rst=None, prefix="", keep_var=False):
-        r"""
-        Returns a dictionary containing whole states of the module.
-        """
+        r"""Returns a dictionary containing whole states of the module."""
 
         def is_state(obj):
             return _is_parameter(obj) or _is_buffer(obj)
@@ -445,8 +497,7 @@ class Module(metaclass=ABCMeta):
         state_dict: Union[dict, Callable[[str, Tensor], Optional[np.ndarray]]],
         strict=True,
     ):
-        r"""
-        Loads a given dictionary created by :func:`state_dict` into this module.
+        r"""Loads a given dictionary created by :func:`state_dict` into this module.
         If ``strict`` is ``True``, the keys of :func:`state_dict` must exactly match the keys
         returned by :func:`state_dict`.
 
@@ -481,8 +532,7 @@ class Module(metaclass=ABCMeta):
                 if 'bias' in k:
                     M.init.zero_(v)
                 if 'conv' in k:
-                    return v.numpy() * (np.abs(v.numpy()) > 1e-3).astype("float32)
-            model.load_state_dict(reinit_and_pruning, strict=False)
+
         """
         unused = []
         if isinstance(state_dict, dict):
@@ -524,8 +574,7 @@ class Module(metaclass=ABCMeta):
                 )
 
     def _load_state_dict_with_closure(self, closure):
-        """
-        Advance state_dict load through callable ``closure`` whose signature is
+        r"""Advance state_dict load through callable ``closure`` whose signature is
         ``closure(key: str, var: Tensor) -> Union[np.ndarry, None]``
         """
         XNorm_typeclass = _get_XNorm_typeclass()
@@ -566,32 +615,87 @@ class Module(metaclass=ABCMeta):
                             k, var_shape, to_be_load_shape
                         )
                     )
-            var._reset(type(var)(to_be_load, dtype=to_be_load.dtype, device=var.device))
+            var._reset(
+                type(var)(
+                    to_be_load,
+                    dtype=to_be_load.dtype,
+                    device=var.device,
+                    no_cache=True,
+                    format=var.format,
+                )
+            )
             loaded.append(k)
 
         return set(loaded), set(skipped)
 
     def __setattr__(self, name: str, value):
-        if _is_module(value):
+        is_module_like = _is_module(value) or isinstance(value, (list, tuple, dict))
+        if name != "_modules":
             modules = self.__dict__.get("_modules")
-            if modules is None:
+            if modules is None and is_module_like:
                 raise AttributeError(
                     "cannot assign module before Module.__init__() call"
                 )
-            if name not in self.__dict__:
-                modules.append(name)
+            if is_module_like:
+                if name not in modules:
+                    modules.append(name)
+            else:
+                if modules is not None and name in modules:
+                    modules.remove(name)
+
+        def append_name(prefix, name):
+            if prefix is None or prefix == "":
+                return name
+            return prefix + "." + name
+
+        def set_name(parent, prefix, name, obj):
+            if isinstance(obj, Tensor):
+                assert obj.name is not None
+                if obj.name != "":
+                    name = obj.name
+            full_name = append_name(prefix, name)
+            if obj._short_name and obj._short_name != name:
+                logger.warning(
+                    "try setting the submodule `{}` to `{}`'s new attribute `{}`, its name `{}` will remain unchanged".format(
+                        obj._short_name, type(parent), name, obj._short_name
+                    )
+                )
+                return
+            if isinstance(obj, Tensor):
+                obj._prefix = prefix
+                obj._name = full_name
+                obj._short_name = name
+                obj._set_name(obj._name)
+                return obj._name
+            elif isinstance(obj, Module):
+                obj._name = full_name
+                obj._short_name = name
+                for k, v in obj._flatten(recursive=False, with_key=True):
+                    set_name(obj, full_name, k, v)
+                return obj._name
+            else:
+                assert False
+
+        for k, v in _expand_structure(name, value):
+            prefix = self._name if self._name else self.name
+            set_name(self, prefix, k, v)
         super().__setattr__(name, value)
+
+    def __setstate__(self, state):
+        if "_short_name" not in state:
+            state["_short_name"] = state["_name"]
+            state["_name"] = None
+        self.__dict__.update(state)
 
     def __delattr__(self, name: str):
         if name in self.__dict__ and _is_module(self.__dict__[name]):
             modules = self.__dict__.get("_modules")
-            modules.remove(name)
+            if name in modules:
+                modules.remove(name)
         super().__delattr__(name)
 
     def _module_info_string(self) -> str:
-        r"""
-        Set the extra representation of the module.
-        """
+        r"""Set the extra representation of the module."""
         return ""
 
     def __repr__(self):
@@ -610,10 +714,17 @@ class Module(metaclass=ABCMeta):
         extra_repr = self._module_info_string()
         if extra_repr:
             extra_lines = extra_repr.split("\n")
-        child_lines = [
-            "(" + name + "): " + add_indent(repr(self.__dict__[name]), 2)
-            for name in self._modules
-        ]
+        child_lines = []
+        for name in self._modules:
+            if _is_module(self.__dict__[name]):
+                child_lines.append(
+                    "(" + name + "): " + add_indent(repr(self.__dict__[name]), 2)
+                )
+            else:
+                for k, v in _expand_structure(name, self.__dict__[name]):
+                    if _is_module(v):
+                        child_lines.append("(" + k + "): " + add_indent(repr(v), 2))
+
         lines = extra_lines + child_lines
         main_str = self.__class__.__name__ + "("
         if lines:

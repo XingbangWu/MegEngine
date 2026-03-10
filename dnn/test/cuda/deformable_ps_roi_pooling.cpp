@@ -1,14 +1,3 @@
-/**
- * \file dnn/test/cuda/deformable_ps_roi_pooling.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megdnn/oprs/nn.h"
 #include "src/cuda/utils.h"
 #include "test/common/checker.h"
@@ -23,10 +12,10 @@ using namespace test;
 TEST_F(CUDA, DEFORMABLE_PSROI_POOLING_FWD) {
     Checker<DeformablePSROIPooling> checker(handle_cuda());
 
-    auto run = [&checker](size_t N, size_t C, size_t IH, size_t IW, size_t OH,
-                          size_t OW, bool no_trans, size_t nr_bbox,
-                          size_t nr_cls, size_t part_sz, size_t sample_per_part,
-                          float trans_std, float spatial_scale) {
+    auto run = [&checker](
+                       size_t N, size_t C, size_t IH, size_t IW, size_t OH, size_t OW,
+                       bool no_trans, size_t nr_bbox, size_t nr_cls, size_t part_sz,
+                       size_t sample_per_part, float trans_std, float spatial_scale) {
         DeformablePSROIPooling::Param param;
         param.no_trans = no_trans;
         param.pooled_h = OH;
@@ -53,10 +42,10 @@ TEST_F(CUDA, DEFORMABLE_PSROI_POOLING_FWD) {
 TEST_F(CUDA, DEFORMABLE_PSROI_POOLING_BWD) {
     Checker<DeformablePSROIPoolingBackward> checker(handle_cuda());
 
-    auto run = [&checker](size_t N, size_t C, size_t IH, size_t IW, size_t OH,
-                          size_t OW, bool no_trans, size_t nr_bbox,
-                          size_t nr_cls, size_t part_sz, size_t sample_per_part,
-                          float trans_std, float spatial_scale) {
+    auto run = [&checker](
+                       size_t N, size_t C, size_t IH, size_t IW, size_t OH, size_t OW,
+                       bool no_trans, size_t nr_bbox, size_t nr_cls, size_t part_sz,
+                       size_t sample_per_part, float trans_std, float spatial_scale) {
         DeformablePSROIPooling::Param param;
         param.no_trans = no_trans;
         param.pooled_h = OH;

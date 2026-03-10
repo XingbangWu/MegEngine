@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/rocm/checksum/opr_impl.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "hcc_detail/hcc_defs_prologue.h"
 
 #include "./opr_impl.h"
@@ -37,8 +27,8 @@ size_t ChecksumForwardImpl::get_workspace_in_bytes(const TensorLayout& data) {
     return wbundle.total_size_in_bytes();
 }
 
-ChecksumForward::Result ChecksumForwardImpl::exec(_megdnn_tensor_in data,
-                                                  _megdnn_workspace workspace) {
+ChecksumForward::Result ChecksumForwardImpl::exec(
+        _megdnn_tensor_in data, _megdnn_workspace workspace) {
     auto wbundle = get_wbundle(data.layout);
     wbundle.set(workspace.raw_ptr);
     Result result;
@@ -46,20 +36,20 @@ ChecksumForward::Result ChecksumForwardImpl::exec(_megdnn_tensor_in data,
     check_exec(data.layout, workspace.size);
     auto stream = hip_stream(handle());
 
-    auto ptr = static_cast<uint8_t*>(data.raw_ptr);
-    size_t size_all = data.layout.shape[0],
-           size_ints = size_all / sizeof(uint32_t);
+    auto ptr = static_cast<uint8_t*>(data.raw_ptr());
+    size_t size_all = data.layout.shape[0], size_ints = size_all / sizeof(uint32_t);
     auto last_val_size = std::min<size_t>(size_all, 4);
-    hip_check(hipMemcpyAsync(&result.last_val, ptr + size_all - last_val_size,
-                             last_val_size, hipMemcpyDeviceToHost, stream));
+    hip_check(hipMemcpyAsync(
+            &result.last_val, ptr + size_all - last_val_size, last_val_size,
+            hipMemcpyDeviceToHost, stream));
     if (size_ints) {
-        checksum::calc(static_cast<uint32_t*>(wbundle.get(1)),
-                       static_cast<uint32_t*>(data.raw_ptr),
-                       static_cast<uint32_t*>(wbundle.get(0)), size_ints,
-                       stream);
-        hip_check(hipMemcpyAsync(&result.checksum, wbundle.get(1),
-                                 sizeof(result.checksum), hipMemcpyDeviceToHost,
-                                 stream));
+        checksum::calc(
+                static_cast<uint32_t*>(wbundle.get(1)),
+                static_cast<uint32_t*>(data.raw_ptr()),
+                static_cast<uint32_t*>(wbundle.get(0)), size_ints, stream);
+        hip_check(hipMemcpyAsync(
+                &result.checksum, wbundle.get(1), sizeof(result.checksum),
+                hipMemcpyDeviceToHost, stream));
     }
     hip_check(hipStreamSynchronize(stream));
     return result;

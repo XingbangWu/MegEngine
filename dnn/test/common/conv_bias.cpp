@@ -1,14 +1,3 @@
-/**
- * \file dnn/test/common/conv_bias.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #include "test/common/conv_bias.h"
 #include "megdnn/opr_param_defs.h"
 #include "src/common/utils.h"
@@ -21,10 +10,9 @@ namespace {
 void convert_arg_from_nchw4_to_chwn4(TestArg& arg) {
     arg.param.format = param::ConvBias::Format::CHWN4;
     arg.src = TensorShape{arg.src[1], arg.src[2], arg.src[3], arg.src[0], 4};
-    arg.filter = TensorShape{arg.filter[1], arg.filter[2], arg.filter[3],
-                             arg.filter[0], 4};
-    arg.bias =
-            TensorShape{arg.bias[1], arg.bias[2], arg.bias[3], arg.bias[0], 4};
+    arg.filter =
+            TensorShape{arg.filter[1], arg.filter[2], arg.filter[3], arg.filter[0], 4};
+    arg.bias = TensorShape{arg.bias[1], arg.bias[2], arg.bias[3], arg.bias[0], 4};
 }
 }  // namespace
 
@@ -77,19 +65,20 @@ std::vector<TestArg> get_chanwise_args() {
                     for (size_t ocpg : {1, 3}) {
                         cur_param.pad_h = cur_param.pad_w = p;
                         cur_param.stride_h = cur_param.stride_w = s;
-                        args.emplace_back(cur_param, TensorShape{2, 3, 16, 16},
-                                          TensorShape{3, ocpg, 1, f, f},
-                                          TensorShape{1, 3 * ocpg, 1, 1});
+                        args.emplace_back(
+                                cur_param, TensorShape{2, 3, 16, 16},
+                                TensorShape{3, ocpg, 1, f, f},
+                                TensorShape{1, 3 * ocpg, 1, 1});
                     }
 
-        args.emplace_back(cur_param, TensorShape{32, 12, 20, 10},
-                          TensorShape{12, 2, 1, 4, 5},
-                          TensorShape{1, 24, 1, 1});
+        args.emplace_back(
+                cur_param, TensorShape{32, 12, 20, 10}, TensorShape{12, 2, 1, 4, 5},
+                TensorShape{1, 24, 1, 1});
 
         // padding larger than kern
-        args.emplace_back(cur_param, TensorShape{32, 12, 20, 10},
-                          TensorShape{12, 2, 1, 4, 5},
-                          TensorShape{1, 24, 1, 1});
+        args.emplace_back(
+                cur_param, TensorShape{32, 12, 20, 10}, TensorShape{12, 2, 1, 4, 5},
+                TensorShape{1, 24, 1, 1});
     }
     return args;
 }
@@ -104,14 +93,14 @@ std::vector<TestArg> get_args_1x1() {
         cur_param.nonlineMode = nlmode;
         for (size_t i : {16, 19}) {
             cur_param.mode = param::ConvBias::Mode::CONVOLUTION;
-            args.emplace_back(cur_param, TensorShape{2, 20, i, i + 1},
-                              TensorShape{30, 20, 1, 1},
-                              TensorShape{1, 30, 1, 1});
+            args.emplace_back(
+                    cur_param, TensorShape{2, 20, i, i + 1}, TensorShape{30, 20, 1, 1},
+                    TensorShape{1, 30, 1, 1});
 
             cur_param.mode = param::ConvBias::Mode::CROSS_CORRELATION;
-            args.emplace_back(cur_param, TensorShape{2, 20, i, i + 1},
-                              TensorShape{30, 20, 1, 1},
-                              TensorShape{1, 30, 1, 1});
+            args.emplace_back(
+                    cur_param, TensorShape{2, 20, i, i + 1}, TensorShape{30, 20, 1, 1},
+                    TensorShape{1, 30, 1, 1});
         }
     }
     return args;
@@ -170,16 +159,19 @@ std::vector<TestArg> get_winograd_args(size_t kernel_size) {
     for (size_t i : {9, 63}) {
         cur_param.sparse = param::ConvBias::Sparse::DENSE;
         cur_param.pad_h = cur_param.pad_w = 1;
-        args.emplace_back(cur_param, TensorShape{1, 8, i, i},
-                          TensorShape{128, 8, kernel_size, kernel_size},
-                          TensorShape{1, 128, 1, 1});
-        args.emplace_back(cur_param, TensorShape{2, 8, i, i},
-                          TensorShape{128, 8, kernel_size, kernel_size},
-                          TensorShape{1, 128, 1, 1});
+        args.emplace_back(
+                cur_param, TensorShape{1, 8, i, i},
+                TensorShape{128, 8, kernel_size, kernel_size},
+                TensorShape{1, 128, 1, 1});
+        args.emplace_back(
+                cur_param, TensorShape{2, 8, i, i},
+                TensorShape{128, 8, kernel_size, kernel_size},
+                TensorShape{1, 128, 1, 1});
         cur_param.sparse = param::ConvBias::Sparse::GROUP;
-        args.emplace_back(cur_param, TensorShape{2, 2 * 8, i, i},
-                          TensorShape{2, 128, 8, kernel_size, kernel_size},
-                          TensorShape{1, 2 * 128, 1, 1});
+        args.emplace_back(
+                cur_param, TensorShape{2, 2 * 8, i, i},
+                TensorShape{2, 128, 8, kernel_size, kernel_size},
+                TensorShape{1, 2 * 128, 1, 1});
     }
     return args;
 }
@@ -232,14 +224,16 @@ std::vector<TestArg> get_winograd_mk_packed_args(size_t pack_size) {
     for (size_t i : {9, 63}) {
         cur_param.sparse = param::ConvBias::Sparse::DENSE;
         cur_param.pad_h = cur_param.pad_w = 1;
-        args.emplace_back(cur_param, TensorShape{1, 8, i, i},
-                          TensorShape{128, 8, 3, 3}, TensorShape{1, 128, 1, 1});
-        args.emplace_back(cur_param, TensorShape{2, 8, i, i},
-                          TensorShape{128, 8, 3, 3}, TensorShape{1, 128, 1, 1});
+        args.emplace_back(
+                cur_param, TensorShape{1, 8, i, i}, TensorShape{128, 8, 3, 3},
+                TensorShape{1, 128, 1, 1});
+        args.emplace_back(
+                cur_param, TensorShape{2, 8, i, i}, TensorShape{128, 8, 3, 3},
+                TensorShape{1, 128, 1, 1});
         cur_param.sparse = param::ConvBias::Sparse::GROUP;
-        args.emplace_back(cur_param, TensorShape{2, 2 * 8, i, i},
-                          TensorShape{2, 128, 8, 3, 3},
-                          TensorShape{1, 2 * 128, 1, 1});
+        args.emplace_back(
+                cur_param, TensorShape{2, 2 * 8, i, i}, TensorShape{2, 128, 8, 3, 3},
+                TensorShape{1, 2 * 128, 1, 1});
     }
     return args;
 }
@@ -295,14 +289,16 @@ std::vector<TestArg> get_quantized_winograd_mk_packed_args(
     for (size_t i : {9, 63}) {
         cur_param.sparse = param::ConvBias::Sparse::DENSE;
         cur_param.pad_h = cur_param.pad_w = 1;
-        args.emplace_back(cur_param, TensorShape{1, 8, i, i},
-                          TensorShape{128, 8, 3, 3}, TensorShape{1, 128, 1, 1});
-        args.emplace_back(cur_param, TensorShape{2, 8, i, i},
-                          TensorShape{128, 8, 3, 3}, TensorShape{1, 128, 1, 1});
+        args.emplace_back(
+                cur_param, TensorShape{1, 8, i, i}, TensorShape{128, 8, 3, 3},
+                TensorShape{1, 128, 1, 1});
+        args.emplace_back(
+                cur_param, TensorShape{2, 8, i, i}, TensorShape{128, 8, 3, 3},
+                TensorShape{1, 128, 1, 1});
         cur_param.sparse = param::ConvBias::Sparse::GROUP;
-        args.emplace_back(cur_param, TensorShape{2, 2 * 8, i, i},
-                          TensorShape{2, 128, 8, 3, 3},
-                          TensorShape{1, 2 * 128, 1, 1});
+        args.emplace_back(
+                cur_param, TensorShape{2, 2 * 8, i, i}, TensorShape{2, 128, 8, 3, 3},
+                TensorShape{1, 2 * 128, 1, 1});
     }
     return args;
 }
@@ -405,9 +401,8 @@ std::vector<TestArg> get_int8_nchw4_args(size_t kernel_size) {
     return args;
 }
 
-std::vector<TestArg> get_int8_nchw44_args(size_t kernel_size, size_t pack_size,
-                                          bool compute_float32,
-                                          bool group_mode) {
+std::vector<TestArg> get_int8_nchw44_args(
+        size_t kernel_size, size_t pack_size, bool compute_float32, bool group_mode) {
     std::vector<TestArg> args;
     param::ConvBias cur_param;
     megdnn_assert(pack_size > 0, "not support pack_size");
@@ -415,7 +410,7 @@ std::vector<TestArg> get_int8_nchw44_args(size_t kernel_size, size_t pack_size,
     using NLMode = param::ConvBias::NonlineMode;
 
     // clang-format off
-    for (auto nlmode : {NLMode::IDENTITY, NLMode::RELU}) {
+    for (auto nlmode : {NLMode::IDENTITY, NLMode::RELU, NLMode::H_SWISH}) {
     for (auto mode : {param::ConvBias::Mode::CROSS_CORRELATION}) {
     for (size_t b : {1,2}) {
     for (size_t ic : {8,16}) {
@@ -494,7 +489,6 @@ std::vector<TestArg> get_int8_nchw44_args(size_t kernel_size, size_t pack_size,
     return args;
 }
 
-
 std::vector<TestArg> get_int8_nchw4_args_check_bounds(size_t kernel_size) {
     std::vector<TestArg> args;
     param::ConvBias cur_param;
@@ -530,6 +524,41 @@ std::vector<TestArg> get_int8_nchw4_args_check_bounds(size_t kernel_size) {
     return args;
 }
 
+std::vector<TestArg> get_int4_nchw64_args_ptx(size_t kernel_size, bool is_uint4) {
+    std::vector<TestArg> args;
+    param::ConvBias cur_param;
+
+    using NLMode = param::ConvBias::NonlineMode;
+
+    // clang-format off
+    for (auto nlmode :  {NLMode::RELU, NLMode::IDENTITY}) {//{NLMode::H_SWISH} are not currently supported
+    for (auto mode : {param::ConvBias::Mode::CROSS_CORRELATION}) {
+    for (size_t b : {3, 7}) {
+    for (size_t ic : {64, 128}) {
+    for (size_t oc : {64, 320}) {
+    for (size_t h : {13}) {
+    for (size_t w : {28}) {
+    for (int p : {0, static_cast<int>(kernel_size / 2)}) {
+    for (size_t s : {1, 2}) {
+        if (is_uint4 && nlmode == NLMode::H_SWISH) continue;
+        size_t f = kernel_size;
+        cur_param.mode = mode;
+        cur_param.nonlineMode = nlmode;
+        cur_param.format = param::ConvBias::Format::NCHW64;
+        cur_param.sparse = param::ConvBias::Sparse::DENSE;
+        cur_param.pad_h = cur_param.pad_w = p;
+        cur_param.stride_h = cur_param.stride_w = s;
+
+        //! bias channel
+        args.emplace_back(cur_param, TensorShape{b, ic / 64, h, w, 64},
+                          TensorShape{oc, ic / 64, f, f, 64},
+                          TensorShape{1, oc / 64, 1, 1, 64});
+
+    } } } } } } } } }
+    // clang-format on
+
+    return args;
+}
 
 std::vector<TestArg> get_int8_nchw4_args_small_batch(size_t kernel_size) {
     std::vector<TestArg> args;
@@ -538,7 +567,7 @@ std::vector<TestArg> get_int8_nchw4_args_small_batch(size_t kernel_size) {
     using NLMode = param::ConvBias::NonlineMode;
 
     // clang-format off
-    for (auto nlmode : {NLMode::IDENTITY, NLMode::RELU}) {
+    for (auto nlmode : {NLMode::IDENTITY, NLMode::RELU, NLMode::H_SWISH}) {
     for (auto mode : {param::ConvBias::Mode::CROSS_CORRELATION}) {
     for (size_t b : {12, 8, 4}) {
     for (size_t ic : {16, 32}) {
@@ -573,7 +602,7 @@ std::vector<TestArg> get_int8_nchw4_small_channel_args(size_t kernel_size) {
     using NLMode = param::ConvBias::NonlineMode;
 
     // clang-format off
-    for (auto nlmode : {NLMode::IDENTITY, NLMode::RELU}) {
+    for (auto nlmode : {NLMode::IDENTITY, NLMode::RELU, NLMode::H_SWISH}) {
     for (auto mode : {param::ConvBias::Mode::CROSS_CORRELATION}) {
     for (size_t b : {64, 16}) {
     for (size_t ic : {4, 12}) {
@@ -692,7 +721,7 @@ std::vector<TestArg> get_int8_nchw4_tensorcore_args(size_t kernel_size) {
     using NLMode = param::ConvBias::NonlineMode;
 
     // clang-format off
-    for (auto nlmode : {NLMode::IDENTITY, NLMode::RELU}) {
+    for (auto nlmode : {NLMode::IDENTITY, NLMode::RELU, NLMode::H_SWISH}) {
     for (auto mode : {param::ConvBias::Mode::CROSS_CORRELATION}) {
         size_t b = 64, oc = 128;
         for (size_t ic : {32, 64}) {
@@ -728,37 +757,60 @@ std::vector<TestArg> get_int8_chwn4_tensorcore_args(size_t kernel_size) {
     return args;
 }
 
-void check_conv_bias(DType src_dtype, DType filter_dtype, DType bias_dtype,
-                     DType dst_dtype, Handle* handle, const char* algo,
-                     param::ConvBias::Format format,
-                     const std::vector<TestArg>& args, bool fuse_z) {
-    megdnn_assert(src_dtype.enumv() == filter_dtype.enumv());
-    Checker<ConvBiasForward> checker(handle);
+void check_conv_bias(
+        DType src_dtype, DType filter_dtype, DType bias_dtype, DType dst_dtype,
+        Handle* handle, const char* algo, param::ConvBias::Format format,
+        const std::vector<TestArg>& args, bool fuse_z, bool stable_test) {
+    megdnn_assert(
+            (src_dtype.enumv() == filter_dtype.enumv()) ||
+            (src_dtype.enumv() == DTypeEnum::Quantized4Asymm &&
+             filter_dtype.enumv() == DTypeEnum::QuantizedS4));
+    Checker<ConvBiasForward> checker(handle, !stable_test);
     if (algo) {
-        checker.set_before_exec_callback(
-                ConvBiasAlgoChecker<ConvBiasForward>(algo));
+        checker.set_before_exec_callback(ConvBiasAlgoChecker<ConvBiasForward>(algo));
     }
     std::unique_ptr<RNG> rng;
+    std::unique_ptr<RNG> flt_rng;
     std::unique_ptr<RNG> bias_rng;
     std::unique_ptr<RNG> const_rng;
     std::unique_ptr<RNG> zero_rng;
     // TODO: check range of rng
     if (src_dtype.enumv() == DTypeEnum::QuantizedS8) {
         rng = std::make_unique<UniformIntRNG>(-3, 3);
+        flt_rng = std::make_unique<UniformIntRNG>(-3, 3);
         const_rng = std::make_unique<UniformIntRNG>(1, 1);
         zero_rng = std::make_unique<UniformIntRNG>(0, 0);
         megdnn_assert(bias_dtype.enumv() == DTypeEnum::QuantizedS32);
         bias_rng = std::make_unique<UniformIntRNG>(-50, 50);
-        checker.set_epsilon(1 + 1e-3)
-                .set_max_avg_error(1e-1)
-                .set_max_avg_biased_error(1e-3);
+        checker.set_epsilon(1 + 1e-3).set_max_avg_error(1e-1).set_max_avg_biased_error(
+                1e-3);
+    } else if (src_dtype.enumv() == DTypeEnum::Quantized4Asymm) {
+        rng = std::make_unique<UniformIntRNG>(0, 6);
+        flt_rng = std::make_unique<UniformIntRNG>(-3, 3);
+        const_rng = std::make_unique<UniformIntRNG>(1, 1);
+        zero_rng = std::make_unique<UniformIntRNG>(0, 0);
+        megdnn_assert(bias_dtype.enumv() == DTypeEnum::QuantizedS32);
+        bias_rng = std::make_unique<UniformIntRNG>(-50, 50);
+        checker.set_epsilon(1 + 1e-3).set_max_avg_error(1e-1).set_max_avg_biased_error(
+                1e-3);
+    } else if (src_dtype.enumv() == DTypeEnum::QuantizedS4) {
+        rng = std::make_unique<UniformIntRNG>(-3, 3);
+        flt_rng = std::make_unique<UniformIntRNG>(-3, 3);
+        const_rng = std::make_unique<UniformIntRNG>(1, 1);
+        zero_rng = std::make_unique<UniformIntRNG>(0, 0);
+        megdnn_assert(bias_dtype.enumv() == DTypeEnum::QuantizedS32);
+        bias_rng = std::make_unique<UniformIntRNG>(-50, 50);
+        checker.set_epsilon(1 + 1e-3).set_max_avg_error(1e-1).set_max_avg_biased_error(
+                1e-3);
     } else if (src_dtype.enumv() == DTypeEnum::Float16) {
         rng = std::make_unique<NormalRNG>(2.f);
+        flt_rng = std::make_unique<NormalRNG>(2.f);
         megdnn_assert(bias_dtype.enumv() == DTypeEnum::Float16);
         bias_rng = std::make_unique<NormalRNG>(2.f);
         checker.set_epsilon(1e-2);
     } else if (src_dtype.enumv() == DTypeEnum::Float32) {
         rng = std::make_unique<NormalRNG>(2.f);
+        flt_rng = std::make_unique<NormalRNG>(2.f);
         megdnn_assert(bias_dtype.enumv() == DTypeEnum::Float32);
         bias_rng = std::make_unique<NormalRNG>(2.f);
     }
@@ -783,6 +835,12 @@ void check_conv_bias(DType src_dtype, DType filter_dtype, DType bias_dtype,
                 fh = arg.filter[2];
                 fw = arg.filter[3];
                 z[1] = arg.filter[0] / 32;
+            } else if (format == Format::NCHW64) {
+                hi = arg.src[2];
+                wi = arg.src[3];
+                fh = arg.filter[2];
+                fw = arg.filter[3];
+                z[1] = arg.filter[0] / 64;
             } else {
                 megdnn_assert(format == Format::CHWN4);
                 hi = arg.src[1];
@@ -803,11 +861,15 @@ void check_conv_bias(DType src_dtype, DType filter_dtype, DType bias_dtype,
         }
         return z;
     };
-    megdnn_assert(rng != nullptr && bias_rng != nullptr);
+    megdnn_assert(rng != nullptr && flt_rng != nullptr && bias_rng != nullptr);
     checker.set_rng(0, rng.get())
-            .set_rng(1, rng.get())
+            .set_rng(1, flt_rng.get())
             .set_rng(2, bias_rng.get())
             .set_rng(3, rng.get());
+    if (stable_test) {
+        checker.set_stable_check(true);
+        checker.set_no_naive_check(true);
+    }
     if (args.empty()) {
         std::vector<TestArg> default_args;
         if (format == Format::NCHW4) {
@@ -839,11 +901,11 @@ void check_conv_bias(DType src_dtype, DType filter_dtype, DType bias_dtype,
     }
 }
 #if MEGDNN_WITH_BENCHMARK
-std::vector<conv_bias::TestArg> get_winograd_benchmark_args(size_t kernel,
-                                                            size_t pack_size) {
+std::vector<conv_bias::TestArg> get_winograd_benchmark_args(
+        size_t kernel, size_t pack_size, size_t io_pack_size) {
+    megdnn_assert(io_pack_size == 1 || io_pack_size == 4 || io_pack_size == 8);
     std::vector<conv_bias::TestArg> args;
-    auto pack = [&](size_t oc, size_t ic, size_t w, size_t h, size_t kernel,
-                    size_t p) {
+    auto pack = [&](size_t oc, size_t ic, size_t w, size_t h, size_t kernel, size_t p) {
         if (ic % pack_size != 0 || oc % pack_size != 0)
             return;
         if (w + 2 * p < kernel || h + 2 * p < kernel)
@@ -854,11 +916,29 @@ std::vector<conv_bias::TestArg> get_winograd_benchmark_args(size_t kernel,
         param.pad_h = p;
         param.pad_w = p;
 
-        args.push_back(conv_bias::TestArg{param,
-                                          TensorShape{1, ic, h, w},
-                                          TensorShape{oc, ic, kernel, kernel},
-                                          {1, oc, 1, 1}});
+        if (io_pack_size == 4) {
+            param.format = param::ConvBias::Format::NCHW44;
+            args.push_back(conv_bias::TestArg{
+                    param,
+                    TensorShape{1, ic / 4, h, w, 4},
+                    TensorShape{oc / 4, ic / 4, kernel, kernel, 4, 4},
+                    {1, oc / 4, 1, 1, 4}});
+        } else if (io_pack_size == 8) {
+            param.format = param::ConvBias::Format::NCHW88;
+            args.push_back(conv_bias::TestArg{
+                    param,
+                    TensorShape{1, ic / 8, h, w, 8},
+                    TensorShape{oc / 8, ic / 8, kernel, kernel, 8, 8},
+                    {1, oc / 8, 1, 1, 8}});
+        } else {
+            args.push_back(conv_bias::TestArg{
+                    param,
+                    TensorShape{1, ic, h, w},
+                    TensorShape{oc, ic, kernel, kernel},
+                    {1, oc, 1, 1}});
+        }
     };
+
     for (size_t ic : {8, 16, 32, 64}) {
         for (size_t oc : {8, 16, 32, 64}) {
             pack(oc, ic, 56, 56, kernel, kernel / 2);
@@ -886,9 +966,10 @@ std::vector<conv_bias::TestArg> get_winograd_benchmark_args(size_t kernel,
     return args;
 }
 
-void benchmark_winograd(const char* algo_name, Handle* handle, size_t kernel,
-                        size_t pack_size) {
-    auto&& args = get_winograd_benchmark_args(kernel, pack_size);
+void benchmark_winograd(
+        const char* algo_name, Handle* handle, size_t kernel, size_t pack_size,
+        size_t io_pack_size) {
+    auto&& args = get_winograd_benchmark_args(kernel, pack_size, io_pack_size);
     using namespace conv_bias;
     constexpr size_t RUN = 10;
     Benchmarker<Convolution> benchmark(handle);
@@ -903,40 +984,290 @@ void benchmark_winograd(const char* algo_name, Handle* handle, size_t kernel,
         TensorLayout dst_layout;
         auto opr = handle->create_operator<ConvBias>();
         opr->param() = arg.param;
-        opr->deduce_layout({arg.src, dtype::Float32()},
-                           {arg.filter, dtype::Float32()},
-                           {arg.bias, dtype::Float32()}, {}, dst_layout);
-        //! dst.nr_elems * IC * FH * FW * 2
-        float computations = dst_layout.total_nr_elems() * arg.filter[1] *
-                             arg.filter[2] * arg.filter[3] * 2.0 /
-                             (1024 * 1024 * 1024) * 1e3;
+        opr->deduce_layout(
+                {arg.src, dtype::Float32()}, {arg.filter, dtype::Float32()},
+                {arg.bias, dtype::Float32()}, {}, dst_layout);
+        float computations = 0.0;
+        if (io_pack_size == 1) {
+            //! dst.nr_elems * IC * FH * FW * 2
+            computations = dst_layout.total_nr_elems() * arg.filter[1] * arg.filter[2] *
+                           arg.filter[3] * 2.0 / (1024 * 1024 * 1024) * 1e3;
+        } else {
+            //! dst.nr_elems * IC/4 * FH * FW * 4 * 2
+            computations = dst_layout.total_nr_elems() * arg.filter[1] * arg.filter[2] *
+                           arg.filter[3] * arg.filter[4] * 2.0 / (1024 * 1024 * 1024) *
+                           1e3;
+        }
 
         param::Convolution conv_param;
         conv_param.pad_h = arg.param.pad_h;
         conv_param.pad_w = arg.param.pad_w;
         conv_param.stride_h = arg.param.stride_h;
         conv_param.stride_w = arg.param.stride_w;
-        auto used = benchmark.set_param(conv_param)
-                            .exec({arg.src, arg.filter, {}}) /
-                    RUN;
+        auto used =
+                benchmark.set_param(conv_param).exec({arg.src, arg.filter, {}}) / RUN;
 
         benchmark_winograd.set_param(arg.param);
-        auto used_winograd =
-                algo_benchmark<ConvBias>(benchmark_winograd,
-                                         {arg.src, arg.filter, {}, {}, {}},
-                                         algo_name) /
-                RUN;
+        auto used_winograd = algo_benchmark<ConvBias>(
+                                     benchmark_winograd,
+                                     {arg.src, arg.filter, {}, {}, {}}, algo_name) /
+                             RUN;
 
         printf("%s %s: normal: %f ms %f Gflops winograd: %f ms %f GFlops "
                "speedup: "
                "%f\n",
-               arg.src.to_string().c_str(), arg.filter.to_string().c_str(),
-               used, computations / used, used_winograd,
-               computations / used_winograd, used / used_winograd);
+               arg.src.to_string().c_str(), arg.filter.to_string().c_str(), used,
+               computations / used, used_winograd, computations / used_winograd,
+               used / used_winograd);
+    }
+}
+
+// usage of weight pre-processing for winograd benchmark
+void benchmark_winograd_weight_preprocess(
+        const char* algo_name, megdnn::Handle* handle, size_t kernel, size_t pack_size,
+        size_t io_pack_size) {
+    auto&& args = get_winograd_benchmark_args(kernel, pack_size, io_pack_size);
+    using namespace conv_bias;
+    constexpr size_t RUN = 10;
+
+    //! here!!!
+    Benchmarker<ConvBias, Timer, OprWeightPreprocessBenchmarkProxy<ConvBias>>
+            benchmark_winograd(handle);
+    benchmark_winograd.set_display(false);
+    benchmark_winograd.set_times(RUN);
+
+    for (auto&& arg : args) {
+        TensorLayout dst_layout;
+        auto opr = handle->create_operator<ConvBias>();
+        opr->param() = arg.param;
+        opr->deduce_layout(
+                {arg.src, dtype::Float32()}, {arg.filter, dtype::Float32()},
+                {arg.bias, dtype::Float32()}, {}, dst_layout);
+        float computations = 0.0;
+        if (io_pack_size == 1) {
+            //! dst.nr_elems * IC * FH * FW * 2
+            computations = dst_layout.total_nr_elems() * arg.filter[1] * arg.filter[2] *
+                           arg.filter[3] * 2.0 / (1024 * 1024 * 1024) * 1e3;
+        } else {
+            //! dst.nr_elems * IC/4 * FH * FW * 4 * 2
+            computations = dst_layout.total_nr_elems() * arg.filter[1] * arg.filter[2] *
+                           arg.filter[3] * arg.filter[4] * 2.0 / (1024 * 1024 * 1024) *
+                           1e3;
+        }
+
+        benchmark_winograd.set_param(arg.param);
+        auto used_winograd =
+                algo_benchmark<
+                        ConvBias, OprWeightPreprocessBenchmarkProxy<ConvBias>, Timer>(
+                        benchmark_winograd, {arg.src, arg.filter, {}, {}, {}},
+                        algo_name) /
+                RUN;
+
+        printf("%s %s: %s: %f ms %f Gflops\n", arg.src.to_string().c_str(),
+               arg.filter.to_string().c_str(), algo_name, used_winograd,
+               computations / used_winograd);
+    }
+}
+
+void benchmark_winograd_compare(
+        const char* algoA_name, const char* algoB_name, megdnn::Handle* handle,
+        size_t kernel, size_t pack_size, size_t io_pack_size) {
+    auto&& args = get_winograd_benchmark_args(kernel, pack_size, io_pack_size);
+    using namespace conv_bias;
+    constexpr size_t RUN = 10;
+
+    Benchmarker<ConvBias, Timer, OprWeightPreprocessBenchmarkProxy<ConvBias>>
+            benchmark_winograd(handle);
+    benchmark_winograd.set_display(false);
+    benchmark_winograd.set_times(RUN);
+
+    for (auto&& arg : args) {
+        TensorLayout dst_layout;
+        auto opr = handle->create_operator<ConvBias>();
+        opr->param() = arg.param;
+        opr->deduce_layout(
+                {arg.src, dtype::Float32()}, {arg.filter, dtype::Float32()},
+                {arg.bias, dtype::Float32()}, {}, dst_layout);
+        float computations = 0.0;
+        if (io_pack_size == 1) {
+            //! dst.nr_elems * IC * FH * FW * 2
+            computations = dst_layout.total_nr_elems() * arg.filter[1] * arg.filter[2] *
+                           arg.filter[3] * 2.0 / (1024 * 1024 * 1024) * 1e3;
+        } else {
+            //! dst.nr_elems * IC/4 * FH * FW * 4 * 2
+            computations = dst_layout.total_nr_elems() * arg.filter[1] * arg.filter[2] *
+                           arg.filter[3] * arg.filter[4] * 2.0 / (1024 * 1024 * 1024) *
+                           1e3;
+        }
+
+        benchmark_winograd.set_param(arg.param);
+        auto used_winograd1 =
+                algo_benchmark<
+                        ConvBias, OprWeightPreprocessBenchmarkProxy<ConvBias>, Timer>(
+                        benchmark_winograd, {arg.src, arg.filter, {}, {}, {}},
+                        algoA_name) /
+                RUN;
+        auto used_winograd2 =
+                algo_benchmark<
+                        ConvBias, OprWeightPreprocessBenchmarkProxy<ConvBias>, Timer>(
+                        benchmark_winograd, {arg.src, arg.filter, {}, {}, {}},
+                        algoB_name) /
+                RUN;
+
+        printf("%s %s: %s: %f ms %f Gflops %s: %f ms %f GFlops "
+               "speedup: "
+               "%f\n",
+               arg.src.to_string().c_str(), arg.filter.to_string().c_str(), algoA_name,
+               used_winograd1, computations / used_winograd1, algoB_name,
+               used_winograd2, computations / used_winograd2,
+               used_winograd2 / used_winograd1);
+    }
+}
+
+void benchmark_with_contrast(
+        const std::vector<std::pair<conv_bias::TestArg, float>>& args_with_computation,
+        const std::string algo_name, const std::vector<DType>& data_type,
+        const std::vector<std::pair<conv_bias::TestArg, float>>&
+                args_with_computation_contrast,
+        const std::string algo_name_contrast,
+        const std::vector<DType>& data_type_contrast, size_t RUNS,
+        TaskExecutorConfig&& single_thread_config) {
+    using NLMode = param::ConvBias::NonlineMode;
+    std::map<NLMode, std::string> nonlinemode2string{
+            {NLMode::IDENTITY, "Identity"},
+            {NLMode::RELU, "ReLU"},
+            {NLMode::SIGMOID, "Sigmoid"},
+            {NLMode::H_SWISH, "H_Swish"}};
+    auto single_thread_handle = create_cpu_handle(0, true, &single_thread_config);
+
+    auto benchmarker = Benchmarker<ConvBias>(single_thread_handle.get());
+    auto benchmarker_contrast = Benchmarker<ConvBias>(single_thread_handle.get());
+
+    benchmarker.set_times(RUNS)
+            .set_display(false)
+            .set_dtype(0, data_type[0])
+            .set_dtype(1, data_type[1])
+            .set_dtype(2, data_type[2])
+            .set_dtype(4, data_type[3])
+            .set_before_exec_callback(
+                    conv_bias::ConvBiasAlgoChecker<ConvBias>(algo_name.c_str()));
+    benchmarker_contrast.set_times(RUNS)
+            .set_display(false)
+            .set_dtype(0, data_type_contrast[0])
+            .set_dtype(1, data_type_contrast[1])
+            .set_dtype(2, data_type_contrast[2])
+            .set_dtype(4, data_type_contrast[3])
+            .set_before_exec_callback(conv_bias::ConvBiasAlgoChecker<ConvBias>(
+                    algo_name_contrast.c_str()));
+
+    size_t arg_size = args_with_computation.size(),
+           arg_contrast_size = args_with_computation_contrast.size();
+    megdnn_assert(arg_size == arg_contrast_size);
+    rep(i, arg_size) {
+        TensorLayout dst_layout, dst_layout_contrast;
+        auto opr = single_thread_handle.get()->create_operator<ConvBias>();
+
+        auto& arg_with_computation = args_with_computation[i];
+        auto& arg = arg_with_computation.first;
+        opr->param() = arg.param;
+        opr->deduce_layout(
+                {arg.src, data_type[0]}, {arg.filter, data_type[1]},
+                {arg.bias, data_type[2]}, {}, dst_layout);
+        float computation = arg_with_computation.second;
+        benchmarker.set_param(arg.param);
+        auto used = benchmarker.exec({arg.src, arg.filter, arg.bias, {}, {}}) / RUNS;
+
+        auto& arg_with_computation_contrast = args_with_computation_contrast[i];
+        auto& arg_contrast = arg_with_computation_contrast.first;
+        opr->param() = arg_contrast.param;
+        opr->deduce_layout(
+                {arg_contrast.src, data_type_contrast[0]},
+                {arg_contrast.filter, data_type_contrast[1]},
+                {arg_contrast.bias, data_type_contrast[2]}, {}, dst_layout_contrast);
+        float computation_contrast = arg_with_computation_contrast.second;
+        benchmarker_contrast.set_param(arg_contrast.param);
+        auto used_contrast = benchmarker_contrast.exec(
+                                     {arg_contrast.src,
+                                      arg_contrast.filter,
+                                      arg_contrast.bias,
+                                      {},
+                                      {}}) /
+                             RUNS;
+
+        printf("Bench case: \n");
+        printf("padding: %u, stride: %u, nonline mode: %s\n", arg.param.pad_h,
+               arg.param.stride_h, nonlinemode2string[arg.param.nonlineMode].c_str());
+        printf("%s %s %s\n", arg.src.to_string().c_str(),
+               arg.filter.to_string().c_str(), arg.bias.to_string().c_str());
+        printf("%s %s %s\n", arg_contrast.src.to_string().c_str(),
+               arg_contrast.filter.to_string().c_str(),
+               arg_contrast.bias.to_string().c_str());
+
+        printf("%s: %f gflops;\n%s: %f gflops\n"
+               "spead up = %f\n",
+               algo_name.c_str(), computation / used, algo_name_contrast.c_str(),
+               computation_contrast / used_contrast, used_contrast / used);
     }
 }
 #endif  // MEGDNN_WITH_BENCHMARK
 
+template <class Checker>
+void check_winograd(
+        const char* algo_name, Checker& checker,
+        const std::vector<conv_bias::TestArg>& args, param::MatrixMul::Format format,
+        param::ConvBias::Format layout) {
+    const char* matmul_name;
+#if MEGDNN_AARCH64
+    if (format == param::MatrixMul::Format::MK4) {
+        matmul_name = "AARCH64_F32_MK4_4x16";
+    } else if (format == param::MatrixMul::Format::MK8) {
+        matmul_name = "AARCH64_INT16X16X32_MK8_8X8";
+    } else {
+        matmul_name = "AARCH64_F32K8X12X1";
+    }
+#elif MEGDNN_ARMV7
+    if (format == param::MatrixMul::Format::MK4) {
+        matmul_name = "ARMV7_F32_MK4_4x8";
+    } else if (format == param::MatrixMul::Format::MK8) {
+        matmul_name = "ARMV7_INT16X16X32_MK8_4X8";
+    } else {
+        matmul_name = "ARMV7_F32";
+    }
+#else
+    if (format == param::MatrixMul::Format::MK4) {
+        matmul_name = "FB_GI_F32_MK4_4x8";
+    } else {
+        matmul_name = "FB_GI_F32_4x12";
+    }
+#endif
+    std::string winograd_algo_name;
+    if (layout == megdnn::param::ConvBias::Format::NCHW) {
+        winograd_algo_name = ssprintf("WINOGRAD:%s:%s", matmul_name, algo_name);
+    } else if (layout == megdnn::param::ConvBias::Format::NCHW44) {
+        winograd_algo_name = ssprintf("WINOGRAD_NCHW44:%s:%s", matmul_name, algo_name);
+    } else {
+        megdnn_throw("Invalid layout");
+    }
+
+    checker.set_before_exec_callback(
+            conv_bias::ConvBiasAlgoChecker<ConvBias>(winograd_algo_name.c_str()));
+
+    for (auto&& arg : args) {
+        checker.set_param(arg.param).execs({arg.src, arg.filter, arg.bias, {}, {}});
+    }
+}
+
+template void check_winograd<megdnn::test::Checker<megdnn::ConvBias>>(
+        const char* algo_name, megdnn::test::Checker<megdnn::ConvBias>& checker,
+        const std::vector<conv_bias::TestArg>& args, param::MatrixMul::Format format,
+        param::ConvBias::Format layout);
+
+using WeightPreprocessChecker = megdnn::test::Checker<
+        megdnn::ConvBias, megdnn::test::OprWeightPreprocessProxy<megdnn::ConvBias>>;
+template void check_winograd<WeightPreprocessChecker>(
+        const char* algo_name, WeightPreprocessChecker& checker,
+        const std::vector<conv_bias::TestArg>& args, param::MatrixMul::Format format,
+        param::ConvBias::Format layout);
 
 std::vector<conv_bias::TestArg> get_conv_bias_args(
         std::vector<size_t> kernel, size_t stride, bool no_pad, bool no_bias,
@@ -946,8 +1277,8 @@ std::vector<conv_bias::TestArg> get_conv_bias_args(
     using NLMode = param::ConvBias::NonlineMode;
     std::vector<TestArg> args;
 
-    auto pack = [&](size_t n, size_t oc, size_t ic, size_t w, size_t h,
-                    size_t kernel, size_t stride, NLMode nlmode) {
+    auto pack = [&](size_t n, size_t oc, size_t ic, size_t w, size_t h, size_t kernel,
+                    size_t stride, NLMode nlmode) {
         Param param;
         param.stride_h = stride;
         param.stride_w = stride;
@@ -960,40 +1291,40 @@ std::vector<conv_bias::TestArg> get_conv_bias_args(
         }
         param.nonlineMode = nlmode;
 
-        args.emplace_back(param, TensorShape{n, ic, h, w},
-                          TensorShape{oc, ic, kernel, kernel}, TensorShape{});
+        args.emplace_back(
+                param, TensorShape{n, ic, h, w}, TensorShape{oc, ic, kernel, kernel},
+                TensorShape{});
         if (!no_bias) {
-            args.emplace_back(param, TensorShape{n, ic, h, w},
-                              TensorShape{oc, ic, kernel, kernel},
-                              TensorShape{1, oc, 1, 1});
+            args.emplace_back(
+                    param, TensorShape{n, ic, h, w},
+                    TensorShape{oc, ic, kernel, kernel}, TensorShape{1, oc, 1, 1});
 
             if (!only_broadcast_bias) {
                 args.emplace_back(
                         param, TensorShape{n, ic, h, w},
                         TensorShape{oc, ic, kernel, kernel},
                         TensorShape{
-                                n, oc,
-                                (h + 2 * param.pad_h - kernel) / stride + 1,
+                                n, oc, (h + 2 * param.pad_h - kernel) / stride + 1,
                                 (w + 2 * param.pad_h - kernel) / stride + 1});
             }
         }
         param.sparse = param::ConvBias::Sparse::GROUP;
-        args.emplace_back(param, TensorShape{n, 2 * ic, h, w},
-                          TensorShape{2, oc, ic, kernel, kernel},
-                          TensorShape{});
+        args.emplace_back(
+                param, TensorShape{n, 2 * ic, h, w},
+                TensorShape{2, oc, ic, kernel, kernel}, TensorShape{});
         if (!no_bias) {
             if (!only_broadcast_bias) {
                 args.emplace_back(
                         param, TensorShape{n, 2 * ic, h, w},
                         TensorShape{2, oc, ic, kernel, kernel},
                         TensorShape{
-                                n, 2 * oc,
-                                (h + param.pad_h * 2 - kernel) / stride + 1,
+                                n, 2 * oc, (h + param.pad_h * 2 - kernel) / stride + 1,
                                 (w + param.pad_w * 2 - kernel) / stride + 1});
             }
-            args.emplace_back(param, TensorShape{n, 2 * ic, h, w},
-                              TensorShape{2, oc, ic, kernel, kernel},
-                              TensorShape{1, 2 * oc, 1, 1});
+            args.emplace_back(
+                    param, TensorShape{n, 2 * ic, h, w},
+                    TensorShape{2, oc, ic, kernel, kernel},
+                    TensorShape{1, 2 * oc, 1, 1});
         }
     };
 
@@ -1031,8 +1362,8 @@ std::vector<megdnn::test::conv_bias::TestArg> get_conv_bias_1x1_args(
     using CONVMode = param::ConvBias::Mode;
     std::vector<TestArg> args;
 
-    auto pack = [&](size_t n, size_t oc, size_t ic, size_t w, size_t h,
-                    size_t stride, NLMode nlmode, CONVMode convmode) {
+    auto pack = [&](size_t n, size_t oc, size_t ic, size_t w, size_t h, size_t stride,
+                    NLMode nlmode, CONVMode convmode) {
         Param param;
         param.stride_h = stride;
         param.stride_w = stride;
@@ -1042,35 +1373,37 @@ std::vector<megdnn::test::conv_bias::TestArg> get_conv_bias_1x1_args(
         param.mode = convmode;
         param.nonlineMode = nlmode;
 
-        args.emplace_back(param, TensorShape{n, ic, h, w},
-                          TensorShape{oc, ic, 1, 1}, TensorShape{});
+        args.emplace_back(
+                param, TensorShape{n, ic, h, w}, TensorShape{oc, ic, 1, 1},
+                TensorShape{});
         if (!no_bias) {
-            args.emplace_back(param, TensorShape{n, ic, h, w},
-                              TensorShape{oc, ic, 1, 1},
-                              TensorShape{1, oc, 1, 1});
+            args.emplace_back(
+                    param, TensorShape{n, ic, h, w}, TensorShape{oc, ic, 1, 1},
+                    TensorShape{1, oc, 1, 1});
 
             if (!only_broadcast_bias) {
-                args.emplace_back(param, TensorShape{n, ic, h, w},
-                                  TensorShape{oc, ic, 1, 1},
-                                  TensorShape{n, oc, (h - 1) / stride + 1,
-                                              (w - 1) / stride + 1});
+                args.emplace_back(
+                        param, TensorShape{n, ic, h, w}, TensorShape{oc, ic, 1, 1},
+                        TensorShape{n, oc, (h - 1) / stride + 1, (w - 1) / stride + 1});
             }
         }
 
         param.sparse = param::ConvBias::Sparse::GROUP;
 
-        args.emplace_back(param, TensorShape{n, 2 * ic, h, w},
-                          TensorShape{2, oc, ic, 1, 1}, TensorShape{});
+        args.emplace_back(
+                param, TensorShape{n, 2 * ic, h, w}, TensorShape{2, oc, ic, 1, 1},
+                TensorShape{});
         if (!no_bias) {
-            args.emplace_back(param, TensorShape{n, 2 * ic, h, w},
-                              TensorShape{2, oc, ic, 1, 1},
-                              TensorShape{1, 2 * oc, 1, 1});
+            args.emplace_back(
+                    param, TensorShape{n, 2 * ic, h, w}, TensorShape{2, oc, ic, 1, 1},
+                    TensorShape{1, 2 * oc, 1, 1});
 
             if (!only_broadcast_bias) {
-                args.emplace_back(param, TensorShape{n, 2 * ic, h, w},
-                                  TensorShape{2, oc, ic, 1, 1},
-                                  TensorShape{n, 2 * oc, (h - 1) / stride + 1,
-                                              (w - 1) / stride + 1});
+                args.emplace_back(
+                        param, TensorShape{n, 2 * ic, h, w},
+                        TensorShape{2, oc, ic, 1, 1},
+                        TensorShape{
+                                n, 2 * oc, (h - 1) / stride + 1, (w - 1) / stride + 1});
             }
         }
     };
@@ -1084,8 +1417,9 @@ std::vector<megdnn::test::conv_bias::TestArg> get_conv_bias_1x1_args(
         }
     }
 
-    std::vector<CONVMode> convmodes{param::ConvBias::Mode::CONVOLUTION,
-                                    param::ConvBias::Mode::CROSS_CORRELATION};
+    std::vector<CONVMode> convmodes{
+            param::ConvBias::Mode::CONVOLUTION,
+            param::ConvBias::Mode::CROSS_CORRELATION};
 
     for (size_t n : {1, 2})
         for (size_t oc : {1, 9, 33})
@@ -1098,21 +1432,20 @@ std::vector<megdnn::test::conv_bias::TestArg> get_conv_bias_1x1_args(
     return args;
 }
 
-void check_conv_bias(std::vector<conv_bias::TestArg> args, Handle* handle,
-                     const char* algo_name) {
+void check_conv_bias(
+        std::vector<conv_bias::TestArg> args, Handle* handle, const char* algo_name) {
     using namespace conv_bias;
 
     Checker<ConvBias> checker(handle);
     checker.set_before_exec_callback(
             conv_bias::ConvBiasAlgoChecker<ConvBias>(algo_name));
     for (auto&& arg : args) {
-        checker.set_param(arg.param).execs(
-                {arg.src, arg.filter, arg.bias, {}, {}});
+        checker.set_param(arg.param).execs({arg.src, arg.filter, arg.bias, {}, {}});
     }
 }
 
-void checker_conv_bias_int8x8x16(std::vector<conv_bias::TestArg> args,
-                                 Handle* handle, const char* algo_name) {
+void checker_conv_bias_int8x8x16(
+        std::vector<conv_bias::TestArg> args, Handle* handle, const char* algo_name) {
     using namespace conv_bias;
 
     Checker<ConvBias> checker(handle);
@@ -1127,14 +1460,12 @@ void checker_conv_bias_int8x8x16(std::vector<conv_bias::TestArg> args,
     }
 }
 
-void check_conv_bias_preprocess(std::vector<conv_bias::TestArg> args,
-                                Handle* handle, RNG* rng, float epsilon,
-                                DType type0, DType type1, DType type2,
-                                DType type3, const char* algo_name) {
+void check_conv_bias_preprocess(
+        std::vector<conv_bias::TestArg> args, Handle* handle, RNG* rng, float epsilon,
+        DType type0, DType type1, DType type2, DType type3, const char* algo_name) {
     using namespace conv_bias;
 
-    Checker<ConvBiasForward, OprWeightPreprocessProxy<ConvBiasForward>> checker(
-            handle);
+    Checker<ConvBiasForward, OprWeightPreprocessProxy<ConvBiasForward>> checker(handle);
     checker.set_dtype(0, type0);
     checker.set_dtype(1, type1);
     checker.set_dtype(2, type2);
@@ -1146,15 +1477,13 @@ void check_conv_bias_preprocess(std::vector<conv_bias::TestArg> args,
     checker.set_before_exec_callback(
             conv_bias::ConvBiasAlgoChecker<ConvBias>(algo_name));
     for (auto&& arg : args) {
-        checker.set_param(arg.param).execs(
-                {arg.src, arg.filter, arg.bias, {}, {}});
+        checker.set_param(arg.param).execs({arg.src, arg.filter, arg.bias, {}, {}});
     }
 }
 
-
-void checker_conv_bias_common(std::vector<conv_bias::TestArg> args, Handle* handle,
-                       RNG* rng, float epsilon, DType type0, DType type1,
-                       DType type2, DType type3, const char* algo_name) {
+void checker_conv_bias_common(
+        std::vector<conv_bias::TestArg> args, Handle* handle, RNG* rng, float epsilon,
+        DType type0, DType type1, DType type2, DType type3, const char* algo_name) {
     using namespace conv_bias;
 
     Checker<ConvBias> checker(handle);
@@ -1169,13 +1498,12 @@ void checker_conv_bias_common(std::vector<conv_bias::TestArg> args, Handle* hand
         checker.set_rng(0, rng).set_rng(1, rng).set_rng(2, rng).set_rng(3, rng);
     }
     for (auto&& arg : args) {
-        checker.set_param(arg.param).execs(
-                {arg.src, arg.filter, arg.bias, {}, {}});
+        checker.set_param(arg.param).execs({arg.src, arg.filter, arg.bias, {}, {}});
     }
 }
 
-void checker_conv_bias_mul_int8x8x32(std::vector<conv_bias::TestArg> args,
-                                     Handle* handle, const char* algo_name) {
+void checker_conv_bias_mul_int8x8x32(
+        std::vector<conv_bias::TestArg> args, Handle* handle, const char* algo_name) {
     using namespace conv_bias;
     float epsilon = 0.001;
 #if MEGDNN_ARMV7
@@ -1209,12 +1537,10 @@ void checker_conv_bias_mul_int8x8x32(std::vector<conv_bias::TestArg> args,
 }
 
 void checker_conv_bias_int8x8x32_preprocess(
-        std::vector<conv_bias::TestArg> args, Handle* handle,
-        const char* algo_name) {
+        std::vector<conv_bias::TestArg> args, Handle* handle, const char* algo_name) {
     using namespace conv_bias;
 
-    Checker<ConvBiasForward, OprWeightPreprocessProxy<ConvBiasForward>> checker(
-            handle);
+    Checker<ConvBiasForward, OprWeightPreprocessProxy<ConvBiasForward>> checker(handle);
     checker.set_before_exec_callback(
             conv_bias::ConvBiasAlgoChecker<ConvBias>(algo_name));
     checker.set_dtype(0, dtype::Int8());
@@ -1250,8 +1576,8 @@ std::vector<conv_bias::TestArg> get_nchw44_conv_bias_args(
     std::vector<TestArg> args;
     MEGDNN_MARK_USED_VAR(no_pad);
 
-    auto pack = [&](size_t n, size_t oc, size_t ic, size_t h, size_t w,
-                    size_t kernel, size_t stride, size_t group, NLMode nlmode,
+    auto pack = [&](size_t n, size_t oc, size_t ic, size_t h, size_t w, size_t kernel,
+                    size_t stride, size_t group, NLMode nlmode,
                     megdnn::BiasMode bias_mode, int any_pad = -1) {
         constexpr int pack_c = 4;
         const size_t pad = any_pad >= 0 ? any_pad : kernel / 2;
@@ -1266,8 +1592,7 @@ std::vector<conv_bias::TestArg> get_nchw44_conv_bias_args(
         if (!(ok_group) || invalid_pad) {
             return;
         }
-        if ((is_input_nchw && nchw_disable) ||
-            (!is_input_nchw && nchw44_disable)) {
+        if ((is_input_nchw && nchw_disable) || (!is_input_nchw && nchw44_disable)) {
             return;
         }
 
@@ -1286,25 +1611,26 @@ std::vector<conv_bias::TestArg> get_nchw44_conv_bias_args(
         param.nonlineMode = nlmode;
 
         auto src_tensor_shape = TensorShape{n, ic / pack_c, h, w, pack_c};
-        auto weight_tensor_shape = TensorShape{
-                oc / pack_c, ic / pack_c, kernel_h, kernel_w, pack_c, pack_c};
+        auto weight_tensor_shape = TensorShape{oc / pack_c, ic / pack_c, kernel_h,
+                                               kernel_w,    pack_c,      pack_c};
         auto bias_tensor_shape = TensorShape{};
         if (bias_mode == megdnn::BiasMode::BROADCAST_CHANNEL_BIAS) {
             bias_tensor_shape = {1, oc / pack_c, 1, 1, pack_c};
         } else if (bias_mode == megdnn::BiasMode::BIAS) {
-            bias_tensor_shape = {n, oc / pack_c,
-                                 (h + 2 * pad - kernel) / stride + 1,
-                                 (w + 2 * pad - kernel) / stride + 1, pack_c};
+            bias_tensor_shape = {
+                    n, oc / pack_c, (h + 2 * pad - kernel) / stride + 1,
+                    (w + 2 * pad - kernel) / stride + 1, pack_c};
         }
         if (group == 1) {
             param.sparse = param::ConvBias::Sparse::DENSE;
         } else if (group > 1 && ic / group == 1 && oc / group == 1) {
             megdnn_assert(0, "not support channel wise");
             param.sparse = param::ConvBias::Sparse::GROUP;
-            weight_tensor_shape = TensorShape{group / pack_c, 1,        1,
-                                              kernel_h,       kernel_w, pack_c};
-        } else if (group > 1 && oc_per_group % pack_c == 0 && oc / group > 0 &&
-                   ic_per_group % pack_c == 0 && ic / group > 0) {
+            weight_tensor_shape =
+                    TensorShape{group / pack_c, 1, 1, kernel_h, kernel_w, pack_c};
+        } else if (
+                group > 1 && oc_per_group % pack_c == 0 && oc / group > 0 &&
+                ic_per_group % pack_c == 0 && ic / group > 0) {
             param.sparse = param::ConvBias::Sparse::GROUP;
             weight_tensor_shape = TensorShape{group,
                                               oc_per_group / pack_c,
@@ -1319,8 +1645,8 @@ std::vector<conv_bias::TestArg> get_nchw44_conv_bias_args(
             weight_tensor_shape =
                     TensorShape{oc / pack_c, kernel_h, kernel_w, ic, pack_c};
         }
-        args.emplace_back(param, src_tensor_shape, weight_tensor_shape,
-                          bias_tensor_shape);
+        args.emplace_back(
+                param, src_tensor_shape, weight_tensor_shape, bias_tensor_shape);
     };
 
     for (auto bias : biasmode_vec)
@@ -1332,14 +1658,94 @@ std::vector<conv_bias::TestArg> get_nchw44_conv_bias_args(
                             for (size_t h : {1, 3, 12})
                                 for (size_t w : {1, 16, 23}) {
                                     for (size_t group = 1;
-                                         group <=
-                                         std::min(std::min(oc, ic), 4_z);
+                                         group <= std::min(std::min(oc, ic), 4_z);
                                          ++group) {
                                         if (kernel != 1 && (h == 1 || w == 1)) {
                                             continue;
                                         }
-                                        pack(n, oc, ic, h, w, kernel, stride,
-                                             group, nlmode, bias);
+                                        pack(n, oc, ic, h, w, kernel, stride, group,
+                                             nlmode, bias);
+                                    }
+                                }
+    return args;
+}
+
+std::vector<conv_bias::TestArg> get_nchw88_conv_bias_args(
+        std::vector<size_t> kernel_vec,
+        std::vector<param::ConvBias::NonlineMode> nlmode_vec,
+        std::vector<megdnn::BiasMode> biasmode_vec, size_t stride, int pad) {
+    using namespace conv_bias;
+    using NLMode = param::ConvBias::NonlineMode;
+
+    std::vector<TestArg> args;
+
+    auto pack = [&](size_t n, size_t oc, size_t ic, size_t h, size_t w, size_t kernel,
+                    size_t stride, int pad, size_t group, NLMode nlmode,
+                    megdnn::BiasMode bias_mode) {
+        constexpr int pack_c = 8;
+        if (pad == -1) {
+            pad = kernel / 2;
+        }
+        auto oc_per_group = oc / group;
+        auto ic_per_group = ic / group;
+
+        megdnn_assert(
+                oc_per_group % pack_c == 0 && ic_per_group % pack_c == 0,
+                "ocpg/icpg not divided by 8");
+
+        size_t kernel_h = kernel;
+        size_t kernel_w = kernel;
+        param::ConvBias param;
+        param.format = param::ConvBias::Format::NCHW88;
+
+        param.stride_h = stride;
+        param.stride_w = stride;
+        param.pad_h = pad;
+        param.pad_w = pad;
+        param.nonlineMode = nlmode;
+
+        auto src_tensor_shape = TensorShape{n, ic / pack_c, h, w, pack_c};
+        auto weight_tensor_shape = TensorShape{oc / pack_c, ic / pack_c, kernel_h,
+                                               kernel_w,    pack_c,      pack_c};
+        auto bias_tensor_shape = TensorShape{};
+        if (bias_mode == megdnn::BiasMode::BROADCAST_CHANNEL_BIAS) {
+            bias_tensor_shape = {1, oc / pack_c, 1, 1, pack_c};
+        } else if (bias_mode == megdnn::BiasMode::BIAS) {
+            bias_tensor_shape = {
+                    n, oc / pack_c, (h + 2 * pad - kernel) / stride + 1,
+                    (w + 2 * pad - kernel) / stride + 1, pack_c};
+        }
+        if (group == 1) {
+            param.sparse = param::ConvBias::Sparse::DENSE;
+        } else {
+            param.sparse = param::ConvBias::Sparse::GROUP;
+            weight_tensor_shape = TensorShape{group,
+                                              oc_per_group / pack_c,
+                                              ic_per_group / pack_c,
+                                              kernel_h,
+                                              kernel_w,
+                                              pack_c,
+                                              pack_c};
+        }
+        args.emplace_back(
+                param, src_tensor_shape, weight_tensor_shape, bias_tensor_shape);
+    };
+
+    for (auto bias : biasmode_vec)
+        for (auto nlmode : nlmode_vec)
+            for (size_t n : {1, 2})
+                for (size_t kernel : kernel_vec)
+                    for (size_t oc : {8, 16})
+                        for (size_t ic : {8, 16, 24})
+                            for (size_t h : {1, 3, 12})
+                                for (size_t w : {1, 8, 13}) {
+                                    for (size_t group = 1; group < oc / 8; ++group) {
+                                        if (ic % (group * 8) || oc % (group * 8)) {
+                                            continue;
+                                        }
+                                        if (kernel < h && kernel < w)
+                                            pack(n, oc, ic, h, w, kernel, stride, pad,
+                                                 group, nlmode, bias);
                                     }
                                 }
     return args;

@@ -1,14 +1,3 @@
-/**
- * \file src/tensorrt/test/make_trt_net.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megbrain/opr/blas.h"
 #include "megbrain/opr/dnn/convolution.h"
 #include "megbrain/opr/io.h"
@@ -20,16 +9,17 @@
 #include "megbrain/utils/debug.h"
 
 #if MGB_ENABLE_TENSOR_RT
-
-#include "megbrain/tensorrt/tensorrt_opr.h"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #include "make_trt_net.h"
+#include "megbrain/tensorrt/tensorrt_opr.h"
 
+#include <NvInferPlugin.h>
 #include <random>
 
 using namespace mgb;
 using namespace opr;
 using namespace nvinfer1;
-
 
 intl::SimpleTensorRTNetwork::SimpleTensorRTNetwork() {
     host_x = gen({5, 23, 28, 28});
@@ -39,13 +29,12 @@ intl::SimpleTensorRTNetwork::SimpleTensorRTNetwork() {
     graph = ComputingGraph::make();
     x = Host2DeviceCopy::make(*graph, host_x);
     auto w = Host2DeviceCopy::make(*graph, host_w),
-         b = Host2DeviceCopy::make(*graph, host_b),
-         y0 = opr::Convolution::make(x, w);
+         b = Host2DeviceCopy::make(*graph, host_b), y0 = opr::Convolution::make(x, w);
     y = y0 + b;
 }
 
-std::pair<nvinfer1::IBuilder*, INetworkDefinition*>
-intl::SimpleTensorRTNetwork::create_trt_network(bool has_batch_dim) {
+std::pair<nvinfer1::IBuilder*, INetworkDefinition*> intl::SimpleTensorRTNetwork::
+        create_trt_network(bool has_batch_dim) {
     CompNode::load("xpu0").activate();
     Weights wt_filter{DataType::kFLOAT, nullptr, 0},
             wt_bias{DataType::kFLOAT, nullptr, 0};
@@ -60,8 +49,8 @@ intl::SimpleTensorRTNetwork::create_trt_network(bool has_batch_dim) {
     nvinfer1::NetworkDefinitionCreationFlags flags;
     ::memset(&flags, 0, sizeof(nvinfer1::NetworkDefinitionCreationFlags));
     if (has_batch_dim)
-        flags = 1 << static_cast<int>(nvinfer1::NetworkDefinitionCreationFlag::
-                                              kEXPLICIT_BATCH);
+        flags = 1 << static_cast<int>(
+                        nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
     auto network = builder->createNetworkV2(flags);
 #else
     auto network = builder->createNetwork();
@@ -69,8 +58,7 @@ intl::SimpleTensorRTNetwork::create_trt_network(bool has_batch_dim) {
     nvinfer1::ITensor* data;
 #if NV_TENSOR_RT_VERSION >= 6001
     if (has_batch_dim) {
-        data = network->addInput("data", DataType::kFLOAT,
-                                 Dims4{5, 23, 28, 28});
+        data = network->addInput("data", DataType::kFLOAT, Dims4{5, 23, 28, 28});
     } else {
         data = network->addInput("data", DataType::kFLOAT, Dims3{23, 28, 28});
     }
@@ -81,15 +69,13 @@ intl::SimpleTensorRTNetwork::create_trt_network(bool has_batch_dim) {
     }
 #else
     if (has_batch_dim) {
-        data = network->addInput("data", DataType::kFLOAT,
-                                 DimsNCHW{5, 23, 28, 28});
+        data = network->addInput("data", DataType::kFLOAT, DimsNCHW{5, 23, 28, 28});
     } else {
         data = network->addInput("data", DataType::kFLOAT, DimsCHW{23, 28, 28});
     }
 #endif
     mgb_assert(data != nullptr, "data is invalid");
-    auto conv1 = network->addConvolution(*data, 32, DimsHW{3, 3}, wt_filter,
-                                         wt_bias);
+    auto conv1 = network->addConvolution(*data, 32, DimsHW{3, 3}, wt_filter, wt_bias);
     mgb_assert(conv1 != nullptr, "conv1 is invalid");
     conv1->setStride(DimsHW{1, 1});
     conv1->getOutput(0)->setName("prob");
@@ -105,31 +91,90 @@ intl::SimpleTensorRTNetwork::create_trt_network(bool has_batch_dim) {
     return std::make_pair(builder, network);
 }
 
+intl::BatchedTensorRTNetwork::BatchedTensorRTNetwork() {
+    host_x = gen({23, 28, 28});
+
+    graph = ComputingGraph::make();
+    x = Host2DeviceCopy::make(*graph, host_x);
+    opr::Reduce::Param param1{Reduce::Mode::SUM, 0, Reduce::Param::DataType::DEFAULT};
+    opr::Reduce::Param param2{Reduce::Mode::SUM, 1, Reduce::Param::DataType::DEFAULT};
+    auto y0 = opr::Reduce::make(x, param1);
+    auto y1 = opr::Reduce::make(y0, param2);
+    TensorShape tshp{1, 28};
+    y = opr::Reshape::make(y1, tshp);
+}
+
+std::pair<nvinfer1::IBuilder*, INetworkDefinition*> intl::BatchedTensorRTNetwork::
+        create_trt_network(bool has_batch_dim) {
+    CompNode::load("xpu0").activate();
+    auto builder = createInferBuilder(TensorRTOpr::Logger::instance());
+#if NV_TENSOR_RT_VERSION >= 6001
+    nvinfer1::NetworkDefinitionCreationFlags flags;
+    ::memset(&flags, 0, sizeof(nvinfer1::NetworkDefinitionCreationFlags));
+    if (has_batch_dim)
+        flags = 1 << static_cast<int>(
+                        nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+    auto network = builder->createNetworkV2(flags);
+#else
+    auto network = builder->createNetwork();
+#endif
+    nvinfer1::ITensor* data;
+#if NV_TENSOR_RT_VERSION >= 6001
+    if (has_batch_dim) {
+        data = network->addInput("data", DataType::kFLOAT, Dims4{1, 23, 28, 28});
+    } else {
+        data = network->addInput("data", DataType::kFLOAT, Dims3{23, 28, 28});
+    }
+    {
+        nvinfer1::TensorFormats formats =
+                1 << static_cast<int>(nvinfer1::TensorFormat::kLINEAR);
+        data->setAllowedFormats(formats);
+    }
+#else
+    if (has_batch_dim) {
+        data = network->addInput("data", DataType::kFLOAT, DimsNCHW{1, 23, 28, 28});
+    } else {
+        data = network->addInput("data", DataType::kFLOAT, DimsCHW{23, 28, 28});
+    }
+#endif
+    mgb_assert(data != nullptr, "data is invalid");
+    auto reduce1 = network->addReduce(*data, nvinfer1::ReduceOperation::kSUM, 3, false);
+    mgb_assert(reduce1 != nullptr, "reduce1 is invalid");
+    reduce1->getOutput(0)->setName("prob");
+    network->markOutput(*reduce1->getOutput(0));
+#if NV_TENSOR_RT_VERSION >= 6001
+    {
+        nvinfer1::TensorFormats formats =
+                1 << static_cast<int>(nvinfer1::TensorFormat::kLINEAR);
+        reduce1->getOutput(0)->setAllowedFormats(formats);
+    }
+#endif
+
+    return std::make_pair(builder, network);
+}
+
 intl::SimpleQuantizedTensorRTNetwork::SimpleQuantizedTensorRTNetwork() {
     host_x = range_gen({32, 8, 28, 28});
     host_w = weight_gen({8, 8, 3, 3});
     host_b = range_gen({1, 8, 1, 1});
 
     {
-        float* ptr = reinterpret_cast<float*>(host_w->raw_ptr());
-        ptr[0] = -127*1.1f;
-        ptr[1] = 127*1.1f;
+        void* w_ptr = host_w->raw_ptr();
+        float* ptr = reinterpret_cast<float*>(w_ptr);
+        ptr[0] = -127 * 1.1f;
+        ptr[1] = 127 * 1.1f;
     }
 
     graph = ComputingGraph::make();
-    auto mkvar = [this](const char* name,
-                        const std::shared_ptr<HostTensorND>& host_ts,
+    auto mkvar = [this](const char* name, const std::shared_ptr<HostTensorND>& host_ts,
                         const DType& dtype) {
         return opr::TypeCvt::make(
-                opr::Host2DeviceCopy::make(*graph, host_ts).rename(name),
-                dtype);
+                opr::Host2DeviceCopy::make(*graph, host_ts).rename(name), dtype);
     };
-    auto mkcvar = [this](const char* name,
-                         const std::shared_ptr<HostTensorND>& host_ts,
+    auto mkcvar = [this](const char* name, const std::shared_ptr<HostTensorND>& host_ts,
                          const DType& dtype) {
         return opr::TypeCvt::make(
-                opr::SharedDeviceTensor::make(*graph, *host_ts).rename(name),
-                dtype);
+                opr::SharedDeviceTensor::make(*graph, *host_ts).rename(name), dtype);
     };
 
     x = mkvar("x", host_x, dtype::Float32());
@@ -146,8 +191,7 @@ intl::SimpleQuantizedTensorRTNetwork::SimpleQuantizedTensorRTNetwork() {
         auto sub = [&xshp, &cv](int idx) {
             return opr::IndexAt::make(xshp, {{0, cv(idx)}});
         };
-        auto tshp = opr::Concat::make(
-                {sub(0), sub(1) / 4, cv(4), sub(2), sub(3)}, 0);
+        auto tshp = opr::Concat::make({sub(0), sub(1) / 4, cv(4), sub(2), sub(3)}, 0);
         quantized_x = opr::Reshape::make(quantized_x, tshp);
         quantized_x = opr::Dimshuffle::make(quantized_x, {0, 1, 3, 4, 2});
     }
@@ -159,8 +203,7 @@ intl::SimpleQuantizedTensorRTNetwork::SimpleQuantizedTensorRTNetwork() {
         auto sub = [&wshp, &cv](int idx) {
             return opr::IndexAt::make(wshp, {{0, cv(idx)}});
         };
-        auto tshp = opr::Concat::make(
-                {sub(0), sub(1) / 4, cv(4), sub(2), sub(3)}, 0);
+        auto tshp = opr::Concat::make({sub(0), sub(1) / 4, cv(4), sub(2), sub(3)}, 0);
         w = opr::Reshape::make(w, tshp);
         w = opr::Dimshuffle::make(w, {0, 1, 3, 4, 2});
     }
@@ -172,8 +215,7 @@ intl::SimpleQuantizedTensorRTNetwork::SimpleQuantizedTensorRTNetwork() {
         auto sub = [&bshp, &cv](int idx) {
             return opr::IndexAt::make(bshp, {{0, cv(idx)}});
         };
-        auto tshp = opr::Concat::make(
-                {sub(0), sub(1) / 4, cv(4), sub(2), sub(3)}, 0);
+        auto tshp = opr::Concat::make({sub(0), sub(1) / 4, cv(4), sub(2), sub(3)}, 0);
         b = opr::Reshape::make(b, tshp);
         b = opr::Dimshuffle::make(b, {0, 1, 3, 4, 2});
     }
@@ -184,12 +226,11 @@ intl::SimpleQuantizedTensorRTNetwork::SimpleQuantizedTensorRTNetwork() {
     param.stride_h = param.stride_w = 1;
     param.pad_h = param.pad_w = 1;
 
-    quantized_y =
-            opr::ConvBias::make(quantized_x, w, b, param, {},
-                                OperatorNodeConfig{dtype::QuantizedS8(1.1f)});
+    quantized_y = opr::ConvBias::make(
+            quantized_x, w, b, param, {}, OperatorNodeConfig{dtype::QuantizedS8(1.1f)});
     param.format = opr::ConvBias::Param::Format::NCHW;
-    y = opr::ConvBias::make(x, float_w, float_b, param, {},
-                            OperatorNodeConfig{dtype::Float32()});
+    y = opr::ConvBias::make(
+            x, float_w, float_b, param, {}, OperatorNodeConfig{dtype::Float32()});
 
     auto yshp = opr::GetVarShape::make(quantized_y);
 
@@ -203,9 +244,8 @@ intl::SimpleQuantizedTensorRTNetwork::SimpleQuantizedTensorRTNetwork() {
     quantized_y = TypeCvt::make(quantized_y, dtype::Float32());
 }
 
-std::pair<nvinfer1::IBuilder*, INetworkDefinition*>
-intl::SimpleQuantizedTensorRTNetwork::create_trt_network(
-        bool has_batch_dim) {
+std::pair<nvinfer1::IBuilder*, INetworkDefinition*> intl::
+        SimpleQuantizedTensorRTNetwork::create_trt_network(bool has_batch_dim) {
     CompNode::load("xpu0").activate();
     Weights wt_filter{DataType::kFLOAT, nullptr, 0},
             wt_bias{DataType::kFLOAT, nullptr, 0};
@@ -220,8 +260,8 @@ intl::SimpleQuantizedTensorRTNetwork::create_trt_network(
     nvinfer1::NetworkDefinitionCreationFlags flags;
     ::memset(&flags, 0, sizeof(nvinfer1::NetworkDefinitionCreationFlags));
     if (has_batch_dim)
-        flags = 1 << static_cast<int>(nvinfer1::NetworkDefinitionCreationFlag::
-                                              kEXPLICIT_BATCH);
+        flags = 1 << static_cast<int>(
+                        nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
     auto network = builder->createNetworkV2(flags);
 #else
     auto network = builder->createNetwork();
@@ -229,8 +269,7 @@ intl::SimpleQuantizedTensorRTNetwork::create_trt_network(
     nvinfer1::ITensor* data;
 #if NV_TENSOR_RT_VERSION >= 6001
     if (has_batch_dim) {
-        data = network->addInput("data", DataType::kFLOAT,
-                                 Dims4{32, 8, 28, 28});
+        data = network->addInput("data", DataType::kFLOAT, Dims4{32, 8, 28, 28});
     } else {
         data = network->addInput("data", DataType::kFLOAT, Dims3{8, 28, 28});
     }
@@ -241,8 +280,7 @@ intl::SimpleQuantizedTensorRTNetwork::create_trt_network(
     }
 #else
     if (has_batch_dim) {
-        data = network->addInput("data", DataType::kFLOAT,
-                                 DimsNCHW{32, 8, 28, 28});
+        data = network->addInput("data", DataType::kFLOAT, DimsNCHW{32, 8, 28, 28});
     } else {
         data = network->addInput("data", DataType::kFLOAT, DimsCHW{8, 28, 28});
     }
@@ -250,8 +288,7 @@ intl::SimpleQuantizedTensorRTNetwork::create_trt_network(
     data->setDynamicRange(-127.f * 1.2f, 127.f * 1.2f);
     mgb_assert(data != nullptr, "data is invalid");
     auto add_conv = [&](const char* name, nvinfer1::ITensor* inp) {
-        auto conv = network->addConvolution(*inp, 8, DimsHW{3, 3}, wt_filter,
-                                            wt_bias);
+        auto conv = network->addConvolution(*inp, 8, DimsHW{3, 3}, wt_filter, wt_bias);
         mgb_assert(conv != nullptr, "conv1 is invalid");
         conv->setName(name);
         conv->setStride(DimsHW{1, 1});
@@ -283,22 +320,21 @@ intl::ConcatConvTensorRTNetwork::ConcatConvTensorRTNetwork() {
     graph = ComputingGraph::make();
     x0 = Host2DeviceCopy::make(*graph, host_x0);
     x1 = Host2DeviceCopy::make(*graph, host_x1);
-    auto y0 = opr::Concat::make({x0, x1}, 1),
-         w = Host2DeviceCopy::make(*graph, host_w),
-         b = Host2DeviceCopy::make(*graph, host_b),
-         y1 = opr::Convolution::make(y0, w);
+    auto y0 = opr::Concat::make({x0, x1}, 1), w = Host2DeviceCopy::make(*graph, host_w),
+         b = Host2DeviceCopy::make(*graph, host_b), y1 = opr::Convolution::make(y0, w);
     y = y1 + b;
 }
 
-std::pair<nvinfer1::IBuilder*, INetworkDefinition*>
-intl::ConcatConvTensorRTNetwork::create_trt_network(bool has_batch_dim) {
+std::pair<nvinfer1::IBuilder*, INetworkDefinition*> intl::ConcatConvTensorRTNetwork::
+        create_trt_network(bool has_batch_dim) {
     CompNode::load("xpu0").activate();
     auto builder = createInferBuilder(TensorRTOpr::Logger::instance());
 #if NV_TENSOR_RT_VERSION >= 6001
     nvinfer1::NetworkDefinitionCreationFlags flags;
     ::memset(&flags, 0, sizeof(nvinfer1::NetworkDefinitionCreationFlags));
-    if (has_batch_dim) flags = 1 << static_cast<int>(
-                    nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+    if (has_batch_dim)
+        flags = 1 << static_cast<int>(
+                        nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
     auto network = builder->createNetworkV2(flags);
 #else
     auto network = builder->createNetwork();
@@ -306,10 +342,8 @@ intl::ConcatConvTensorRTNetwork::create_trt_network(bool has_batch_dim) {
     ITensor *data0, *data1;
 #if NV_TENSOR_RT_VERSION >= 6001
     if (has_batch_dim) {
-        data0 = network->addInput("x0", DataType::kFLOAT,
-                                  Dims4{5, 23, 14, 28});
-        data1 = network->addInput("x1", DataType::kFLOAT,
-                                  Dims4{5, 23, 14, 28});
+        data0 = network->addInput("x0", DataType::kFLOAT, Dims4{5, 23, 14, 28});
+        data1 = network->addInput("x1", DataType::kFLOAT, Dims4{5, 23, 14, 28});
     } else {
         data0 = network->addInput("x0", DataType::kFLOAT, Dims3{23, 14, 28});
         data1 = network->addInput("x1", DataType::kFLOAT, Dims3{23, 14, 28});
@@ -322,10 +356,8 @@ intl::ConcatConvTensorRTNetwork::create_trt_network(bool has_batch_dim) {
     }
 #else
     if (has_batch_dim) {
-        data0 = network->addInput("x0", DataType::kFLOAT,
-                                  DimsNCHW{5, 23, 14, 28});
-        data1 = network->addInput("x1", DataType::kFLOAT,
-                                  DimsNCHW{5, 23, 14, 28});
+        data0 = network->addInput("x0", DataType::kFLOAT, DimsNCHW{5, 23, 14, 28});
+        data1 = network->addInput("x1", DataType::kFLOAT, DimsNCHW{5, 23, 14, 28});
     } else {
         data0 = network->addInput("x0", DataType::kFLOAT, DimsCHW{23, 14, 28});
         data1 = network->addInput("x1", DataType::kFLOAT, DimsCHW{23, 14, 28});
@@ -345,8 +377,8 @@ intl::ConcatConvTensorRTNetwork::create_trt_network(bool has_batch_dim) {
             wt_bias{DataType::kFLOAT, host_b->raw_ptr(), 0};
     wt_filter.count = host_w->shape().total_nr_elems();
     wt_bias.count = host_b->shape().total_nr_elems();
-    auto conv1 = network->addConvolution(*concat->getOutput(0), 32,
-                                         DimsHW{3, 3}, wt_filter, wt_bias);
+    auto conv1 = network->addConvolution(
+            *concat->getOutput(0), 32, DimsHW{3, 3}, wt_filter, wt_bias);
     mgb_assert(conv1 != nullptr, "conv1 is invalid");
     conv1->setName("conv1");
     conv1->setStride(DimsHW{1, 1});
@@ -362,6 +394,171 @@ intl::ConcatConvTensorRTNetwork::create_trt_network(bool has_batch_dim) {
     return std::make_pair(builder, network);
 }
 
+intl::ReshapeConcatTensorRTNetwork::ReshapeConcatTensorRTNetwork() {
+    host_x0 = gen({2, 2, 2, 2});
+    host_y0 = gen({2, 3, 2, 2});
+
+    graph = ComputingGraph::make();
+    x0 = Host2DeviceCopy::make(*graph, host_x0);
+    y0 = Host2DeviceCopy::make(*graph, host_y0);
+    auto x1 = opr::Reshape::make(x0, {2, 8, 1, 1}),
+         y1 = opr::Reshape::make(y0, {2, 12, 1, 1});
+    z = opr::Concat::make({x1, y1}, 1);
+}
+
+std::pair<nvinfer1::IBuilder*, INetworkDefinition*> intl::ReshapeConcatTensorRTNetwork::
+        create_trt_network(bool has_batch_dim) {
+    initLibNvInferPlugins(&TensorRTOpr::Logger::instance(), "");
+
+    CompNode::load("xpu0").activate();
+    auto builder = createInferBuilder(TensorRTOpr::Logger::instance());
+#if NV_TENSOR_RT_VERSION >= 6001
+    nvinfer1::NetworkDefinitionCreationFlags flags;
+    ::memset(&flags, 0, sizeof(nvinfer1::NetworkDefinitionCreationFlags));
+    if (has_batch_dim)
+        flags = 1 << static_cast<int>(
+                        nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+    auto network = builder->createNetworkV2(flags);
+#else
+    auto network = builder->createNetwork();
+#endif
+    nvinfer1::ITensor *data0, *data1;
+#if NV_TENSOR_RT_VERSION >= 6001
+    if (has_batch_dim) {
+        data0 = network->addInput("x0", DataType::kFLOAT, Dims4{2, 2, 2, 2});
+        data1 = network->addInput("y0", DataType::kFLOAT, Dims4{2, 3, 2, 2});
+    } else {
+        data0 = network->addInput("x0", DataType::kFLOAT, Dims3{2, 2, 2});
+        data1 = network->addInput("y0", DataType::kFLOAT, Dims3{3, 2, 2});
+    }
+    {
+        nvinfer1::TensorFormats formats =
+                1 << static_cast<int>(nvinfer1::TensorFormat::kLINEAR);
+        data0->setAllowedFormats(formats);
+        data1->setAllowedFormats(formats);
+    }
+#else
+    if (has_batch_dim) {
+        data0 = network->addInput("x0", DataType::kFLOAT, DimsNCHW{2, 2, 2, 2});
+        data1 = network->addInput("y0", DataType::kFLOAT, DimsNCHW{2, 3, 2, 2});
+    } else {
+        data0 = network->addInput("x0", DataType::kFLOAT, DimsCHW{2, 2, 2});
+        data1 = network->addInput("y0", DataType::kFLOAT, DimsCHW{3, 2, 2});
+    }
+#endif
+    int axis = 1;
+#if NV_TENSOR_RT_VERSION >= 8500
+    int ignoreBatch = 0;
+#else
+    bool ignoreBatch = false;
+#endif
+    nvinfer1::PluginField fields[2] = {
+            nvinfer1::PluginField{"axis", &axis, nvinfer1::PluginFieldType::kINT32, 1},
+            nvinfer1::PluginField{
+                    "ignoreBatch", &ignoreBatch, nvinfer1::PluginFieldType::kINT32, 1},
+    };
+    nvinfer1::PluginFieldCollection fc{2, fields};
+
+    auto creator = getPluginRegistry()->getPluginCreator("FlattenConcat_TRT", "1", "");
+    TensorRTUniquePtr<nvinfer1::IPluginV2> plugin(
+            creator->createPlugin("FlattenConcat_TRT", &fc));
+    ITensor* inputTensors[] = {data0, data1};
+    auto flt_cct = network->addPluginV2(inputTensors, 2, *plugin);
+    mgb_assert(flt_cct != nullptr, "FlattenConcat_TRT is invalid");
+    network->markOutput(*flt_cct->getOutput(0));
+#if NV_TENSOR_RT_VERSION >= 6001
+    {
+        nvinfer1::TensorFormats formats =
+                1 << static_cast<int>(nvinfer1::TensorFormat::kLINEAR);
+        flt_cct->getOutput(0)->setAllowedFormats(formats);
+    }
+#endif
+    return std::make_pair(builder, network);
+}
+
+#if NV_TENSOR_RT_VERSION >= 6001
+intl::DynamicShapeTensorRTNetwork::DynamicShapeTensorRTNetwork(
+        size_t n, size_t c, size_t h, size_t w) {
+    host_x = gen({n, c, h, w});
+    host_w1 = gen({32, 23, 3, 3});
+    host_b1 = gen({1, 32, 1, 1});
+
+    graph = ComputingGraph::make();
+    x = Host2DeviceCopy::make(*graph, host_x);
+    auto w1 = Host2DeviceCopy::make(*graph, host_w1),
+         b1 = Host2DeviceCopy::make(*graph, host_b1),
+         y01 = opr::Convolution::make(x, w1);
+    y1 = y01 + b1;
+}
+
+TensorRTUniquePtr<ICudaEngine> intl::DynamicShapeTensorRTNetwork::create_trt_network() {
+    CompNode::load("xpu0").activate();
+    Weights wt_filter_1{DataType::kFLOAT, nullptr, 0},
+            wt_bias_1{DataType::kFLOAT, nullptr, 0};
+    wt_filter_1.type = DataType::kFLOAT;
+    wt_bias_1.type = DataType::kFLOAT;
+    wt_filter_1.values = host_w1->raw_ptr();
+    wt_bias_1.values = host_b1->raw_ptr();
+    wt_filter_1.count = host_w1->shape().total_nr_elems();
+    wt_bias_1.count = host_b1->shape().total_nr_elems();
+    auto builder = createInferBuilder(TensorRTOpr::Logger::instance());
+
+    auto network = builder->createNetworkV2(
+            1 << static_cast<int>(
+                    nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH));
+
+    nvinfer1::ITensor* data;
+
+    data = network->addInput("data", DataType::kFLOAT, Dims4{-1, 23, -1, -1});
+
+    nvinfer1::IBuilderConfig* config = builder->createBuilderConfig();
+
+    nvinfer1::IOptimizationProfile* profile1 = builder->createOptimizationProfile();
+    profile1->setDimensions(
+            "data", nvinfer1::OptProfileSelector::kMIN, Dims4(1, 23, 10, 10));
+    profile1->setDimensions(
+            "data", nvinfer1::OptProfileSelector::kOPT, Dims4(2, 23, 12, 12));
+    profile1->setDimensions(
+            "data", nvinfer1::OptProfileSelector::kMAX, Dims4(3, 23, 14, 14));
+    config->addOptimizationProfile(profile1);
+
+    nvinfer1::IOptimizationProfile* profile2 = builder->createOptimizationProfile();
+    profile2->setDimensions(
+            "data", nvinfer1::OptProfileSelector::kMIN, Dims4(3, 23, 16, 16));
+    profile2->setDimensions(
+            "data", nvinfer1::OptProfileSelector::kOPT, Dims4(4, 23, 24, 24));
+    profile2->setDimensions(
+            "data", nvinfer1::OptProfileSelector::kMAX, Dims4(5, 23, 28, 28));
+    config->addOptimizationProfile(profile2);
+
+    {
+        nvinfer1::TensorFormats formats =
+                1 << static_cast<int>(nvinfer1::TensorFormat::kLINEAR);
+        data->setAllowedFormats(formats);
+    }
+
+    mgb_assert(data != nullptr, "data is invalid");
+    auto conv1 =
+            network->addConvolution(*data, 32, DimsHW{3, 3}, wt_filter_1, wt_bias_1);
+    mgb_assert(conv1 != nullptr, "conv1 is invalid");
+    conv1->setStride(DimsHW{1, 1});
+    conv1->getOutput(0)->setName("prob1");
+    network->markOutput(*conv1->getOutput(0));
+
+    {
+        nvinfer1::TensorFormats formats =
+                1 << static_cast<int>(nvinfer1::TensorFormat::kLINEAR);
+        conv1->getOutput(0)->setAllowedFormats(formats);
+    }
+
+    TensorRTUniquePtr<ICudaEngine> cuda_engine{
+            builder->buildEngineWithConfig(*network, *config)};
+
+    return cuda_engine;
+}
+#endif
+
+#pragma GCC diagnostic pop
 #endif  // MGB_ENABLE_TENSOR_RT
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

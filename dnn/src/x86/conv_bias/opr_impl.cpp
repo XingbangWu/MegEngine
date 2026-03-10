@@ -1,15 +1,3 @@
-/**
- * \file dnn/src/x86/conv_bias/opr_impl.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #include "src/x86/conv_bias/opr_impl.h"
 #include <algorithm>
 #include <memory>
@@ -51,8 +39,8 @@ class ConvBiasImpl::AlgoPack : NonCopyableObj {
 
 public:
     AlgoPack() {
-    //! FIXME: preference to use mkldnn algo on VNNI devices
-    //! But now mkldnn algo preference issue with NCHW->NHWC->NCHW
+        //! FIXME: preference to use mkldnn algo on VNNI devices
+        //! But now mkldnn algo preference issue with NCHW->NHWC->NCHW
 #if MEGDNN_X86_WITH_MKL_DNN
         //! Create the mkldnn algo
         m_all_no_winograd_algo.emplace_back(&mkldnn_conv_fp32);
@@ -92,12 +80,10 @@ public:
             m_all_algos_map.emplace(algo->info().desc, algo);
         }
     }
-    const SmallVector<fallback::ConvBiasImpl::AlgoBase*>& all_no_winograd_algo()
-            const {
+    const SmallVector<fallback::ConvBiasImpl::AlgoBase*>& all_no_winograd_algo() const {
         return m_all_no_winograd_algo;
     }
-    const SmallVector<fallback::ConvBiasImpl::AlgoBase*>& winograd_algos()
-            const {
+    const SmallVector<fallback::ConvBiasImpl::AlgoBase*>& winograd_algos() const {
         return m_winograd_algos;
     }
     const AlgoBase::Mapper& all_algos_map() const { return m_all_algos_map; }
@@ -110,27 +96,27 @@ const ConvBiasImpl::AlgoPack& ConvBiasImpl::algo_pack() {
 
 fallback::ConvBiasImpl::AlgoBase* ConvBiasImpl::get_algo_from_desc(
         const AlgorithmDesc& desc) {
-    megdnn_assert(algo_pack().all_algos_map().find(desc) !=
-                  algo_pack().all_algos_map().end());
+    megdnn_assert(
+            algo_pack().all_algos_map().find(desc) !=
+            algo_pack().all_algos_map().end());
     return algo_pack().all_algos_map().at(desc);
 }
 
-SmallVector<fallback::ConvBiasImpl::AlgoBase*>
-ConvBiasImpl::get_all_packed_algo() {
+SmallVector<fallback::ConvBiasImpl::AlgoBase*> ConvBiasImpl::get_all_packed_algo() {
     auto&& algos = fallback::ConvBiasImpl::get_all_packed_algo();
-    algos.insert(algos.begin(), algo_pack().all_no_winograd_algo().begin(),
-                 algo_pack().all_no_winograd_algo().end());
-    algos.insert(algos.end(), algo_pack().winograd_algos().begin(),
-                 algo_pack().winograd_algos().end());
+    algos.insert(
+            algos.begin(), algo_pack().all_no_winograd_algo().begin(),
+            algo_pack().all_no_winograd_algo().end());
+    algos.insert(
+            algos.end(), algo_pack().winograd_algos().begin(),
+            algo_pack().winograd_algos().end());
 
     return std::move(algos);
 }
 
-void ConvBiasImpl::get_rectified_img_size(size_t IH, size_t IW, size_t FH,
-                                          size_t FW, size_t OH, size_t OW,
-                                          size_t PH, size_t PW, size_t& IH2,
-                                          size_t& IW2, size_t& OH2,
-                                          size_t& OW2) {
+void ConvBiasImpl::get_rectified_img_size(
+        size_t IH, size_t IW, size_t FH, size_t FW, size_t OH, size_t OW, size_t PH,
+        size_t PW, size_t& IH2, size_t& IW2, size_t& OH2, size_t& OW2) {
     OW2 = (OW + 7) >> 3 << 3;
     OH2 = OH;
     IH2 = std::max(IH, OH2 + FH - 1 + 2 * PH);
@@ -173,7 +159,6 @@ SmallVector<AlgoCategory> ConvBiasImpl::suggest_algo_category_order(
     auto FH = param.filter_meta.spatial[0];
     auto FW = param.filter_meta.spatial[1];
     //! TODO: now winograd only support fast-run
-
     //! nchw88 use mkl-dnn which algo is direct
     if (param.filter_meta.format == param::ConvBias::Format::NCHW88) {
         return {AlgoCategory::DIRECT, AlgoCategory::IM2COL};
@@ -186,16 +171,14 @@ SmallVector<AlgoCategory> ConvBiasImpl::suggest_algo_category_order(
     }
     //! conv1x1
     im2col_prefer |= (FH == 1 && FW == 1);
-    //! x86 8x8x16 not optmized, so it will use fallback im2col+matmul
+    //! x86 8x8x16 not optimized, so it will use fallback im2col+matmul
     if (param.deduce_algo_data_type() == AlgoDataType::INT8X8X16) {
         im2col_prefer = true;
     }
     if (im2col_prefer) {
-        return {AlgoCategory::IM2COL, AlgoCategory::DIRECT,
-                AlgoCategory::NAIVE};
+        return {AlgoCategory::IM2COL, AlgoCategory::DIRECT, AlgoCategory::NAIVE};
     } else {
-        return {AlgoCategory::DIRECT, AlgoCategory::IM2COL,
-                AlgoCategory::NAIVE};
+        return {AlgoCategory::DIRECT, AlgoCategory::IM2COL, AlgoCategory::NAIVE};
     }
 }
 

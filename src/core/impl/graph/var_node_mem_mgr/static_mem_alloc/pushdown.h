@@ -1,14 +1,3 @@
-/**
- * \file src/core/impl/graph/var_node_mem_mgr/static_mem_alloc/pushdown.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "./impl.h"
@@ -16,7 +5,7 @@
 namespace mgb {
 namespace cg {
 
-class StaticMemAllocPushdown final: public StaticMemAllocImplHelper {
+class StaticMemAllocPushdown final : public StaticMemAllocImplHelper {
     class BestfitPrealloc;
 
     size_t m_peak_usage = 0;
@@ -33,19 +22,15 @@ class StaticMemAllocPushdown final: public StaticMemAllocImplHelper {
      */
     void init_topo_order();
 
-    size_t get_interval_addr_end(Interval *interval);
+    size_t get_interval_addr_end(Interval* interval);
 
-    public:
+public:
+    void do_solve() override;
 
-        void do_solve() override;
-
-        size_t tot_alloc() const override {
-            return m_peak_usage;
-        }
+    size_t tot_alloc() const override { return m_peak_usage; }
 };
 
-} // cg
-} // mgb
+}  // namespace cg
+}  // namespace mgb
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}
-

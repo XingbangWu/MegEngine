@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/common/adaptive_pooling.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #include "megdnn/opr_param_defs.h"
 #include "megdnn/oprs.h"
 
@@ -17,9 +6,24 @@ namespace megdnn {
 
 param::Pooling AdaptivePoolingBase::deduce_pooling_param(
         const TensorLayout& src, const TensorLayout& dst) {
-    megdnn_assert(param().format == param::AdaptivePooling::Format::NCHW);
-    size_t IH = src.shape[2], IW = src.shape[3], OH = dst.shape[2],
-           OW = dst.shape[3];
+    auto param_format = param().format;
+    size_t IH, IW, OH, OW;
+    if (param_format == param::AdaptivePooling::Format::NCHW ||
+        param_format == param::AdaptivePooling::Format::NCHW44 ||
+        param_format == param::AdaptivePooling::Format::NCHW88) {
+        IH = src.shape[2];
+        IW = src.shape[3];
+        OH = dst.shape[2];
+        OW = dst.shape[3];
+    } else if (param_format == param::AdaptivePooling::Format::NHWC) {
+        IH = src.shape[1];
+        IW = src.shape[2];
+        OH = dst.shape[1];
+        OW = dst.shape[2];
+    } else {
+        megdnn_throw(
+                "AdaptivePooling only support NCHW or NHWC or NCHW44 or NCHW88 format");
+    }
 
     param::Pooling ret;
     ret.mode = param().mode;

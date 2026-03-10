@@ -1,22 +1,11 @@
-/**
- * \file src/core/impl/comp_node/mem_alloc/impl.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/comp_node/alloc.h"
 
-#include <set>
-#include <map>
-#include <unordered_map>
 #include <atomic>
+#include <map>
+#include <set>
+#include <unordered_map>
 #include <vector>
 
 namespace mgb {
@@ -24,112 +13,116 @@ namespace mem_alloc {
 
 class DevMemAllocImpl;
 
-class MemAllocImplHelper: virtual public MemAllocBase {
+class MemAllocImplHelper : virtual public MemAllocBase {
     friend class DevMemAllocImpl;
 
-    protected:
-        struct MemAddr {
-            //! whether it is head of a chunk from raw allocator; if true, it
-            //! could not be merged with chunks with lower address
-            bool is_head = false;
-            size_t addr = -1;
+protected:
+    struct MemAddr {
+        //! whether it is head of a chunk from raw allocator; if true, it
+        //! could not be merged with chunks with lower address
+        bool is_head = false;
+        size_t addr = -1;
 
-            void* addr_ptr() const {
-                return reinterpret_cast<void*>(addr);
-            }
+        void* addr_ptr() const { return reinterpret_cast<void*>(addr); }
 
-            bool operator < (const MemAddr &rhs) const {
-                return addr < rhs.addr;
-            }
+        bool operator<(const MemAddr& rhs) const { return addr < rhs.addr; }
 
-            MemAddr operator + (size_t delta) const {
-                return {false, addr + delta};
-            }
-        };
+        MemAddr operator+(size_t delta) const { return {false, addr + delta}; }
+    };
 
-        struct FreeBlock {
-            MemAddr addr;
-            size_t size = -1;
+    struct FreeBlock {
+        MemAddr addr;
+        size_t size = -1;
 
-            size_t end() const {
-                return addr.addr + size;
-            }
-        };
+        size_t end() const { return addr.addr + size; }
+    };
 
-        struct FreeCmpBySize{
-            bool operator() (const FreeBlock &a, const FreeBlock &b) const {
-                // prefer more recent (hotter) block
-                return a.size < b.size || (a.size == b.size && a.addr < b.addr);
-            }
-        };
+    struct FreeCmpBySize {
+        bool operator()(const FreeBlock& a, const FreeBlock& b) const {
+            // prefer more recent (hotter) block
+            return a.size < b.size || (a.size == b.size && a.addr < b.addr);
+        }
+    };
 
-        struct BlkByAddrIter;
-        struct FreeBlockAddrInfo;
+    struct BlkByAddrIter;
+    struct FreeBlockAddrInfo;
 
-        //! free blocks sorted by size, and map to corresponding iterator in
-        //! m_free_blk_addr
-        std::map<FreeBlock, BlkByAddrIter, FreeCmpBySize> m_free_blk_size;
+    //! free blocks sorted by size, and map to corresponding iterator in
+    //! m_free_blk_addr
+    std::map<FreeBlock, BlkByAddrIter, FreeCmpBySize> m_free_blk_size;
 
-        //! map from address to size and size iter
-        std::map<size_t, FreeBlockAddrInfo> m_free_blk_addr;
+    //! map from address to size and size iter
+    std::map<size_t, FreeBlockAddrInfo> m_free_blk_addr;
 
-        std::mutex m_mutex;
+    MGB_MUTEX m_mutex;
 
-        struct BlkByAddrIter {
-            decltype(m_free_blk_addr.begin()) aiter;
-        };
+    struct BlkByAddrIter {
+        decltype(m_free_blk_addr.begin()) aiter;
+    };
 
-        struct FreeBlockAddrInfo {
-            bool is_head;   //! always equals to siter->first.addr.is_head
-            size_t size;
-            decltype(m_free_blk_size.begin()) siter;
-        };
+    struct FreeBlockAddrInfo {
+        bool is_head;  //! always equals to siter->first.addr.is_head
+        size_t size;
+        decltype(m_free_blk_size.begin()) siter;
+    };
 
-        /*!
-         * \brief merge a block into free list, without locking
-         */
-        void merge_free_unsafe(FreeBlock block);
+    /*!
+     * \brief merge a block into free list, without locking
+     */
+    void merge_free_unsafe(FreeBlock block);
 
-        /*!
-         * \brief directly insert a free block into m_free_blk_size and
-         *      m_free_blk_addr, without merging
-         */
-        virtual void insert_free_unsafe(const FreeBlock &block);
+    /*!
+     * \brief directly insert a free block into m_free_blk_size and
+     *      m_free_blk_addr, without merging
+     */
+    virtual void insert_free_unsafe(const FreeBlock& block);
 
-        /*!
-         * \brief allocate from parent allocator; this method must either return
-         *      a valid address or throw an exception
-         *
-         * m_free_blk_addr and m_free_blk_size must be maintained if necessary
-         */
-        virtual MemAddr alloc_from_parent(size_t size) = 0;
+    /*!
+     * \brief allocate from parent allocator; this method must either return
+     *      a valid address or throw an exception
+     *
+     * m_free_blk_addr and m_free_blk_size must be maintained if necessary
+     */
+    virtual MemAddr alloc_from_parent(size_t size) = 0;
 
-        /*!
-         * \brief get name of this allocator
-         */
-        virtual std::string get_name() const = 0;
+    /*!
+     * \brief get name of this allocator
+     */
+    virtual std::string get_name() const = 0;
 
-        MemAddr do_alloc(size_t size, bool allow_from_parent,
-                bool log_stat_on_error = false);
+    MemAddr do_alloc(
+            size_t size, bool allow_from_parent, bool log_stat_on_error = false);
 
-        //! get free mem for this allocator, without locking
-        FreeMemStat get_free_memory_self_unsafe();
+    //! get free mem for this allocator, without locking
+    FreeMemStat get_free_memory_self_unsafe();
 
-    public:
-        void print_memory_state() override;
+#if !MGB_BUILD_SLIM_SERVING
+    size_t get_max_block_size_available_unsafe();
 
-        FreeMemStat get_free_memory() override final;
+    std::pair<size_t, size_t> get_free_left_and_right(
+            size_t begin_ptr, size_t end_ptr) override;
+#endif
+
+public:
+    void print_memory_state() override;
+
+    FreeMemStat get_free_memory() override final;
+
+#if !MGB_BUILD_SLIM_SERVING
+    size_t get_max_block_size_available() override final;
+#endif
+
+    std::string str_free_info(size_t threshold);
 };
 
-
-class StreamMemAllocImpl final: public StreamMemAlloc,
-                                public MemAllocImplHelper {
+class StreamMemAllocImpl final : public StreamMemAlloc, public MemAllocImplHelper {
     struct AllocatedBlock {
         bool is_head;
         size_t size;
+        size_t size_ahead;  // allocated size ahead of ptr
     };
 
-    DevMemAllocImpl *m_dev_alloc;
+    DevMemAllocImpl* m_dev_alloc;
     int m_stream_id;
 
     //! map from address to block info
@@ -137,7 +130,7 @@ class StreamMemAllocImpl final: public StreamMemAlloc,
 
     void* alloc(size_t size) override;
 
-    void free(void *addr) override;
+    void free(void* addr) override;
 
     void get_mem_info(size_t& free, size_t& tot) override;
 
@@ -147,10 +140,10 @@ class StreamMemAllocImpl final: public StreamMemAlloc,
     size_t get_used_memory() override;
     FreeMemStat get_free_memory_dev() override;
 
-    public:
-        StreamMemAllocImpl(DevMemAllocImpl *dev_alloc, int stream_id):
-            m_dev_alloc(dev_alloc), m_stream_id(stream_id)
-        {}
+public:
+    void print_memory_state() override;
+    StreamMemAllocImpl(DevMemAllocImpl* dev_alloc, int stream_id)
+            : m_dev_alloc(dev_alloc), m_stream_id(stream_id) {}
 };
 
 /*!
@@ -159,8 +152,7 @@ class StreamMemAllocImpl final: public StreamMemAlloc,
  * single-level allocator(i.e. only the FreeBlock pool in its child stream
  * allocator will be used) for better performance
  */
-class DevMemAllocImpl final: public DevMemAlloc,
-                             public MemAllocImplHelper {
+class DevMemAllocImpl final : public DevMemAlloc, public MemAllocImplHelper {
     friend class StreamMemAllocImpl;
     int m_device;
     std::shared_ptr<RawAllocator> m_raw_allocator;
@@ -172,6 +164,7 @@ class DevMemAllocImpl final: public DevMemAlloc,
 
     size_t m_tot_allocated_from_raw = 0;
     std::atomic_size_t m_used_size{0};
+    std::atomic_size_t m_max_used_size{0};
 
     /*!
      * \brief gather all free blocks from child streams, and release full chunks
@@ -192,14 +185,17 @@ class DevMemAllocImpl final: public DevMemAlloc,
         return m_raw_allocator;
     }
 
-    const std::shared_ptr<DeviceRuntimePolicy>& device_runtime_policy()
-            const override {
+    const std::shared_ptr<DeviceRuntimePolicy>& device_runtime_policy() const override {
         return m_runtime_policy;
     }
 
     size_t get_used_memory() override { return m_used_size.load(); }
 
-    void insert_free_unsafe(const FreeBlock &block) override;
+    size_t get_max_used_memory() override { return m_max_used_size.load(); }
+
+    void reset_max_used_memory() override { m_max_used_size = 0; }
+
+    void insert_free_unsafe(const FreeBlock& block) override;
 
     /*!
      * \brief return stream allocator if DevMemAlloc has single child,
@@ -211,8 +207,7 @@ public:
     DevMemAllocImpl(
             int device, size_t reserve_size,
             const std::shared_ptr<mem_alloc::RawAllocator>& raw_allocator,
-            const std::shared_ptr<mem_alloc::DeviceRuntimePolicy>&
-                    runtime_policy);
+            const std::shared_ptr<mem_alloc::DeviceRuntimePolicy>& runtime_policy);
 
     ~DevMemAllocImpl();
 
@@ -225,11 +220,11 @@ public:
     FreeMemStat get_free_memory_dev() override;
 };
 
-class SimpleCachingAllocImpl : public SimpleCachingAlloc,
-                               public MemAllocImplHelper {
+class SimpleCachingAllocImpl : public SimpleCachingAlloc, public MemAllocImplHelper {
     struct AllocatedBlock {
         bool is_head;
         size_t size;
+        size_t size_ahead;  // allocated size ahead of ptr
     };
 
     std::unique_ptr<RawAllocator> m_raw_alloc;
@@ -251,6 +246,6 @@ protected:
     std::string get_name() const override;
 };
 
-}
-}
+}  // namespace mem_alloc
+}  // namespace mgb
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

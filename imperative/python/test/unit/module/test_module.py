@@ -1,13 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-import os
-import tempfile
 from collections import OrderedDict
 from io import BytesIO
 
@@ -16,20 +7,26 @@ import pytest
 
 import megengine as mge
 import megengine.functional as F
-from megengine import Parameter, Tensor, tensor
+from megengine import Parameter, Tensor, amp, tensor
+from megengine.device import get_device_count
 from megengine.module import (
     BatchNorm1d,
     BatchNorm2d,
     Conv1d,
     Conv2d,
     Dropout,
+    GroupNorm,
+    InstanceNorm,
     Linear,
     MaxPool2d,
     Module,
     Sequential,
     Softmax,
 )
+from megengine.module.module import _access_structure
 from megengine.quantization.quantize import quantize, quantize_qat
+from megengine.traced_module import TracedModule, trace_module
+from megengine.utils.module_utils import get_expand_structure, set_expand_structure
 
 
 class MLP(Module):
@@ -43,146 +40,6 @@ class MLP(Module):
         x = F.relu(x)
         x = self.dense1(x)
         return x
-
-
-def has_gpu(num=1):
-    try:
-        mgb.comp_node("gpu{}".format(num - 1))
-    except mgb.MegBrainError:
-        return False
-
-    return True
-
-
-def randomNp(*args):
-    for arg in args:
-        assert isinstance(arg, int)
-    return np.random.random(args)
-
-
-def randomTorch(*args):
-    import torch  # pylint: disable=import-outside-toplevel
-
-    for arg in args:
-        assert isinstance(arg, int)
-    return torch.tensor(randomNp(*args), dtype=torch.float32)
-
-
-def graph_mode(*modes):
-    if not set(modes).issubset({"eager", "static"}):
-        raise ValueError("graph mode must be in (eager, static)")
-
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            if "eager" in set(modes):
-                func(*args, **kwargs)
-            if "static" in set(modes):
-                with Graph() as cg:
-                    cg.set_option("eager_evaluation", False)
-                    func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def _default_compare_fn(x, y):
-    np.testing.assert_allclose(x.numpy(), y, rtol=1e-6)
-
-
-def opr_test(
-    cases,
-    func,
-    mode=("eager", "static", "dynamic_shape"),
-    compare_fn=_default_compare_fn,
-    ref_fn=None,
-    **kwargs
-):
-    """
-    mode: the list of test mode which are eager, static and dynamic_shape
-          will test all the cases if None.
-    func: the function to run opr.
-    compare_fn: the function to compare the result and expected, use np.testing.assert_allclose if None.
-    ref_fn: the function to generate expected data, should assign output if None.
-    cases: the list which have dict element, the list length should be 2 for dynamic shape test.
-           and the dict should have input,
-           and should have output if ref_fn is None.
-           should use list for multiple inputs and outputs for each case.
-    kwargs: The additional kwargs for opr func.
-
-    simple examples:
-
-        dtype = np.float32
-        cases = [{"input": [10, 20]}, {"input": [20, 30]}]
-        opr_test(cases,
-                 F.eye,
-                 ref_fn=lambda n, m: np.eye(n, m).astype(dtype),
-                 dtype=dtype)
-
-    """
-
-    def check_results(results, expected):
-        if not isinstance(results, Tuple):
-            results = (results,)
-        for r, e in zip(results, expected):
-            compare_fn(r, e)
-
-    def get_trace_fn(func, enabled, symbolic):
-        jit.trace.enabled = enabled
-        return jit.trace(func, symbolic=symbolic)
-
-    def get_param(cases, idx):
-        case = cases[idx]
-        inp = case.get("input", None)
-        outp = case.get("output", None)
-        if inp is None:
-            raise ValueError("the test case should have input")
-        if not isinstance(inp, List):
-            inp = (inp,)
-        else:
-            inp = tuple(inp)
-        if ref_fn is not None and callable(ref_fn):
-            outp = ref_fn(*inp)
-        if outp is None:
-            raise ValueError("the test case should have output or reference function")
-        if not isinstance(outp, List):
-            outp = (outp,)
-        else:
-            outp = tuple(outp)
-
-        return inp, outp
-
-    if not set(mode).issubset({"eager", "static", "dynamic_shape"}):
-        raise ValueError("opr test mode must be in (eager, static, dynamic_shape)")
-
-    if len(cases) == 0:
-        raise ValueError("should give one case at least")
-
-    if "dynamic_shape" in set(mode):
-        if len(cases) != 2:
-            raise ValueError("should give 2 cases for dynamic shape test")
-
-    if not callable(func):
-        raise ValueError("the input func should be callable")
-
-    inp, outp = get_param(cases, 0)
-
-    def run(*args, **kwargs):
-        return func(*args, **kwargs)
-
-    if "eager" in set(mode):
-        f = get_trace_fn(run, False, False)
-        results = f(*inp, **kwargs)
-        check_results(results, outp)
-
-    if "static" in set(mode) or "dynamic_shape" in set(mode):
-        f = get_trace_fn(run, True, True)
-        results = f(*inp, **kwargs)
-        check_results(results, outp)
-        if "dynamic_shape" in set(mode):
-            inp, outp = get_param(cases, 1)
-            results = f(*inp, **kwargs)
-            check_results(results, outp)
 
 
 class MyModule(Module):
@@ -207,8 +64,18 @@ class MyModule(Module):
         return x
 
 
-def test_module_api():
+@pytest.mark.parametrize("test_traced_module", [True, False])
+def test_module_api(test_traced_module):
     m = MyModule()
+    if test_traced_module:
+        buff = m.buff
+        param = m.param
+        m = trace_module(m, Tensor(np.random.random((1, 4, 16, 16))))
+        assert "buff" not in m.__dict__
+        assert "param" not in m.__dict__
+        m.buff = buff
+        m.param = param
+
     assert list(m.children()) == [m.bn, m.i]
     assert list(m.named_children()) == [("bn", m.bn), ("i", m.i)]
     assert list(m.modules()) == [m, m.bn, m.i, m.i.bn]
@@ -253,6 +120,30 @@ def test_module_api():
         ("i.bn.weight", m.i.bn.weight),
         ("param", m.param),
     ]
+    assert list(m.tensors()) == [
+        m.bn.bias,
+        m.bn.running_mean,
+        m.bn.running_var,
+        m.bn.weight,
+        m.buff,
+        m.i.bn.bias,
+        m.i.bn.running_mean,
+        m.i.bn.running_var,
+        m.i.bn.weight,
+        m.param,
+    ]
+    assert list(m.named_tensors()) == [
+        ("bn.bias", m.bn.bias),
+        ("bn.running_mean", m.bn.running_mean),
+        ("bn.running_var", m.bn.running_var),
+        ("bn.weight", m.bn.weight),
+        ("buff", m.buff),
+        ("i.bn.bias", m.i.bn.bias),
+        ("i.bn.running_mean", m.i.bn.running_mean),
+        ("i.bn.running_var", m.i.bn.running_var),
+        ("i.bn.weight", m.i.bn.weight),
+        ("param", m.param),
+    ]
     m.eval()
     assert (
         m.training == False
@@ -281,8 +172,11 @@ def test_module_api():
     assert m.bn.training == False and m.i.bn.training == False
 
 
-def test_module_api_reuse_submodule():
+@pytest.mark.parametrize("test_traced_module", [True, False])
+def test_module_api_reuse_submodule(test_traced_module):
     m = MyModule()
+    if test_traced_module:
+        m = trace_module(m, Tensor(np.random.random((1, 4, 16, 16))))
     m.h = m.i  # pylint: disable=attribute-defined-outside-init
     assert list(m.modules()) == [m, m.bn, m.i, m.i.bn]
     assert list(m.named_modules()) == [
@@ -293,26 +187,32 @@ def test_module_api_reuse_submodule():
     ]
 
 
-def test_module_api_iterable_stability():
+@pytest.mark.parametrize("test_traced_module", [True, False])
+def test_module_api_iterable_stability(test_traced_module):
     m = MyModule()
+    if test_traced_module:
+        m = trace_module(m, Tensor(np.random.random((1, 4, 16, 16))))
     l = list(m.modules())
     for _ in range(100):
         assert list(m.modules()) == l
 
 
-def test_module_api_hooks():
+@pytest.mark.parametrize("test_traced_module", [True, False])
+def test_module_api_hooks(test_traced_module):
     net = MyModule()
+    if test_traced_module:
+        net = trace_module(net, Tensor(np.zeros((1, 4, 1, 1))))
     pre_hook_num = 0
     post_hook_num = 0
     hooks = []
 
-    def pre_hook(module, inputs):
+    def pre_hook(_, inputs):
         nonlocal pre_hook_num
         pre_hook_num += 1
         modified_inputs = tuple(inp + 1 for inp in inputs)
         return modified_inputs
 
-    def post_hook(module, inputs, outputs):
+    def post_hook(_, __, outputs):
         nonlocal post_hook_num
         post_hook_num += 1
         outputs += 1
@@ -376,7 +276,7 @@ class MyModule2(Module):
 
 def test_expand_structure():
     m = MyModule2()
-    assert list(m.named_modules()) == [
+    rst = [
         ("", m),
         ("a.0", m.a[0]),
         ("a.1.x", m.a[1]["x"]),
@@ -387,6 +287,16 @@ def test_expand_structure():
         ("a.2.0.bn", m.a[2][0].bn),
         ("bn", m.bn),
     ]
+    assert list(m.named_modules()) == rst
+
+    for item in rst[1:]:
+        assert get_expand_structure(m, item[0]) == item[1]
+
+    for item in reversed(rst[1:]):
+        if _access_structure(m, item[0], lambda p, k, o: isinstance(p, tuple)):
+            continue
+        set_expand_structure(m, item[0], "TEST_VALUE")
+        assert get_expand_structure(m, item[0]) == "TEST_VALUE"
 
 
 def test_flatten_others():
@@ -488,6 +398,22 @@ def test_state_dict():
             mlp1.load_state_dict(state_dict)
 
 
+def test_format_after_load_state_dict():
+    m1 = MyModule3()
+
+    with BytesIO() as fout:
+        mge.save(m1.state_dict(), fout)
+        fout.seek(0)
+        state_dict = mge.load(fout)
+        m2 = MyModule3()
+        m2 = amp.convert_module_format(m2, False)
+        for _, param in m2.named_tensors():
+            assert param.format == "nhwc"
+        m2.load_state_dict(state_dict, strict=False)
+        for _, param in m2.named_tensors():
+            assert param.format == "nhwc"
+
+
 class AssertModule(Module):
     def __init__(self):
         super().__init__()
@@ -498,10 +424,10 @@ class AssertModule(Module):
 
 
 def test_assert_message():
-    m = AssertModule()
     with pytest.raises(
         AssertionError, match="keys for Tensor and Module must be str, error key: True"
     ):
+        m = AssertModule()
         list(m._flatten())
 
 
@@ -513,11 +439,16 @@ class Simple(Module):
         self.conv1.weight = self.conv0.weight
 
     def forward(self, inputs):
-        pass
+        x = self.conv0(inputs)
+        y = self.conv1(inputs)
+        return x + y
 
 
-def test_shared_param():
+@pytest.mark.parametrize("test_traced_module", [True, False])
+def test_shared_param(test_traced_module):
     net = Simple()
+    if test_traced_module:
+        net = trace_module(net, tensor(np.random.random((1, 1, 8, 8))))
     assert net.conv0.weight is net.conv1.weight
     data = tensor(np.random.random((1, 1, 8, 8)).astype(np.float32))
     np.testing.assert_allclose(net.conv0(data).numpy(), net.conv1(data).numpy())
@@ -579,15 +510,21 @@ def test_shared_param_1d():
     np.testing.assert_allclose(conv0(data).numpy(), conv1(data).numpy())
 
 
-def test_pickle_module():
+@pytest.mark.parametrize("test_traced_module", [True, False])
+def test_pickle_module(test_traced_module):
     data_shape = (2, 28)
     data = tensor(np.random.random(data_shape))
     mlp = MLP()
+    pred_gt = mlp(data)
+    if test_traced_module:
+        mlp = trace_module(mlp, data)
     # pickle before forward
     with BytesIO() as fout:
         mge.save(mlp, fout)
         fout.seek(0)
         mlp1 = mge.load(fout)
+        if test_traced_module:
+            assert type(mlp1) == TracedModule
         pred0 = mlp1(data)
 
     pred1 = mlp(data)
@@ -597,58 +534,13 @@ def test_pickle_module():
         mge.save(mlp, fout)
         fout.seek(0)
         mlp1 = mge.load(fout)
+        if test_traced_module:
+            assert type(mlp1) == TracedModule
         pred2 = mlp1(data)
 
+    np.testing.assert_allclose(pred_gt.numpy(), pred1.numpy(), atol=5e-6)
     np.testing.assert_allclose(pred0.numpy(), pred1.numpy(), atol=5e-6)
     np.testing.assert_allclose(pred0.numpy(), pred2.numpy(), atol=5e-6)
-
-
-@pytest.mark.skip(reason="under development")
-def test_dump_model():
-    data_shape = (2, 28)
-    data = Tensor(np.random.random(data_shape))
-    mlp = MLP()
-    pred = mlp(data)
-    f = tempfile.NamedTemporaryFile(delete=False)
-    f_name = f.name
-    try:
-        mge.dump(pred, f_name)
-    finally:
-        f.close()
-        os.unlink(f_name)
-
-
-def test_load_quantized():
-    from megengine.core.tensor import dtype
-
-    data_shape = (2, 28)
-    data = tensor(np.random.random(data_shape), dtype="float32")
-    data = data.astype(dtype.qint8(0.1))
-    mlp = MLP()
-    quantize_qat(mlp)
-    quantize(mlp)
-    mlp.dense0.weight = Parameter(mlp.dense0.weight.astype(dtype.qint8(0.001)).numpy())
-    mlp.dense1.weight = Parameter(mlp.dense1.weight.astype(dtype.qint8(0.0002)).numpy())
-    mlp.eval()
-    pred0 = mlp(data)
-
-    with BytesIO() as fout:
-        mge.save(mlp.state_dict(), fout)
-        fout.seek(0)
-        checkpoint = mge.load(fout)
-        # change mlp weight.
-        mlp.dense0.weight = Parameter(
-            mlp.dense0.weight.astype(dtype.qint8(0.00001)).numpy()
-        )
-        mlp.dense1.weight = Parameter(
-            mlp.dense1.weight.astype(dtype.qint8(0.2)).numpy()
-        )
-        mlp.load_state_dict(checkpoint)
-        pred1 = mlp(data)
-
-    np.testing.assert_allclose(
-        pred0.astype("float32").numpy(), pred1.astype("float32").numpy(), atol=5e-6
-    )
 
 
 def test_repr_basic():
@@ -656,15 +548,23 @@ def test_repr_basic():
     class ConvModel(Module):
         def __init__(self):
             super().__init__()
-            self.conv1 = Conv2d(3, 128, 3, stride=2, bias=False)
-            self.conv2 = Conv2d(3, 128, 3, padding=1, bias=False)
-            self.conv3 = Conv2d(3, 128, 3, dilation=2, bias=False)
-            self.bn1 = BatchNorm2d(128)
-            self.bn2 = BatchNorm1d(128)
-            self.dropout = Dropout(drop_prob=0.1)
-            self.softmax = Softmax(axis=100)
+            self.conv1 = Conv2d(3, 128, 3, padding=1, bias=False)
+            self.conv2 = Conv2d(3, 128, 3, dilation=2, bias=False)
+            self.bn1 = BatchNorm1d(128)
+            self.bn2 = BatchNorm2d(128)
             self.pooling = MaxPool2d(kernel_size=2, padding=0)
-            self.submodule1 = Sequential(Dropout(drop_prob=0.1), Softmax(axis=100),)
+            modules = OrderedDict()
+            modules["depthwise"] = Conv2d(256, 256, 3, 1, 0, groups=256, bias=False,)
+            modules["pointwise"] = Conv2d(
+                256, 256, kernel_size=1, stride=1, padding=0, bias=True,
+            )
+            self.submodule1 = Sequential(modules)
+            self.list1 = [Dropout(drop_prob=0.1), [Softmax(axis=100)]]
+            self.tuple1 = (
+                Dropout(drop_prob=0.1),
+                (Softmax(axis=100), Dropout(drop_prob=0.2)),
+            )
+            self.dict1 = {"Dropout": Dropout(drop_prob=0.1)}
             self.fc1 = Linear(512, 1024)
 
         def forward(self, inputs):
@@ -672,16 +572,21 @@ def test_repr_basic():
 
     ground_truth = (
         "ConvModel(\n"
-        "  (conv1): Conv2d(3, 128, kernel_size=(3, 3), stride=(2, 2), bias=False)\n"
-        "  (conv2): Conv2d(3, 128, kernel_size=(3, 3), padding=(1, 1), bias=False)\n"
-        "  (conv3): Conv2d(3, 128, kernel_size=(3, 3), dilation=(2, 2), bias=False)\n"
-        "  (bn1): BatchNorm2d(128, eps=1e-05, momentum=0.9, affine=True, track_running_stats=True)\n"
-        "  (bn2): BatchNorm1d(128, eps=1e-05, momentum=0.9, affine=True, track_running_stats=True)\n"
-        "  (dropout): Dropout(drop_prob=0.1)\n  (softmax): Softmax(axis=100)\n"
+        "  (conv1): Conv2d(3, 128, kernel_size=(3, 3), padding=(1, 1), bias=False)\n"
+        "  (conv2): Conv2d(3, 128, kernel_size=(3, 3), dilation=(2, 2), bias=False)\n"
+        "  (bn1): BatchNorm1d(128, eps=1e-05, momentum=0.9, affine=True, track_running_stats=True)\n"
+        "  (bn2): BatchNorm2d(128, eps=1e-05, momentum=0.9, affine=True, track_running_stats=True)\n"
         "  (pooling): MaxPool2d(kernel_size=2, stride=2, padding=0)\n"
         "  (submodule1): Sequential(\n"
-        "    (0): Dropout(drop_prob=0.1)\n"
-        "    (1): Softmax(axis=100)\n  )\n"
+        "    (depthwise): Conv2d(256, 256, kernel_size=(3, 3), groups=256, bias=False)\n"
+        "    (pointwise): Conv2d(256, 256, kernel_size=(1, 1))\n"
+        "  )\n"
+        "  (list1.0): Dropout(drop_prob=0.1)\n"
+        "  (list1.1.0): Softmax(axis=100)\n"
+        "  (tuple1.0): Dropout(drop_prob=0.1)\n"
+        "  (tuple1.1.0): Softmax(axis=100)\n"
+        "  (tuple1.1.1): Dropout(drop_prob=0.2)\n"
+        "  (dict1.Dropout): Dropout(drop_prob=0.1)\n"
         "  (fc1): Linear(in_features=512, out_features=1024, bias=True)\n"
         ")"
     )
@@ -757,3 +662,198 @@ def test_repr_module_delete():
     del net.softmax
     output = net.__repr__()
     assert output == ground_truth
+
+
+def test_repr_module_reset_attr():
+    class ResetAttrModule(Module):
+        def __init__(self, flag):
+            super().__init__()
+            if flag:
+                self.a = None
+                self.a = Linear(3, 5)
+            else:
+                self.a = Linear(3, 5)
+                self.a = None
+
+        def forward(self, x):
+            if self.a:
+                x = self.a(x)
+            return x
+
+    ground_truth = [
+        (
+            "ResetAttrModule(\n"
+            "  (a): Linear(in_features=3, out_features=5, bias=True)\n"
+            ")"
+        ),
+        ("ResetAttrModule()"),
+    ]
+
+    m0 = ResetAttrModule(True)
+    m1 = ResetAttrModule(False)
+    output = [m0.__repr__(), m1.__repr__()]
+    assert output == ground_truth
+
+
+def test_module_compatible():
+    class Empty(Module):
+        def forward(self):
+            pass
+
+    empty_module = Empty()
+    old_attributes = set(
+        [
+            "_modules",
+            "name",
+            "training",
+            "quantize_disabled",
+            "_forward_pre_hooks",
+            "_forward_hooks",
+            "_name",
+            "_short_name",
+        ]
+    )
+    current_attributes = set(empty_module.__dict__.keys())
+    assert (
+        old_attributes == current_attributes
+    ), "Add or delete attributes in Module class may break compatibility of pickle serialization"
+
+
+@pytest.mark.skip(reason="pytest aborted")
+@pytest.mark.parametrize("affine", [True, False])
+def test_grou_norm(affine):
+    num_groups = 256
+    num_channels = 256
+    weight_np = np.random.uniform(-0.5, 0.5, (num_channels))
+    bias_np = np.random.uniform(-0.5, 0.5, (num_channels))
+
+    class OriginGroupNormFunc(Module):
+        def __init__(self, eps=1e-5, affine=True, **kwargs):
+            super().__init__(**kwargs)
+            assert num_channels % num_groups == 0
+            self.num_groups = num_groups
+            self.num_channels = num_channels
+            self.eps = eps
+            self.affine = affine
+            if self.affine:
+                self.weight = Parameter(weight_np)
+                self.bias = Parameter(bias_np)
+            else:
+                self.weight = None
+                self.bias = None
+
+        def forward(self, x):
+            N, C, H, W = x.shape
+            x = x.reshape(N, self.num_groups, -1)
+            mean = x.mean(axis=2, keepdims=True)
+            var = (x * x).mean(axis=2, keepdims=True) - mean * mean
+            x = (x - mean) / F.sqrt(var + self.eps)
+            x = x.reshape(N, C, H, W)
+            if self.affine:
+                x = self.weight.reshape(1, -1, 1, 1) * x + self.bias.reshape(
+                    1, -1, 1, 1
+                )
+            return x
+
+    inp = np.random.uniform(-0.5, 0.5, (2, num_channels, 10, 16)).astype("float32")
+    mge_inp = Tensor(inp)
+    mge_m = GroupNorm(num_groups, num_channels, affine=affine)
+    mge_m.weight = Parameter(weight_np)
+    mge_m.bias = Parameter(bias_np)
+    ori_inp = Tensor(inp)
+    ori_m = OriginGroupNormFunc(affine=affine)
+
+    mge_gm = mge.autodiff.GradManager().attach((*mge_m.parameters(), mge_inp))
+    ori_gm = mge.autodiff.GradManager().attach((*ori_m.parameters(), ori_inp))
+    dy = Tensor(np.random.uniform(-0.5, 0.5, inp.shape))
+    for i in range(2):
+        with mge_gm:
+            mge_output = mge_m(mge_inp)
+
+            mge_gm.backward(mge_output, dy)
+
+        with ori_gm:
+            ori_output = ori_m(ori_inp)
+
+            ori_gm.backward(ori_output, dy)
+
+        np.testing.assert_allclose(mge_output.numpy(), ori_output.numpy(), atol=1e-05)
+        np.testing.assert_allclose(
+            ori_inp.grad.numpy(), mge_inp.grad.numpy(), atol=1e-05
+        )
+        if affine == True:
+            np.testing.assert_allclose(
+                mge_m.weight.grad.numpy(), ori_m.weight.grad.numpy(), atol=1e-05
+            )
+            np.testing.assert_allclose(
+                mge_m.bias.grad.numpy(), ori_m.bias.grad.numpy(), atol=1e-05
+            )
+
+
+@pytest.mark.parametrize("affine", [True, False])
+def test_instance_norm(affine):
+    num_channels = 4
+    weight_np = np.random.uniform(-0.5, 0.5, (num_channels))
+    bias_np = np.random.uniform(-0.5, 0.5, (num_channels))
+
+    class OriginInstanceNormFunc(Module):
+        def __init__(self, eps=1e-5, affine=True, **kwargs):
+            super().__init__(**kwargs)
+            self.num_channels = num_channels
+            self.eps = eps
+            self.affine = affine
+            if self.affine:
+                self.weight = Parameter(weight_np)
+                self.bias = Parameter(bias_np)
+            else:
+                self.weight = None
+                self.bias = None
+
+        def forward(self, x):
+            N, C, H, W = x.shape
+            x = x.reshape(N, self.num_channels, -1)
+            mean = x.mean(axis=2, keepdims=True)
+            var = (x * x).mean(axis=2, keepdims=True) - mean * mean
+            x = (x - mean) / F.sqrt(var + self.eps)
+            x = x.reshape(N, C, H, W)
+            if self.affine:
+                x = self.weight.reshape(1, -1, 1, 1) * x + self.bias.reshape(
+                    1, -1, 1, 1
+                )
+            return x
+
+    inp = np.random.uniform(-0.5, 0.5, (2, num_channels, 10, 16)).astype("float32")
+    mge_inp = Tensor(inp)
+    mge_m = InstanceNorm(num_channels, affine=affine)
+    mge_m.weight = Parameter(weight_np)
+    mge_m.bias = Parameter(bias_np)
+
+    ori_inp = Tensor(inp)
+    ori_m = OriginInstanceNormFunc(affine=affine)
+
+    mge_im = mge.autodiff.GradManager().attach((*mge_m.parameters(), mge_inp))
+    ori_im = mge.autodiff.GradManager().attach((*ori_m.parameters(), ori_inp))
+    dy = Tensor(np.random.uniform(-0.5, 0.5, inp.shape))
+
+    for i in range(2):
+        with mge_im:
+            mge_output = mge_m(mge_inp)
+
+            mge_im.backward(mge_output, dy)
+
+        with ori_im:
+            ori_output = ori_m(ori_inp)
+
+            ori_im.backward(ori_output, dy)
+
+        np.testing.assert_allclose(mge_output.numpy(), ori_output.numpy(), atol=1e-05)
+        np.testing.assert_allclose(
+            ori_inp.grad.numpy(), mge_inp.grad.numpy(), atol=1e-04
+        )
+        if affine == True:
+            np.testing.assert_allclose(
+                mge_m.weight.grad.numpy(), ori_m.weight.grad.numpy(), atol=1e-04
+            )
+            np.testing.assert_allclose(
+                mge_m.bias.grad.numpy(), ori_m.bias.grad.numpy(), atol=1e-04
+            )

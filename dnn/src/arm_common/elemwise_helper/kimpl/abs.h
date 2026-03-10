@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/arm_common/elemwise_helper/kimpl/abs.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include "src/arm_common/elemwise_helper/kimpl/op_base.h"
@@ -21,9 +11,7 @@ struct AbsOpBase : UnaryOpBase<src_ctype, dst_ctype> {
     void operator()(const src_ctype& src, dst_ctype* dst) const {
         *dst = operator()(src);
     }
-    dst_ctype operator()(const src_ctype& src) const {
-        return src > 0 ? src : (-src);
-    }
+    dst_ctype operator()(const src_ctype& src) const { return src > 0 ? src : (-src); }
 };
 
 template <typename src_ctype, typename dst_ctype = src_ctype>

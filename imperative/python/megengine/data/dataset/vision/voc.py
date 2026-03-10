@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # ---------------------------------------------------------------------
 # Part of the following code in this file refs to torchvision
 # BSD 3-Clause License
@@ -24,9 +17,7 @@ from .meta_vision import VisionDataset
 
 
 class PascalVOC(VisionDataset):
-    r"""
-    `Pascal VOC <http://host.robots.ox.ac.uk/pascal/VOC/>`_ Dataset.
-    """
+    r"""`Pascal VOC <http://host.robots.ox.ac.uk/pascal/VOC/>`_ Dataset."""
 
     supported_order = (
         "image",
@@ -184,3 +175,27 @@ class PascalVOC(VisionDataset):
         "train",
         "tvmonitor",
     )
+
+    class_colors = [
+        [0, 0, 0],  # background
+        [0, 0, 128],
+        [0, 128, 0],
+        [0, 128, 128],
+        [128, 0, 0],
+        [128, 0, 128],
+        [128, 128, 0],
+        [128, 128, 128],
+        [0, 0, 64],
+        [0, 0, 192],
+        [0, 128, 64],
+        [0, 128, 192],
+        [128, 0, 64],
+        [128, 0, 192],
+        [128, 128, 64],
+        [128, 128, 192],
+        [0, 64, 0],
+        [0, 64, 128],
+        [0, 192, 0],
+        [0, 192, 128],
+        [128, 64, 0],
+    ]

@@ -1,12 +1,3 @@
-/**
- * \file src/rocm/reduce_helper.h.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \brief helper for implementing reduce operators
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
 #pragma once
 
 #include "hip_header.h"

@@ -47,14 +47,14 @@
  *
  * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
  *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
+ * Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *
  * This file has been modified by Megvii ("Megvii Modifications").
- * All Megvii Modifications are Copyright (C) 2014-2019 Megvii Inc. All rights reserved.
+ * All Megvii Modifications are Copyright (C) 2014-2021 Megvii Inc. All rights reserved.
  *
  * ---------------------------------------------------------------------------
  */
@@ -129,9 +129,7 @@ private:
 
 public:
     void* raw_ptr() { return static_cast<void*>(m_data.get() + m_offset); }
-    const void* raw_ptr() const {
-        return static_cast<void*>(m_data.get() + m_offset);
-    }
+    const void* raw_ptr() const { return static_cast<void*>(m_data.get() + m_offset); }
 
     Mat();
     Mat(size_t rows, size_t cols, size_t channels, size_t step);
@@ -141,8 +139,8 @@ public:
     Mat(size_t rows, size_t cols, size_t channels, size_t step, T* data);
     // shallow-copy constructor
     Mat(const Mat<T>& rhs);
-    Mat(const Mat<T>& rhs, size_t row_offset, size_t row_count,
-        size_t col_offset, size_t col_count);
+    Mat(const Mat<T>& rhs, size_t row_offset, size_t row_count, size_t col_offset,
+        size_t col_count);
     Mat<T>& operator=(const Mat<T>& rhs);
 
     T& at(size_t r, size_t c, size_t ch);

@@ -1,24 +1,13 @@
-/**
- * \file dnn/src/atlas/handle.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #pragma once
 #include "megcore_atlas.h"
 #include "megdnn/basic_types.h"
 #include "megdnn/handle.h"
 #include "megdnn/oprs/general.h"
 
+#include "src/atlas/megcore/device_context.hpp"
 #include "src/common/handle_impl.h"
 #include "src/common/megcore/common/device_context.hpp"
 #include "src/common/utils.h"
-#include "src/atlas/megcore/device_context.hpp"
 
 #include <atomic>
 #include <mutex>
@@ -38,13 +27,14 @@ public:
     template <typename Opr>
     std::unique_ptr<Opr> create_operator();
 
-    const megcore::AtlasContext& megcore_context() const {
-        return m_megcore_context;
-    }
+    const megcore::AtlasContext& megcore_context() const { return m_megcore_context; }
 
     int device_id() const { return m_device_id; }
 
     aclrtStream stream() const { return megcore_context().stream; }
+
+    void* alloc(size_t size, aclrtMemMallocPolicy policy = ACL_MEM_MALLOC_HUGE_FIRST);
+    void free(void* ptr);
 
     //! global matmul opr
     Checksum* checksum_opr() override final {

@@ -1,15 +1,3 @@
-/**
- * \file dnn/src/cuda/elemwise_helper.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #include "src/cuda/elemwise_helper.cuh"
 #include "src/cuda/query_blocksize.cuh"
 #include "src/cuda/utils.h"
@@ -21,8 +9,7 @@
 #include <unordered_map>
 
 #define _cb_check_ndim(n) megdnn::TensorShape::MAX_NDIM == n ||
-static_assert(MEGDNN_FOREACH_TENSOR_NDIM(_cb_check_ndim) false,
-              "bad foreach ndim");
+static_assert(MEGDNN_FOREACH_TENSOR_NDIM(_cb_check_ndim) false, "bad foreach ndim");
 #undef _cb_check_ndim
 
 namespace megdnn {
@@ -54,10 +41,8 @@ void ParamVisitorBase<ndim, ctype, BCAST_OTHER>::host_init(
 #pragma GCC diagnostic pop
 
 template <typename ctype>
-void ParamVisitorBase<3, ctype, BCAST_101>::host_init(const TensorND& rv,
-                                                      int grid_size,
-                                                      int block_size,
-                                                      int packed_size) {
+void ParamVisitorBase<3, ctype, BCAST_101>::host_init(
+        const TensorND& rv, int grid_size, int block_size, int packed_size) {
     uint32_t shape2, shape1;
     int stride1;
     if (rv.layout.ndim == 3) {
@@ -77,52 +62,43 @@ void ParamVisitorBase<3, ctype, BCAST_101>::host_init(const TensorND& rv,
 }
 
 template <typename ctype>
-void ParamVisitorBase<2, ctype, BCAST_10>::host_init(const TensorND& rv,
-                                                     int grid_size,
-                                                     int block_size,
-                                                     int packed_size) {
+void ParamVisitorBase<2, ctype, BCAST_10>::host_init(
+        const TensorND& rv, int grid_size, int block_size, int packed_size) {
     megdnn_assert(rv.layout.ndim == NDIM && !rv.layout.stride[0]);
     m_ptr = rv.ptr<ctype>();
     m_stride1 = rv.layout.stride[1];
-    m_shape1.host_init(packed_size * grid_size * block_size,
-                       rv.layout.shape[1]);
+    m_shape1.host_init(packed_size * grid_size * block_size, rv.layout.shape[1]);
 }
 
 template <typename ctype>
-void ParamVisitorBase<2, ctype, BCAST_01>::host_init(const TensorND& rv,
-                                                     int grid_size,
-                                                     int block_size,
-                                                     int packed_size) {
+void ParamVisitorBase<2, ctype, BCAST_01>::host_init(
+        const TensorND& rv, int grid_size, int block_size, int packed_size) {
     megdnn_assert(rv.layout.ndim == NDIM && !rv.layout.stride[1]);
     m_ptr = rv.ptr<ctype>();
     m_stride0 = rv.layout.stride[0];
-    m_shape1.host_init(packed_size * grid_size * block_size,
-                       rv.layout.shape[1]);
+    m_shape1.host_init(packed_size * grid_size * block_size, rv.layout.shape[1]);
 }
 
 template <typename ctype>
-void ParamVisitorBase<1, ctype, BCAST_FULL>::host_init(const TensorND& rv,
-                                                       int /*grid_size*/,
-                                                       int /*block_size*/,
-                                                       int /*packed_size*/) {
+void ParamVisitorBase<1, ctype, BCAST_FULL>::host_init(
+        const TensorND& rv, int /*grid_size*/, int /*block_size*/,
+        int /*packed_size*/) {
     megdnn_assert(rv.layout.ndim == NDIM && !rv.layout.stride[0]);
     m_ptr = rv.ptr<ctype>();
 }
 
 template <typename ctype>
-void ParamVectVisitor<4, ctype, BCAST_1010>::host_init(const TensorND& rv,
-                                                       int grid_size,
-                                                       int block_size) {
-    megdnn_assert(rv.layout.ndim == NDIM && !rv.layout.stride[0] &&
-                  !rv.layout.stride[2]);
+void ParamVectVisitor<4, ctype, BCAST_1010>::host_init(
+        const TensorND& rv, int grid_size, int block_size) {
+    megdnn_assert(
+            rv.layout.ndim == NDIM && !rv.layout.stride[0] && !rv.layout.stride[2]);
     m_ptr = rv.ptr<ctype>();
     m_stride1 = rv.layout.stride[1];
     m_stride3 = rv.layout.stride[3];
     uint32_t shape1 = rv.layout.shape[1];
     uint32_t shape2 = rv.layout.shape[2];
     uint32_t shape3 = rv.layout.shape[3];
-    m_shape123.host_init(packed_size * grid_size * block_size, shape2 * shape3,
-                         shape1);
+    m_shape123.host_init(packed_size * grid_size * block_size, shape2 * shape3, shape1);
     m_shape3.host_init(packed_size * grid_size * block_size, shape3);
 }
 
@@ -160,6 +136,9 @@ INST_FOR_CTYPE
 #define ct dt_int16
 INST_FOR_CTYPE
 #undef ct
+#define ct dt_uint16
+INST_FOR_CTYPE
+#undef ct
 #define ct dt_quint8
 INST_FOR_CTYPE
 #undef ct
@@ -170,6 +149,9 @@ INST_FOR_CTYPE
 INST_FOR_CTYPE
 #undef ct
 #define ct dt_bool
+INST_FOR_CTYPE
+#undef ct
+#define ct dt_qint1
 INST_FOR_CTYPE
 #undef ct
 
@@ -210,6 +192,9 @@ INST_FOR_CTYPE
 #define ct dt_int16
 INST_FOR_CTYPE
 #undef ct
+#define ct dt_uint16
+INST_FOR_CTYPE
+#undef ct
 #define ct dt_quint8
 INST_FOR_CTYPE
 #undef ct
@@ -220,6 +205,9 @@ INST_FOR_CTYPE
 INST_FOR_CTYPE
 #undef ct
 #define ct dt_bool
+INST_FOR_CTYPE
+#undef ct
+#define ct dt_qint1
 INST_FOR_CTYPE
 #undef ct
 
@@ -233,13 +221,53 @@ INST(dt_int8);
 INST(dt_uint8);
 INST(dt_bool);
 INST(dt_qint8);
+INST(dt_qint1);
 INST(dt_quint8);
 #undef dt_ibyte
 
+template <int ndim>
+void ParamElemVisitor4bitBase<ndim, BCAST_OTHER>::host_init(
+        const TensorND& rv, int /*grid_size*/, int /*block_size*/) {
+    m_ptr = reinterpret_cast<Storage*>(rv.raw_ptr());
+    ptrdiff_t min_stride = std::numeric_limits<ptrdiff_t>::max();
+    for (size_t i = 0; i < rv.layout.ndim; ++i) {
+        m_stride[i] = rv.layout.stride[i];
+        m_shape[i] = rv.layout.shape[i];
+        if (i + 1 < rv.layout.ndim) {
+            m_shape_highdim[i] = rv.layout.shape[i + 1];
+            if (rv.layout.stride[i + 1] == 1)
+                m_align_shape_highdim[i] =
+                        (uint32_t)round_up((int)rv.layout.shape[i + 1], 2);
+            else
+                m_align_shape_highdim[i] = rv.layout.shape[i + 1];
+        }
+        // \remark: stride=0 means this dimension should be broadcast, so here
+        // we skip dimension with stride that equals 0
+        if (rv.layout.stride[i] != 0 && min_stride > rv.layout.stride[i]) {
+            min_stride = rv.layout.stride[i];
+        }
+    }
+    megdnn_assert(min_stride == 1 || min_stride == 2);
+    m_is_min_stride_2 = (min_stride == 2);
+    for (size_t i = rv.layout.ndim - 1; i < ndim - 1; ++i) {
+        m_shape_highdim[i] = 1;
+        m_align_shape_highdim[i] = 1;
+    }
+    for (size_t i = rv.layout.ndim; i < ndim; ++i) {
+        m_stride[i] = 0;
+        m_shape[i] = 1;
+    }
+    m_is_physical_contiguous = rv.layout.is_physical_contiguous();
+}
+
+#define ndim_cb(_ndim) template class ParamElemVisitor4bitBase<_ndim, BCAST_OTHER>;
+MEGDNN_FOREACH_TENSOR_NDIM(ndim_cb)
+#undef ndim_cb
+
 }  // namespace elemwise_intl
 
-void elemwise_intl::get_launch_spec(const void* kern, size_t size,
-                                    int* grid_size, int* block_size) {
+void elemwise_intl::get_launch_spec(
+        const void* kern, size_t size, int* grid_size, int* block_size) {
     safe_size_in_kern(size);
     auto config = query_launch_config_for_kernel(kern);
     *block_size = config.block_size;

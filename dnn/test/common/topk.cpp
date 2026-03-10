@@ -1,14 +1,3 @@
-/**
- * \file dnn/test/common/topk.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "test/common/topk.h"
 #include "megdnn/dtype.h"
 #include "megdnn/oprs/general.h"
@@ -23,7 +12,7 @@ class EqualValueRng final : public RNG {
 
 public:
     void gen(const TensorND& tensor) override {
-        memset(tensor.raw_ptr, 0, tensor.layout.span().dist_byte());
+        memset(tensor.raw_ptr(), 0, tensor.layout.span().dist_byte());
         ASSERT_EQ(2u, tensor.layout.ndim);
         size_t m = tensor.layout[0], n = tensor.layout[1];
         for (size_t i = 0; i < m; ++i) {
@@ -45,7 +34,7 @@ public:
             switch (tensor.layout.dtype.enumv()) {
                 CASE(Float32, float);
                 CASE(Int32, int);
-                MEGDNN_INC_FLOAT16(CASE(Float16, half_float::half));
+                DNN_INC_FLOAT16(CASE(Float16, half_float::half));
                 default:
                     megdnn_throw("bad dtype");
             }
@@ -56,7 +45,7 @@ public:
 }  // namespace
 
 template <typename Dtype>
-void test::run_topk_test(Handle* handle) {
+void test::run_topk_test(Handle* handle, bool test_kth_only) {
     Checker<TopK> checker{handle};
     using Mode = TopK::Param::Mode;
 
@@ -121,8 +110,7 @@ void test::run_topk_test(Handle* handle) {
             checker.execl({layout, {}, {}});
         }
         if (!checker.prev_succ()) {
-            fprintf(stderr,
-                    "topk failed for (%zu,%zu):%d mode=%d cont=%d tie=%d\n", m,
+            fprintf(stderr, "topk failed for (%zu,%zu):%d mode=%d cont=%d tie=%d\n", m,
                     n, k, static_cast<int>(mode), !lda, tie_breaking_mode);
             return;
         }
@@ -156,8 +144,12 @@ void test::run_topk_test(Handle* handle) {
         }
     }
 
-    for (auto mode :
-         {Mode::KTH_ONLY, Mode::VALUE_IDX_NOSORT, Mode::VALUE_IDX_SORTED}) {
+    std::vector<Mode> modes = {
+            Mode::KTH_ONLY, Mode::VALUE_IDX_NOSORT, Mode::VALUE_IDX_SORTED};
+    if (!test_kth_only) {
+        modes = {Mode::VALUE_IDX_NOSORT, Mode::VALUE_IDX_SORTED};
+    }
+    for (auto mode : modes) {
         run(1, 1, 1, mode);
         run(-1, 1, 1, mode);
         run(1, 23, 1, mode);
@@ -170,9 +162,8 @@ void test::run_topk_test(Handle* handle) {
         run(-5, 123, 3, mode);        // equiv to rev sort
         run(5, 3, 1231, mode, 2000);  // non contig
 
-//! opencl on armv7's CI does not support large batch.
-//! but P30 and MI9 are ok. fix it in the future.
-#if !defined(MEGDNN_ARMV7) && defined(MGB_CUDA)
+//! opencl does not support large batch. fix it in the future.
+#if MGB_CUDA
         run(3, 70000, 5, mode, 10);  // non contig
 #endif
     }
@@ -189,13 +180,13 @@ void test::run_topk_test(Handle* handle) {
 }
 namespace megdnn {
 namespace test {
-#define INST(t) template void run_topk_test<t>(Handle*)
+#define INST(t) template void run_topk_test<t>(Handle*, bool)
 
 INST(dtype::Float32);
 INST(dtype::Int32);
-MEGDNN_INC_FLOAT16(INST(dtype::Float16));
+DNN_INC_FLOAT16(INST(dtype::Float16));
 #undef INST
-}
+}  // namespace test
 }  // namespace megdnn
 
 // vim: syntax=cpp.doxygen

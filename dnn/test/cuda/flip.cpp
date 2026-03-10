@@ -1,22 +1,11 @@
-/**
- * \file dnn/test/cuda/flip.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include <gtest/gtest.h>
 
 #include "megdnn.h"
 #include "megdnn/oprs.h"
-#include "test/common/tensor.h"
-#include "test/common/flip.h"
-#include "test/common/checker.h"
 #include "test/common/benchmarker.h"
+#include "test/common/checker.h"
+#include "test/common/flip.h"
+#include "test/common/tensor.h"
 #include "test/cuda/fixture.h"
 
 namespace megdnn {
@@ -39,12 +28,12 @@ TEST_F(CUDA, FLIP) {
             args.emplace_back(cur_param, TensorShape{65540, 3, 4, 3});
         }
     }
-    for (auto &&arg : args) {
+    for (auto&& arg : args) {
         checker.execs({arg.src, {}});
     }
-
 }
 
+#if MEGDNN_WITH_BENCHMARK
 TEST_F(CUDA, FLIP_BENCHMARK) {
     auto run = [&](const TensorShapeArray& shapes) {
         Benchmarker<Flip> benchmarker(handle_cuda());
@@ -72,13 +61,11 @@ TEST_F(CUDA, FLIP_BENCHMARK) {
 #undef BENCHMARK_FLIP
     };
 
-    TensorShapeArray shapes = {
-        {3, 101, 98, 1},
-        {3, 101, 98, 3}
-    };
+    TensorShapeArray shapes = {{3, 101, 98, 1}, {3, 101, 98, 3}};
 
     run(shapes);
 }
+#endif
 
 }  // namespace test
 }  // namespace megdnn

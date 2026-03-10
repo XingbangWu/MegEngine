@@ -1,10 +1,13 @@
 /**
- * \file src/rocm/indexing_multi_axis_vec/kern_apply_opr_impl.hipinl
+ * \file dnn/src/rocm/indexing_multi_axis_vec/kern_apply_opr_impl.hipinl
  *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
+ * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
  *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
+ * Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  */
 
 #ifndef KERN_APPLY_OPR_OPR
@@ -27,10 +30,17 @@ namespace {
         uint32_t oidx = threadIdx.x + blockDim.x * blockIdx.x;
         if (oidx < param.tot_size) {
             int offset = 0, coidx = oidx;
-            int all_ax_idx[ndim];
+            int idx_flat = 0;
 #pragma unroll
             for (int i = ndim - 1; i >= 0; -- i) {
                 int next_coidx, ax_idx;
+                if (i + 1 == param.idx_axis_end) {
+                    idx_flat = coidx;
+                }
+                // may not trigger
+                if (i + 1 == param.idx_axis) {
+                    idx_flat -= coidx * param.idx_nelems;
+                }
                 if (i) {
                     next_coidx = coidx / param.value_ly_on_data.shape[i - 1];
                     ax_idx =
@@ -42,9 +52,8 @@ namespace {
                     ax_idx = coidx;
                 }
                 offset += param.value_ly_on_data.stride[i] * ax_idx;
-                all_ax_idx[i] = ax_idx;
             }
-            offset += param.offset_base[all_ax_idx[param.idx_axis]];
+            offset += param.offset_base[idx_flat];
             Opr::apply(
                     param.data[offset],
                     param.value[oidx * param.value_stride]);
@@ -72,6 +81,7 @@ namespace indexing_multi_axis_vec {
 #define cb(_dtype) \
     MEGDNN_FOREACH_TENSOR_NDIM(INST, DTypeTrait<_dtype>::ctype)
     MEGDNN_FOREACH_COMPUTING_DTYPE(cb)
+    cb(::megdnn::dtype::Bool)
 #undef cb
 #undef INST
 

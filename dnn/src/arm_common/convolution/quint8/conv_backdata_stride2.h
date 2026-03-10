@@ -1,20 +1,7 @@
-/**
- * \file dnn/src/arm_common/convolution/quint8/conv_backdata_stride2.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
-#if __ARM_FEATURE_DOTPROD
 #include "src/arm_common/convolution/opr_impl.h"
-
-#include <cstddef>
-#include <cstdint>
+#if MGB_ENABLE_DOT
 
 namespace megdnn {
 namespace arm_common {
@@ -29,7 +16,7 @@ void stride2_quint8_dot(const NCBKernParam& param);
 
 size_t get_workspace_in_bytes_stride2_quint8_dot(const NCBKernSizeParam& param);
 
-}  // namespace convolution
+}  // namespace deconv
 }  // namespace arm_common
 }  // namespace megdnn
 #endif

@@ -1,10 +1,3 @@
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 from typing import Tuple, Union
 
 import numpy as np
@@ -19,13 +12,15 @@ from .module import QuantizedModule
 
 
 class BatchMatMulActivation(Float.BatchMatMulActivation, QuantizedModule):
+    r"""Quantized version of :class:`~.qat.BatchMatMulActivation`."""
+
     def __init__(
         self,
         batch: int,
         in_features: int,
         out_features: int,
         bias: bool = True,
-        nonlinear_mode="IDENTITY",
+        nonlinear_mode="identity",
         dtype=None,
         **kwargs
     ):
@@ -59,13 +54,14 @@ class BatchMatMulActivation(Float.BatchMatMulActivation, QuantizedModule):
             qat_module.out_features,
             qat_module.bias is not None,
             dtype=output_dtype,
+            name=qat_module.name,
         )
         weight = qat_module.weight.astype(qat_module.get_weight_dtype())
         weight = expand_dims(weight, [-1, -2])
-        qbmm.weight = Parameter(weight.numpy())
+        qbmm.weight = Parameter(weight.numpy(), name=qat_module.weight.name)
         if qat_module.bias is not None:
             bias = qat_module.bias.reshape((1, qbmm.out_features, 1, 1))
-            qbmm.bias = Parameter(bias.numpy())
+            qbmm.bias = Parameter(bias.numpy(), name=qat_module.bias.name)
         else:
             qbmm.bias = Parameter(
                 np.zeros((1, qbmm.out_features, 1, 1), dtype=np.float32)

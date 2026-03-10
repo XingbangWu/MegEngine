@@ -1,14 +1,3 @@
-/**
- * \file dnn/test/common/checker.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megdnn/basic_types.h"
@@ -54,6 +43,12 @@ public:
 
     Handle* handle() const { return m_handle_cur; }
 
+    CheckerHelper() {
+        auto tmp_handle = create_cpu_handle(2, false);
+        m_handle_naive = std::move(tmp_handle);
+        m_default_rng = std::unique_ptr<RNG>(new NormalRNG());
+    }
+
 protected:
     //! whether to use physically contiguous (i.e. default layout) for naive
     //! impl
@@ -68,13 +63,17 @@ protected:
     std::unordered_map<size_t, RNG*> m_rng;
     std::unordered_map<size_t, DType> m_dtype;
     std::unordered_map<size_t, TensorFormat> m_fmt;
-    float_t m_epsilon = 1e-3, m_max_avg_error = 1e-3,
-            m_max_avg_biased_error = 1e-3;
+    std::set<size_t> m_bypass;
+    float_t m_epsilon = 1e-3, m_max_avg_error = 1e-3, m_max_avg_biased_error = 1e-3;
     float_t m_perf_check_threshold = -1;
     bool m_perf_check = false;
     ExtraOprImpl m_extra_opr_impl;
     OutputCanonizer m_output_canonizer;
     TensorsConstriant m_tensor_constraint;
+    bool m_no_naive_and_check = false;
+    bool m_stable_check = false;
+    bool m_force_deduce_dst = false;
+    bool m_allow_invalid_check = false;
     /**
      * the offset from the start of malloc memory
      *
@@ -85,49 +84,53 @@ protected:
     size_t m_offset = 0;
 
     CheckerHelper(Handle* handle, bool check_dispatch = true);
+
     ~CheckerHelper() noexcept;
 
     using OprExec = std::function<void(const TensorValueArray&)>;
 
-    void do_exec_with_testcases(const TensorValueArray& testcase_in,
-                                const TensorValueArray& testcase_out,
-                                const OprExec& exec_opr);
+    void do_exec_with_testcases(
+            const TensorValueArray& testcase_in, const TensorValueArray& testcase_out,
+            const OprExec& exec_opr);
 
-    void do_exec(const TensorLayoutArray& user_layouts,
-                 const TensorLayoutArray& deduced_layouts,
-                 const OprExec& exec_naive, const OprExec& exec_opr);
+    void do_exec(
+            const TensorLayoutArray& user_layouts,
+            const TensorLayoutArray& deduced_layouts, const OprExec& exec_naive,
+            const OprExec& exec_opr);
 
     void enable_contig_naive() { m_enable_contig_naive = true; }
+
+    void copy_tensors_to_device(
+            const TensorValueArray& dest, const TensorValueArray& src);
+    void copy_tensors_from_device(
+            const TensorValueArray& dest, const TensorValueArray& src);
+
+    void check_tensors(
+            const TensorValueArray& expected, const TensorValueArray& computed);
 
 private:
     std::shared_ptr<TensorValueArray> m_tensors_naive;
 
     void init_naive_values();
-    void copy_tensors_to_device(const TensorValueArray& dest,
-                                const TensorValueArray& src);
-    void copy_tensors_from_device(const TensorValueArray& dest,
-                                  const TensorValueArray& src);
-    void check_tensors(const TensorValueArray& expected,
-                       const TensorValueArray& computed);
 };
 
 template <typename Opr, typename Proxy = OprProxy<Opr>>
 class Checker : public CheckerHelper {
 public:
     using Param = typename Opr::Param;
-    using BeforeExecCallback =
-            std::function<void(Opr*, const TensorValueArray&)>;
+    using BeforeExecCallback = std::function<void(Opr*, const TensorValueArray&)>;
     Checker(Handle* handle, bool check_dispatch = true)
             : CheckerHelper(handle, check_dispatch), m_param(Param()) {}
 
     TensorLayoutArray make_layouts(const TensorShapeArray& shapes) {
         TensorLayoutArray layouts(shapes.size());
         for (size_t i = 0; i < shapes.size(); ++i) {
-            DType dt = (m_dtype.find(i) != m_dtype.end() ? m_dtype[i]
-                                                         : dtype::Float32());
-            TensorFormat fmt =
-                    (m_fmt.find(i) != m_fmt.end() ? m_fmt[i] : TensorFormat{});
-            layouts[i] = TensorLayout(shapes[i], dt, fmt);
+            DType dt =
+                    (m_dtype.find(i) != m_dtype.end() ? m_dtype[i] : dtype::Float32());
+            if (m_fmt.find(i) == m_fmt.end()) {
+                layouts[i] = TensorLayout(shapes[i], dt);
+            } else
+                layouts[i] = TensorLayout(shapes[i], dt, m_fmt[i]);
         }
         return layouts;
     }
@@ -156,8 +159,8 @@ public:
         return *this;
     }
 
-    Checker& exect(const TensorValueArray& testcase_in,
-                   const TensorValueArray& testcase_out);
+    Checker& exect(
+            const TensorValueArray& testcase_in, const TensorValueArray& testcase_out);
 
     Checker& set_param(Param param) {
         m_param = param;
@@ -174,6 +177,10 @@ public:
     }
     Checker& set_rng(size_t idx, RNG* rng) {
         m_rng[idx] = rng;
+        return *this;
+    }
+    Checker& set_bypass(size_t idx) {
+        m_bypass.insert(idx);
         return *this;
     }
     //! max error of a single element
@@ -224,6 +231,28 @@ public:
         return *this;
     }
 
+    //! stable check will run many iter and compare result with first iter
+    Checker& set_stable_check(bool stable_check) {
+        m_stable_check = stable_check;
+        return *this;
+    }
+
+    //! froce deduce dst
+    Checker& set_force_deduce_dst(bool force_deduce_dst) {
+        m_force_deduce_dst = force_deduce_dst;
+        return *this;
+    }
+
+    Checker& set_no_naive_check(bool no_naive_and_check) {
+        m_no_naive_and_check = no_naive_and_check;
+        return *this;
+    }
+
+    Checker& set_allow_invalid_check(bool allow_invalid_check) {
+        m_allow_invalid_check = allow_invalid_check;
+        return *this;
+    }
+
     //! load input tensors from file for next run
     Checker& load_input_tensors(const char* fpath) {
         m_input_tensors_fpath = fpath;
@@ -242,10 +271,14 @@ public:
         return *this;
     }
 
+    Checker& reset_before_exec_callback() {
+        m_before_exec_callback = nullptr;
+        return *this;
+    }
+
     //! set a tensors constraints function, for the purpose of manipulating
     //! tensors when testing.
-    Checker& set_tensors_constraint(
-            const TensorsConstriant& tensor_constraint) {
+    Checker& set_tensors_constraint(const TensorsConstriant& tensor_constraint) {
         m_tensor_constraint = tensor_constraint;
         return *this;
     }
@@ -300,18 +333,29 @@ private:
         const char* expr0, const char* expr1, const char* expr_maxerr,
         const char* expr_maxerr_avg, const char* expr_maxerr_avg_biased,
         const TensorND& v0, const TensorND& v1, float maxerr, float maxerr_avg,
+        float maxerr_avg_biased, bool allow_invalid = false);
+
+::testing::AssertionResult __assert_tensor_eq_allow_invalid(
+        const char* expr0, const char* expr1, const char* expr_maxerr,
+        const char* expr_maxerr_avg, const char* expr_maxerr_avg_biased,
+        const TensorND& v0, const TensorND& v1, float maxerr, float maxerr_avg,
         float maxerr_avg_biased);
 
-#define MEGDNN_ASSERT_TENSOR_EQ_EPS_AVG(v0, v1, maxerr, maxerr_avg,         \
-                                        maxerr_avg_biased)                  \
-    ASSERT_PRED_FORMAT5(::megdnn::test::__assert_tensor_eq, v0, v1, maxerr, \
-                        maxerr_avg, maxerr_avg_biased)
+#define MEGDNN_ASSERT_TENSOR_EQ_EPS_AVG(v0, v1, maxerr, maxerr_avg, maxerr_avg_biased) \
+    ASSERT_PRED_FORMAT5(                                                               \
+            ::megdnn::test::__assert_tensor_eq, v0, v1, maxerr, maxerr_avg,            \
+            maxerr_avg_biased)
+
+#define MEGDNN_ASSERT_TENSOR_EQ_EPS_AVG_ALLOW_INVALID(                        \
+        v0, v1, maxerr, maxerr_avg, maxerr_avg_biased)                        \
+    ASSERT_PRED_FORMAT5(                                                      \
+            ::megdnn::test::__assert_tensor_eq_allow_invalid, v0, v1, maxerr, \
+            maxerr_avg, maxerr_avg_biased)
 
 #define MEGDNN_ASSERT_TENSOR_EQ_EPS(v0, v1, maxerr) \
     MEGDNN_ASSERT_TENSOR_EQ_EPS_AVG(v0, v1, maxerr, maxerr, maxerr)
 
-#define MEGDNN_ASSERT_TENSOR_EQ(v0, v1) \
-    MEGDNN_ASSERT_TENSOR_EQ_EPS(v0, v1, 1e-3)
+#define MEGDNN_ASSERT_TENSOR_EQ(v0, v1) MEGDNN_ASSERT_TENSOR_EQ_EPS(v0, v1, 1e-3)
 
 template <typename Opr, typename Proxy>
 void Checker<Opr, Proxy>::exec(TensorLayoutArray layouts) {
@@ -321,7 +365,10 @@ void Checker<Opr, Proxy>::exec(TensorLayoutArray layouts) {
     auto opr_cur = this->opr();
     opr_naive->param() = m_param;
     opr_cur->param() = m_param;
-    m_naive_proxy.deduce_layout(opr_naive.get(), layouts);
+    bool deduce_layout = layouts.back().ndim == 0;
+    if (deduce_layout || m_force_deduce_dst) {
+        m_naive_proxy.deduce_layout(opr_naive.get(), layouts);
+    }
     auto exec_naive = [this, &opr_naive, &layouts,
                        &opr_relayout](const TensorValueArray& values) {
         TensorValueArray contig_values = values;
@@ -334,16 +381,16 @@ void Checker<Opr, Proxy>::exec(TensorLayoutArray layouts) {
                         static_cast<const TensorShape&>(layout), layout.dtype});
             }
             m_naive_proxy.deduce_layout(opr_naive.get(), contig_layouts);
-            tensors_naive_contig_storage = alloc_tensors(
-                    m_handle_naive.get(), contig_layouts, m_offset);
+            tensors_naive_contig_storage =
+                    alloc_tensors(m_handle_naive.get(), contig_layouts, m_offset);
             contig_values = *tensors_naive_contig_storage;
             //! relayout value to the contig_values
             for (size_t i = 0; i < contig_values.size(); ++i) {
                 if (real_values[i].layout.ndim == 0)
                     continue;
                 real_values[i].layout.format = {};
-                opr_relayout->exec(real_values[i], contig_values[i],
-                                   m_handle_naive.get());
+                opr_relayout->exec(
+                        real_values[i], contig_values[i], m_handle_naive.get());
             }
         }
 
@@ -354,8 +401,8 @@ void Checker<Opr, Proxy>::exec(TensorLayoutArray layouts) {
             for (size_t i = 0; i < contig_values.size(); ++i) {
                 if (real_values[i].layout.ndim == 0)
                     continue;
-                opr_relayout->exec(contig_values[i], real_values[i],
-                                   m_handle_naive.get());
+                opr_relayout->exec(
+                        contig_values[i], real_values[i], m_handle_naive.get());
             }
         }
     };
@@ -371,8 +418,7 @@ void Checker<Opr, Proxy>::exec(TensorLayoutArray layouts) {
 
 template <typename Opr, typename Proxy>
 Checker<Opr, Proxy>& Checker<Opr, Proxy>::exect(
-        const TensorValueArray& testcase_in,
-        const TensorValueArray& testcase_out) {
+        const TensorValueArray& testcase_in, const TensorValueArray& testcase_out) {
     auto opr_cur = this->opr();
     opr_cur->param() = m_param;
     auto exec_opr = [this, opr_cur](const TensorValueArray& values) {
@@ -386,14 +432,14 @@ Checker<Opr, Proxy>& Checker<Opr, Proxy>::exect(
 }
 
 template <typename T, typename U>
-TensorND TensorValue(const TensorShape& shape, T dtype,
-                     std::initializer_list<U> values) {
-    TensorND tensor;
-    tensor.layout = {shape, dtype};
-    tensor.raw_ptr =
-            static_cast<dt_byte*>(malloc(tensor.layout.span().dist_byte()));
-    megdnn_assert(values.size() == tensor.layout.total_nr_elems(), "%zu == %zu",
-                  values.size(), tensor.layout.total_nr_elems());
+TensorND TensorValue(
+        const TensorShape& shape, T dtype, std::initializer_list<U> values) {
+    TensorLayout layout{shape, dtype};
+    auto buf = static_cast<dt_byte*>(malloc(layout.span().dist_byte()));
+    TensorND tensor{buf, layout};
+    megdnn_assert(
+            values.size() == tensor.layout.total_nr_elems(), "%zu == %zu",
+            values.size(), tensor.layout.total_nr_elems());
     auto ptr = tensor.ptr<typename DTypeTrait<T>::ctype>();
     for (const auto& v : values) {
         *ptr++ = typename DTypeTrait<T>::ctype(v);
@@ -402,19 +448,31 @@ TensorND TensorValue(const TensorShape& shape, T dtype,
 }
 
 template <typename T, typename U>
-TensorND TensorValueLowbit4(const TensorShape& shape, T dtype,
-                            std::vector<U> values) {
-    TensorND tensor;
-    tensor.layout = {shape, dtype};
-    tensor.raw_ptr =
-            static_cast<dt_byte*>(malloc(tensor.layout.span().dist_byte()));
+TensorND TensorValueLowbit4(const TensorShape& shape, T dtype, std::vector<U> values) {
+    TensorLayout layout{shape, dtype};
+    auto buf = static_cast<dt_byte*>(malloc(layout.span().dist_byte()));
+    TensorND tensor{buf, layout};
     megdnn_assert(values.size() == tensor.layout.total_nr_elems());
-    auto ptr = static_cast<U*>(tensor.raw_ptr);
-    for (size_t i = 0; i < values.size(); i += 2) {
-        U val0 = values[i], val1 = values[i + 1];
-        megdnn_assert(val0 >= DTypeTrait<T>::min());
-        megdnn_assert(val1 <= DTypeTrait<T>::max());
-        ptr[i / 2] = (val0 & 0xF) | (val1 << 4);
+    auto ptr = tensor.ptr<typename DTypeTrait<T>::ctype>();
+    auto dim_in = shape[layout.ndim - 1];
+    auto elems = tensor.layout.total_nr_elems();
+    auto dim_out = elems / dim_in;
+    auto stride_out = div_ceil(dim_in, 2_z);
+    size_t in_offset = 0;
+    for (size_t i = 0; i < dim_out; ++i) {
+        for (size_t j = 0; j < dim_in; j += 2) {
+            U a = values[in_offset + j];
+            U b = 0;
+            if (j + 1 < dim_in)
+                b = values[in_offset + j + 1];
+            megdnn_assert(a >= DTypeTrait<T>::min());
+            megdnn_assert(a <= DTypeTrait<T>::max());
+            megdnn_assert(b >= DTypeTrait<T>::min());
+            megdnn_assert(b <= DTypeTrait<T>::max());
+            ptr[j / 2] = (a & 0xF) | (b << 4);
+        }
+        in_offset += dim_in;
+        ptr += stride_out;
     }
     return tensor;
 }
@@ -425,8 +483,8 @@ public:
     ~Testcase() {
         // Suicide
         for (const auto& tensor : *this) {
-            if (tensor.raw_ptr) {
-                free(tensor.raw_ptr);
+            if (tensor.raw_ptr()) {
+                free(tensor.raw_ptr());
             }
         }
     }
@@ -435,58 +493,126 @@ public:
     Testcase operator=(const Testcase&) = delete;
 };
 
+struct ExecutionPolicyAlgoName {
+    std::string name;
+    std::vector<ExecutionPolicyAlgoName> sub_policy_names;
+
+    ExecutionPolicyAlgoName(const char* name) : name{name} {}
+
+    ExecutionPolicyAlgoName(
+            const char* name, const std::vector<ExecutionPolicyAlgoName>& sub_policy)
+            : name{name}, sub_policy_names{sub_policy} {}
+};
 /*!
  * \brief a callable to check that given algorithm is used for heuristic
  * \param require_algo if its value is true, then requires
  *      get_algorithm_heuristic() to return the expected algo; otherwise the
- *      expected algo must exist in get_all_algorithms() and it would be set to
+ *      expected algo must exist in get_all_algorithms_safe() and it would be set to
  *      be used
  */
 template <class Opr, typename OprAlgoProxy = OprAlgoProxy<Opr>>
 class AlgoChecker {
-    std::string m_name;
-    typename Opr::Algorithm* m_algo = nullptr;
-    bool* m_require_algo;
-
 public:
-    AlgoChecker(const char* name, bool* require_algo = nullptr)
-            : m_name{name}, m_require_algo{require_algo} {}
+    AlgoChecker(ExecutionPolicyAlgoName name, bool* require_algo = nullptr)
+            : m_policy_name{name}, m_require_algo{require_algo} {}
 
-    AlgoChecker(typename Opr::Algorithm* algo, bool* require_algo = nullptr)
-            : m_algo{algo}, m_require_algo{require_algo} {}
+    AlgoChecker(ExecutionPolicy policy, bool* require_algo = nullptr)
+            : m_policy{policy}, m_require_algo{require_algo} {}
+
+    static ExecutionPolicy construct_execution_policy_from_name(
+            const ExecutionPolicyAlgoName& policy_name,
+            const TensorLayoutArray& layouts, const std::string& param,
+            Handle* handle) {
+        ExecutionPolicy ret;
+        megdnn_assert(layouts.size() == OprTrait<Opr>::arity);
+        auto opr = handle->create_operator<Opr>();
+        opr->param() = Algorithm::deserialize_read_pod<typename Opr::Param>(param);
+        for (auto algo_info :
+             AlgoProxy<Opr, OprTrait<Opr>::arity>::get_all_algorithms_info_safe(
+                     opr.get(), layouts)) {
+            if (std::regex_match(
+                        algo_info.desc.name,
+                        std::regex("(" + policy_name.name + ")(.*)"))) {
+                ret.algo = algo_info.desc;
+            } else {
+                continue;
+            }
+
+            Algorithm* algo = opr->get_algorithm_from_desc(algo_info.desc);
+            std::vector<Algorithm::SearchItem>&& sub_items =
+                    algo->get_subopr_list(layouts, opr.get());
+            if (sub_items.size() != policy_name.sub_policy_names.size()) {
+                printf("Invalid sub_policy_names in %s, expected %zu but got "
+                       "%zu\n",
+                       algo_info.desc.name.c_str(), sub_items.size(),
+                       policy_name.sub_policy_names.size());
+                return {};
+            }
+            FOREACH_OPR_TYPE_DISPATCH(sub_items, {
+                ExecutionPolicy policy =
+                        AlgoChecker<_Opr>::construct_execution_policy_from_name(
+                                policy_name.sub_policy_names[_item_idx], _item.layouts,
+                                _item.param, handle);
+                ret.sub_policy.push_back(policy);
+            });
+            return ret;
+        }
+        megdnn_assert(false, "Expected algo not found: %s\n", policy_name.name.c_str());
+        return ret;
+    }
 
     void operator()(Opr* opr, const CheckerHelper::TensorValueArray& arr) {
         TensorLayoutArray layouts;
         for (auto&& val : arr) {
             layouts.push_back(val.layout);
         }
+        if (!m_policy_name.name.empty()) {
+            std::string param_str;
+            Algorithm::serialize_write_pod(opr->param(), param_str);
+            m_policy = construct_execution_policy_from_name(
+                    m_policy_name, layouts, param_str, opr->handle());
+            ASSERT_TRUE(m_policy.algo.valid())
+                    << "algorithm " << m_policy_name.name << " not found";
+        }
         if (m_require_algo && *m_require_algo) {
-            auto algo =
-                    OprAlgoProxy::get_algorithm_info_heuristic(opr, layouts);
-            if (m_name.empty()) {
-                ASSERT_EQ(m_algo->name(), algo.name.c_str());
-            } else {
-                ASSERT_TRUE(std::regex_match(
-                        algo.name.c_str(), std::regex("(" + m_name + ")(.*)")));
-            }
+            auto algo = OprAlgoProxy::get_algorithm_info_heuristic(opr, layouts);
+            ASSERT_STREQ(
+                    opr->get_algorithm_from_desc(m_policy.algo)->name(),
+                    algo.desc.name.c_str());
         } else {
-            if (m_name.empty()) {
-                opr->execution_policy().algo = m_algo->info();
-                return;
-            } else {
-                for (auto i :
-                     OprAlgoProxy::get_all_algorithms_info(opr, layouts)) {
-                    if (std::regex_match(i.name,
-                                         std::regex("(" + m_name + ")(.*)"))) {
-                        opr->execution_policy().algo = i;
-                        return;
-                    }
-                }
-            }
-            ASSERT_TRUE(false) << "algorithm " << m_name << " not found";
+            opr->execution_policy() = m_policy;
         }
     }
+
+private:
+    ExecutionPolicyAlgoName m_policy_name;
+    ExecutionPolicy m_policy;
+    bool* m_require_algo;
 };
+
+template <typename Opr>
+void construct_sub_execution_policy_heuristic(
+        ExecutionPolicy& policy, const TensorLayoutArray& layouts,
+        const std::string& param, Handle* handle) {
+    megdnn_assert(layouts.size() == OprTrait<Opr>::arity);
+    auto opr = handle->create_operator<Opr>();
+    opr->param() = Algorithm::deserialize_read_pod<typename Opr::Param>(param);
+    if (!policy.algo.valid()) {
+        policy.algo =
+                AlgoProxy<Opr, OprTrait<Opr>::arity>::get_algorithm_info_heuristic(
+                        opr.get(), layouts)
+                        .desc;
+    }
+
+    Algorithm* algo = opr->get_algorithm_from_desc(policy.algo);
+    std::vector<Algorithm::SearchItem>&& sub_items =
+            algo->get_subopr_list(layouts, opr.get());
+    FOREACH_OPR_TYPE_DISPATCH(sub_items, {
+        policy.sub_policy.push_back(ExecutionPolicy{});
+        construct_sub_execution_policy_heuristic<_Opr>(
+                policy.sub_policy.back(), _item.layouts, _item.param, handle);
+    });
+}
 
 }  // namespace test
 }  // namespace megdnn

@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 
 import os
 import re
@@ -38,7 +31,6 @@ class build_ext(_build_ext):
             modpath = str(pathlib.Path(*modpath).resolve())
 
             copy_file(modpath, fullpath, verbose=self.verbose, dry_run=self.dry_run)
-
 package_name = 'MegEngine'
 
 v = {}
@@ -47,9 +39,26 @@ with open("megengine/version.py") as fp:
 __version__ = v['__version__']
 
 email = 'megengine@megvii.com'
-local_version = os.environ.get('LOCAL_VERSION')
-if local_version:
-    __version__ = '{}+{}'.format(__version__, local_version)
+# https://www.python.org/dev/peps/pep-0440
+# Public version identifiers: [N!]N(.N)*[{a|b|rc}N][.postN][.devN]
+# Local version identifiers: <public version identifier>[+<local version label>]
+# PUBLIC_VERSION_POSTFIX use to handle rc or dev info
+public_version_postfix = os.environ.get('PUBLIC_VERSION_POSTFIX')
+if public_version_postfix:
+    __version__ = '{}{}'.format(__version__, public_version_postfix)
+
+local_version = []
+strip_sdk_info = os.environ.get('STRIP_SDK_INFO', 'False').lower()
+sdk_name = os.environ.get('SDK_NAME', 'cpu')
+if 'true' == strip_sdk_info:
+    print('wheel version strip sdk info')
+else:
+    local_version.append(sdk_name)
+local_postfix = os.environ.get('LOCAL_VERSION')
+if local_postfix:
+    local_version.append(local_postfix)
+if len(local_version):
+    __version__ = '{}+{}'.format(__version__, '.'.join(local_version))
 
 packages = find_packages(exclude=['test'])
 megengine_data = [
@@ -62,15 +71,35 @@ megengine_data += [
     for f in pathlib.Path('megengine', 'core', 'lib').glob('**/*')
 ]
 
+megenginelite_data = [
+    str(f.relative_to('megenginelite'))
+    for f in pathlib.Path('megenginelite').glob('**/*')
+]
+
+if platform.system() == 'Windows':
+    megenginelite_data.remove('libs\\liblite_shared_whl.pyd')
+else:
+    megenginelite_data.remove('libs/liblite_shared_whl.so')
+
+sdkname2requres = {'cu118': ['nvidia-cuda-runtime-cu11==11.8.89',
+                             'nvidia-cuda-nvrtc-cu11==11.8.89',
+                             'nvidia-cudnn-cu11==8.6.0.163',
+                             'nvidia-cublas-cu11==11.10.3.66'],
+                   }
 
 with open('requires.txt') as f:
     requires = f.read().splitlines()
+if os.environ.get("BUILD_WITH_LIBRARY", "false") == "false": 
+    if sdk_name in sdkname2requres.keys():
+        requires = requires + sdkname2requres[sdk_name]
+    
 with open('requires-style.txt') as f:
     requires_style = f.read().splitlines()
 with open('requires-test.txt') as f:
     requires_test = f.read().splitlines()
 
 prebuild_modules=[PrecompiledExtesion('megengine.core._imperative_rt')]
+prebuild_modules.append(PrecompiledExtesion('megenginelite.libs.liblite_shared_whl'))
 setup_kwargs = dict(
     name=package_name,
     version=__version__,
@@ -81,6 +110,7 @@ setup_kwargs = dict(
     packages=packages,
     package_data={
         'megengine': megengine_data,
+        'megenginelite': megenginelite_data,
     },
     ext_modules=prebuild_modules,
     install_requires=requires,
@@ -89,9 +119,8 @@ setup_kwargs = dict(
         'ci': requires_test,
     },
     cmdclass={'build_ext': build_ext},
+    scripts = ['./megengine/tools/mge'],
 )
-
-
 setup_kwargs.update(dict(
     classifiers=[
     'Development Status :: 3 - Alpha',
@@ -101,10 +130,11 @@ setup_kwargs.update(dict(
     'License :: OSI Approved :: Apache Software License',
     'Programming Language :: C++',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.5',
     'Programming Language :: Python :: 3.6',
     'Programming Language :: Python :: 3.7',
     'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
     'Topic :: Scientific/Engineering',
     'Topic :: Scientific/Engineering :: Mathematics',
     'Topic :: Scientific/Engineering :: Artificial Intelligence',

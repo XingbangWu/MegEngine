@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/rocm/convolution/forward/1x1.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "./algo.h"
 #include "src/rocm/handle.h"
 #include "src/rocm/utils.h.hip"
@@ -37,8 +26,7 @@ bool ConvolutionForwardImpl::Algo1x1::is_available(const SizeArgs& args) const {
 }
 
 void ConvolutionForwardImpl::Algo1x1::extract_matmul_layouts(
-        const SizeArgs& args, TensorLayout& A, TensorLayout& B,
-        TensorLayout& C) {
+        const SizeArgs& args, TensorLayout& A, TensorLayout& B, TensorLayout& C) {
     auto&& fm = args.filter_meta;
     A = {{fm.ocpg, fm.icpg}, fm.dtype};
     B.ndim = 2;
@@ -58,17 +46,17 @@ size_t ConvolutionForwardImpl::Algo1x1::get_workspace_in_bytes(
 void ConvolutionForwardImpl::Algo1x1::exec(const ExecArgs& args) const {
     TensorND A, B, C;
     extract_matmul_layouts(args, A.layout, B.layout, C.layout);
-    A.raw_ptr = args.filter_tensor->raw_ptr;
-    B.raw_ptr = args.src_tensor->raw_ptr;
-    C.raw_ptr = args.dst_tensor->raw_ptr;
+    A.reset_ptr(args.filter_tensor->raw_ptr());
+    B.reset_ptr(args.src_tensor->raw_ptr());
+    C.reset_ptr(args.dst_tensor->raw_ptr());
     size_t batch = args.src_layout->shape[0];
     auto mm = args.handle->matmul_opr();
     auto strd_B = args.src_layout->stride[0] * args.src_layout->dtype.size(),
          strd_C = args.dst_layout->stride[0] * args.dst_layout->dtype.size();
     for (size_t i = 0; i < batch; ++i) {
         mm->exec(A, B, C, args.workspace);
-        incr_voidp(B.raw_ptr, strd_B);
-        incr_voidp(C.raw_ptr, strd_C);
+        incr_refp(B.get_ref_ptr(), strd_B);
+        incr_refp(C.get_ref_ptr(), strd_C);
     }
 }
 
@@ -89,8 +77,7 @@ bool ConvolutionForwardImpl::Algo1x1LargeBatch::is_available(
 }
 
 void ConvolutionForwardImpl::Algo1x1LargeBatch::extract_matmul_layouts(
-        const SizeArgs& args, TensorLayout& A, TensorLayout& B,
-        TensorLayout& C) {
+        const SizeArgs& args, TensorLayout& A, TensorLayout& B, TensorLayout& C) {
     auto&& fm = args.filter_meta;
     // A {N, OC, IC}
     // B {N, IC, H * W}
@@ -117,13 +104,12 @@ size_t ConvolutionForwardImpl::Algo1x1LargeBatch::get_workspace_in_bytes(
     return args.handle->batched_matrix_mul()->get_workspace_in_bytes(A, B, C);
 }
 
-void ConvolutionForwardImpl::Algo1x1LargeBatch::exec(
-        const ExecArgs& args) const {
+void ConvolutionForwardImpl::Algo1x1LargeBatch::exec(const ExecArgs& args) const {
     TensorND A, B, C;
     extract_matmul_layouts(args, A.layout, B.layout, C.layout);
-    A.raw_ptr = args.filter_tensor->raw_ptr;
-    B.raw_ptr = args.src_tensor->raw_ptr;
-    C.raw_ptr = args.dst_tensor->raw_ptr;
+    A.reset_ptr(args.filter_tensor->raw_ptr());
+    B.reset_ptr(args.src_tensor->raw_ptr());
+    C.reset_ptr(args.dst_tensor->raw_ptr());
     auto mm = args.handle->batched_matrix_mul();
     mm->exec(A, B, C, args.workspace);
 }

@@ -1,14 +1,3 @@
-/**
- * \file src/opr-mm/test/collective_comm.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megbrain/opr/collective_comm.h"
 #include "megbrain/graph.h"
 #include "megbrain/opr/basic_arith.h"
@@ -23,8 +12,7 @@ using namespace mgb;
 
 using Mode = opr::CollectiveComm::Param::Mode;
 
-SymbolVar make_all_reduce_output(const Mode mode,
-                                 const SymbolVarArray& inputs) {
+SymbolVar make_all_reduce_output(const Mode mode, const SymbolVarArray& inputs) {
     if (mode == Mode::ALL_REDUCE_MAX)
         return opr::Elemwise::make(inputs, opr::Elemwise::Mode::MAX);
     if (mode == Mode::ALL_REDUCE_MIN)
@@ -36,9 +24,21 @@ SymbolVar make_all_reduce_output(const Mode mode,
 
 SymbolVarArray make_reduce_scatter_sum_output(const SymbolVarArray& inputs) {
     auto rdc = opr::Elemwise::make(inputs, opr::Elemwise::Mode::ADD);
-    return opr::Split::make(
-            rdc, opr::Split::Options::make_average(0, inputs.size()));
+    return opr::Split::make(rdc, opr::Split::Options::make_average(0, inputs.size()));
 }
+
+// Here is a deadlock problem in these tests, which is caused by cuda/nccl:
+// 1. MemcpyAsync waits for the nccl kernel to finish executing to free command queue
+// slots; 2. nccl kernel waits for peer nccl kernel to launch; 3. the peer nccl kernel
+// needs to call host register before launching; 4. host register waits for a lock; 5.
+// the lock is held by MemcpyAsync, deadlock happened. But in current distributed traing
+// scenario, the collective communication occurs in multiple processes rather than a
+// process. This problem will not happened. After discussion, we decide to close these
+// tests now. As for the test of distributed training, we use the python test to do this
+// work.
+
+// TODO: reopen the collective communication
+#if 0
 
 TEST(TestOprCollectiveComm, AllReduce) {
     REQUIRE_GPU(2);
@@ -59,18 +59,17 @@ TEST(TestOprCollectiveComm, AllReduce) {
         auto x1 = opr::Host2DeviceCopy::make(*graph, host_x1, cn0);
         auto x1c = opr::Copy::make(x1, cn1);
 
-        auto y0 = opr::CollectiveComm::make({x0}, graph.get(), "all_reduce", 2,
-                                            false, 0, false, client, {mode},
-                                            dtype::Float32(), "nccl")[0];
-        auto y1 = opr::CollectiveComm::make({x1c}, graph.get(), "all_reduce", 2,
-                                            false, 1, false, client, {mode},
-                                            dtype::Float32(), "nccl")[0];
+        auto y0 = opr::CollectiveComm::make(
+                {x0}, graph.get(), "all_reduce", 2, false, 0, false, client, {mode},
+                dtype::Float32(), "nccl")[0];
+        auto y1 = opr::CollectiveComm::make(
+                {x1c}, graph.get(), "all_reduce", 2, false, 1, false, client, {mode},
+                dtype::Float32(), "nccl")[0];
         auto y_expect = make_all_reduce_output(mode, {x0, x1});
 
-        auto func =
-                graph->compile({make_callback_copy(y0, host_y0),
-                                make_callback_copy(y1, host_y1),
-                                make_callback_copy(y_expect, host_y_expect)});
+        auto func = graph->compile(
+                {make_callback_copy(y0, host_y0), make_callback_copy(y1, host_y1),
+                 make_callback_copy(y_expect, host_y_expect)});
         func->execute();
 
         MGB_ASSERT_TENSOR_EQ(host_y_expect, host_y0);
@@ -99,8 +98,8 @@ TEST(TestOprCollectiveComm, AllReduceMultiThread) {
             auto graph0 = ComputingGraph::make();
             auto x0 = opr::Host2DeviceCopy::make(*graph0, host_x0);
             auto y0 = opr::CollectiveComm::make(
-                    {x0}, graph0.get(), "all_reduce", 2, false, 0, false,
-                    client, {mode}, dtype::Float32(), "nccl")[0];
+                    {x0}, graph0.get(), "all_reduce", 2, false, 0, false, client,
+                    {mode}, dtype::Float32(), "nccl")[0];
             auto func0 = graph0->compile({make_callback_copy(y0, host_y0)});
             func0->execute();
         };
@@ -109,8 +108,8 @@ TEST(TestOprCollectiveComm, AllReduceMultiThread) {
             auto graph1 = ComputingGraph::make();
             auto x1 = opr::Host2DeviceCopy::make(*graph1, host_x1, cn1);
             auto y1 = opr::CollectiveComm::make(
-                    {x1}, graph1.get(), "all_reduce", 2, false, 1, false,
-                    client, {mode}, dtype::Float32(), "nccl")[0];
+                    {x1}, graph1.get(), "all_reduce", 2, false, 1, false, client,
+                    {mode}, dtype::Float32(), "nccl")[0];
             auto func1 = graph1->compile({make_callback_copy(y1, host_y1)});
             func1->execute();
         };
@@ -120,8 +119,7 @@ TEST(TestOprCollectiveComm, AllReduceMultiThread) {
             auto x0 = opr::Host2DeviceCopy::make(*graph2, host_x0, cn0);
             auto x1 = opr::Host2DeviceCopy::make(*graph2, host_x1, cn0);
             auto y_expect = make_all_reduce_output(mode, {x0, x1});
-            auto func2 = graph2->compile(
-                    {make_callback_copy(y_expect, host_y_expect)});
+            auto func2 = graph2->compile({make_callback_copy(y_expect, host_y_expect)});
             func2->execute();
         };
 
@@ -173,8 +171,9 @@ TEST(TestOprCollectiveComm, AllReduceWithGrad) {
         auto loss = opr::Dot::make(y0, grad0);
         auto g = opr::VirtualGrad::make(loss, x0);
 
-        auto func0 = graph0->compile({make_callback_copy(y0, host_y0),
-                                      make_callback_copy(g, host_out_grad0)});
+        auto func0 = graph0->compile(
+                {make_callback_copy(y0, host_y0),
+                 make_callback_copy(g, host_out_grad0)});
         func0->execute();
     };
 
@@ -192,8 +191,9 @@ TEST(TestOprCollectiveComm, AllReduceWithGrad) {
         auto loss = opr::Dot::make(y1, grad1);
         auto g = opr::VirtualGrad::make(loss, x1);
 
-        auto func1 = graph1->compile({make_callback_copy(y1, host_y1),
-                                      make_callback_copy(g, host_out_grad1)});
+        auto func1 = graph1->compile(
+                {make_callback_copy(y1, host_y1),
+                 make_callback_copy(g, host_out_grad1)});
         func1->execute();
     };
 
@@ -260,8 +260,9 @@ TEST(TestOprCollectiveComm, AllReduceWithGradThisNodeOnly) {
         auto loss = opr::Dot::make(y0, grad0);
         auto g = opr::VirtualGrad::make(loss, x0);
 
-        auto func0 = graph0->compile({make_callback_copy(y0, host_y0),
-                                      make_callback_copy(g, host_out_grad0)});
+        auto func0 = graph0->compile(
+                {make_callback_copy(y0, host_y0),
+                 make_callback_copy(g, host_out_grad0)});
         func0->execute();
     };
 
@@ -279,8 +280,9 @@ TEST(TestOprCollectiveComm, AllReduceWithGradThisNodeOnly) {
         auto loss = opr::Dot::make(y1, grad1);
         auto g = opr::VirtualGrad::make(loss, x1);
 
-        auto func1 = graph1->compile({make_callback_copy(y1, host_y1),
-                                      make_callback_copy(g, host_out_grad1)});
+        auto func1 = graph1->compile(
+                {make_callback_copy(y1, host_y1),
+                 make_callback_copy(g, host_out_grad1)});
         func1->execute();
     };
 
@@ -291,8 +293,7 @@ TEST(TestOprCollectiveComm, AllReduceWithGradThisNodeOnly) {
         auto x1 = opr::Host2DeviceCopy::make(*graph2, host_x1, cn0);
         auto y_expect = make_all_reduce_output(Mode::ALL_REDUCE_SUM, {x0, x1});
 
-        auto func2 =
-                graph2->compile({make_callback_copy(y_expect, host_y_expect)});
+        auto func2 = graph2->compile({make_callback_copy(y_expect, host_y_expect)});
         func2->execute();
     };
 
@@ -335,9 +336,9 @@ TEST(TestOprCollectiveComm, AllGather) {
             {Mode::ALL_GATHER}, dtype::Float32(), "nccl")[0];
     auto y_expect = opr::Concat::make({x0, x1}, 0);
 
-    auto func = graph->compile({make_callback_copy(y0, host_y0),
-                                make_callback_copy(y1, host_y1),
-                                make_callback_copy(y_expect, host_y_expect)});
+    auto func = graph->compile(
+            {make_callback_copy(y0, host_y0), make_callback_copy(y1, host_y1),
+             make_callback_copy(y_expect, host_y_expect)});
     func->execute();
 
     MGB_ASSERT_TENSOR_EQ(host_y_expect, host_y0);
@@ -381,8 +382,7 @@ TEST(TestOprCollectiveComm, AllGatherMultiThread) {
         auto x0 = opr::Host2DeviceCopy::make(*graph2, host_x0, cn0);
         auto x1 = opr::Host2DeviceCopy::make(*graph2, host_x1, cn0);
         auto y_expect = opr::Concat::make({x0, x1}, 0);
-        auto func2 =
-                graph2->compile({make_callback_copy(y_expect, host_y_expect)});
+        auto func2 = graph2->compile({make_callback_copy(y_expect, host_y_expect)});
         func2->execute();
     };
 
@@ -429,8 +429,9 @@ TEST(TestOprCollectiveComm, AllGatherWithGrad) {
         auto loss = opr::Dot::make(y0, grad0);
         auto g = opr::VirtualGrad::make(loss, x0);
 
-        auto func0 = graph0->compile({make_callback_copy(y0, host_y0),
-                                      make_callback_copy(g, host_out_grad0)});
+        auto func0 = graph0->compile(
+                {make_callback_copy(y0, host_y0),
+                 make_callback_copy(g, host_out_grad0)});
         func0->execute();
     };
 
@@ -448,8 +449,9 @@ TEST(TestOprCollectiveComm, AllGatherWithGrad) {
         auto loss = opr::Dot::make(y1, grad1);
         auto g = opr::VirtualGrad::make(loss, x1);
 
-        auto func1 = graph1->compile({make_callback_copy(y1, host_y1),
-                                      make_callback_copy(g, host_out_grad1)});
+        auto func1 = graph1->compile(
+                {make_callback_copy(y1, host_y1),
+                 make_callback_copy(g, host_out_grad1)});
         func1->execute();
     };
 
@@ -467,8 +469,7 @@ TEST(TestOprCollectiveComm, AllGatherWithGrad) {
         auto func2 = graph2->compile(
                 {make_callback_copy(y_expect, host_y_expect),
                  make_callback_copy(out_grad_expect[0], host_out_grad0_expect),
-                 make_callback_copy(out_grad_expect[1],
-                                    host_out_grad1_expect)});
+                 make_callback_copy(out_grad_expect[1], host_out_grad1_expect)});
         func2->execute();
     };
 
@@ -517,8 +518,9 @@ TEST(TestOprCollectiveComm, AllGatherWithGradThisNodeOnly) {
         auto loss = opr::Dot::make(y0, grad0);
         auto g = opr::VirtualGrad::make(loss, x0);
 
-        auto func0 = graph0->compile({make_callback_copy(y0, host_y0),
-                                      make_callback_copy(g, host_out_grad0)});
+        auto func0 = graph0->compile(
+                {make_callback_copy(y0, host_y0),
+                 make_callback_copy(g, host_out_grad0)});
         func0->execute();
     };
 
@@ -536,8 +538,9 @@ TEST(TestOprCollectiveComm, AllGatherWithGradThisNodeOnly) {
         auto loss = opr::Dot::make(y1, grad1);
         auto g = opr::VirtualGrad::make(loss, x1);
 
-        auto func1 = graph1->compile({make_callback_copy(y1, host_y1),
-                                      make_callback_copy(g, host_out_grad1)});
+        auto func1 = graph1->compile(
+                {make_callback_copy(y1, host_y1),
+                 make_callback_copy(g, host_out_grad1)});
         func1->execute();
     };
 
@@ -602,8 +605,8 @@ TEST(TestOprCollectiveComm, ReduceScatterSum) {
             {x0}, graph.get(), "reduce_scatter_sum", 2, false, 0, false, client,
             {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(), "nccl")[0];
     auto y1 = opr::CollectiveComm::make(
-            {x1c}, graph.get(), "reduce_scatter_sum", 2, false, 1, false,
-            client, {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(), "nccl")[0];
+            {x1c}, graph.get(), "reduce_scatter_sum", 2, false, 1, false, client,
+            {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(), "nccl")[0];
     auto y_expect = make_reduce_scatter_sum_output({x0, x1});
 
     auto func = graph->compile(
@@ -632,9 +635,8 @@ TEST(TestOprCollectiveComm, ReduceScatterSumMultiThread) {
         auto graph0 = ComputingGraph::make();
         auto x0 = opr::Host2DeviceCopy::make(*graph0, host_x0, cn0);
         auto y0 = opr::CollectiveComm::make(
-                {x0}, graph0.get(), "reduce_scatter_sum", 2, false, 0, false,
-                client, {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(),
-                "nccl")[0];
+                {x0}, graph0.get(), "reduce_scatter_sum", 2, false, 0, false, client,
+                {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(), "nccl")[0];
         auto func0 = graph0->compile({make_callback_copy(y0, host_y0)});
         func0->execute();
     };
@@ -643,9 +645,8 @@ TEST(TestOprCollectiveComm, ReduceScatterSumMultiThread) {
         auto graph1 = ComputingGraph::make();
         auto x1 = opr::Host2DeviceCopy::make(*graph1, host_x1, cn1);
         auto y1 = opr::CollectiveComm::make(
-                {x1}, graph1.get(), "reduce_scatter_sum", 2, false, 1, false,
-                client, {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(),
-                "nccl")[0];
+                {x1}, graph1.get(), "reduce_scatter_sum", 2, false, 1, false, client,
+                {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(), "nccl")[0];
         auto func1 = graph1->compile({make_callback_copy(y1, host_y1)});
         func1->execute();
     };
@@ -695,17 +696,17 @@ TEST(TestOprCollectiveComm, ReduceScatterSumWithGrad) {
 
         auto x0 = opr::Host2DeviceCopy::make(*graph0, host_x0, cn0);
         auto y0 = opr::CollectiveComm::make(
-                {x0}, graph0.get(), "reduce_scatter_sum", 2, false, 0, false,
-                client, {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(),
-                "nccl")[0];
+                {x0}, graph0.get(), "reduce_scatter_sum", 2, false, 0, false, client,
+                {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(), "nccl")[0];
         y0.node()->owner_opr()->node_prop().attribute().priority = -1;
 
         auto grad0 = opr::Host2DeviceCopy::make(*graph0, host_grad0, cn0);
         auto loss = opr::Dot::make(y0, grad0);
         auto g = opr::VirtualGrad::make(loss, x0);
 
-        auto func0 = graph0->compile({make_callback_copy(y0, host_y0),
-                                      make_callback_copy(g, host_out_grad0)});
+        auto func0 = graph0->compile(
+                {make_callback_copy(y0, host_y0),
+                 make_callback_copy(g, host_out_grad0)});
         func0->execute();
     };
 
@@ -715,17 +716,17 @@ TEST(TestOprCollectiveComm, ReduceScatterSumWithGrad) {
 
         auto x1 = opr::Host2DeviceCopy::make(*graph1, host_x1, cn1);
         auto y1 = opr::CollectiveComm::make(
-                {x1}, graph1.get(), "reduce_scatter_sum", 2, false, 1, false,
-                client, {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(),
-                "nccl")[0];
+                {x1}, graph1.get(), "reduce_scatter_sum", 2, false, 1, false, client,
+                {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(), "nccl")[0];
         y1.node()->owner_opr()->node_prop().attribute().priority = -1;
 
         auto grad1 = opr::Host2DeviceCopy::make(*graph1, host_grad1, cn1);
         auto loss = opr::Dot::make(y1, grad1);
         auto g = opr::VirtualGrad::make(loss, x1);
 
-        auto func1 = graph1->compile({make_callback_copy(y1, host_y1),
-                                      make_callback_copy(g, host_out_grad1)});
+        auto func1 = graph1->compile(
+                {make_callback_copy(y1, host_y1),
+                 make_callback_copy(g, host_out_grad1)});
         func1->execute();
     };
 
@@ -786,17 +787,17 @@ TEST(TestOprCollectiveComm, ReduceScatterSumWithGradThisNodeOnly) {
 
         auto x0 = opr::Host2DeviceCopy::make(*graph0, host_x0, cn0);
         auto y0 = opr::CollectiveComm::make(
-                {x0}, graph0.get(), "reduce_scatter_sum", 2, false, 0, true,
-                client, {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(),
-                "nccl")[0];
+                {x0}, graph0.get(), "reduce_scatter_sum", 2, false, 0, true, client,
+                {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(), "nccl")[0];
         y0.node()->owner_opr()->node_prop().attribute().priority = -1;
 
         auto grad0 = opr::Host2DeviceCopy::make(*graph0, host_grad0, cn0);
         auto loss = opr::Dot::make(y0, grad0);
         auto g = opr::VirtualGrad::make(loss, x0);
 
-        auto func0 = graph0->compile({make_callback_copy(y0, host_y0),
-                                      make_callback_copy(g, host_out_grad0)});
+        auto func0 = graph0->compile(
+                {make_callback_copy(y0, host_y0),
+                 make_callback_copy(g, host_out_grad0)});
         func0->execute();
     };
 
@@ -806,17 +807,17 @@ TEST(TestOprCollectiveComm, ReduceScatterSumWithGradThisNodeOnly) {
 
         auto x1 = opr::Host2DeviceCopy::make(*graph1, host_x1, cn1);
         auto y1 = opr::CollectiveComm::make(
-                {x1}, graph1.get(), "reduce_scatter_sum", 2, false, 1, true,
-                client, {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(),
-                "nccl")[0];
+                {x1}, graph1.get(), "reduce_scatter_sum", 2, false, 1, true, client,
+                {Mode::REDUCE_SCATTER_SUM}, dtype::Float32(), "nccl")[0];
         y1.node()->owner_opr()->node_prop().attribute().priority = -1;
 
         auto grad1 = opr::Host2DeviceCopy::make(*graph1, host_grad1, cn1);
         auto loss = opr::Dot::make(y1, grad1);
         auto g = opr::VirtualGrad::make(loss, x1);
 
-        auto func1 = graph1->compile({make_callback_copy(y1, host_y1),
-                                      make_callback_copy(g, host_out_grad1)});
+        auto func1 = graph1->compile(
+                {make_callback_copy(y1, host_y1),
+                 make_callback_copy(g, host_out_grad1)});
         func1->execute();
     };
 
@@ -829,8 +830,7 @@ TEST(TestOprCollectiveComm, ReduceScatterSumWithGradThisNodeOnly) {
 
         auto grad0 = opr::Host2DeviceCopy::make(*graph2, host_grad0, cn0);
         auto grad1 = opr::Host2DeviceCopy::make(*graph2, host_grad1, cn0);
-        auto zero_grad =
-                opr::Host2DeviceCopy::make(*graph2, host_zero_grad, cn0);
+        auto zero_grad = opr::Host2DeviceCopy::make(*graph2, host_zero_grad, cn0);
         auto out_grad_expect0 = opr::Concat::make({grad0, zero_grad}, 0);
         auto out_grad_expect1 = opr::Concat::make({zero_grad, grad1}, 0);
 
@@ -881,9 +881,9 @@ TEST(TestOprCollectiveComm, ReduceSum) {
             {Mode::REDUCE_SUM}, dtype::Float32(), "nccl")[0];
     auto y_expect = x0 + x1;
 
-    auto func = graph->compile({make_callback_copy(y0, host_y0),
-                                make_callback_copy(y1, host_y1),
-                                make_callback_copy(y_expect, host_y_expect)});
+    auto func = graph->compile(
+            {make_callback_copy(y0, host_y0), make_callback_copy(y1, host_y1),
+             make_callback_copy(y_expect, host_y_expect)});
     func->execute();
 
     MGB_ASSERT_TENSOR_EQ(host_y_expect, host_y0);
@@ -926,8 +926,7 @@ TEST(TestOprCollectiveComm, ReduceSumMultiThread) {
         auto x0 = opr::Host2DeviceCopy::make(*graph2, host_x0, cn0);
         auto x1 = opr::Host2DeviceCopy::make(*graph2, host_x1, cn0);
         auto y_expect = x0 + x1;
-        auto func2 =
-                graph2->compile({make_callback_copy(y_expect, host_y_expect)});
+        auto func2 = graph2->compile({make_callback_copy(y_expect, host_y_expect)});
         func2->execute();
     };
 
@@ -971,8 +970,9 @@ TEST(TestOprCollectiveComm, ReduceSumWithGrad) {
         auto loss = opr::Dot::make(y0, grad);
         auto g = opr::VirtualGrad::make(loss, x0);
 
-        auto func0 = graph0->compile({make_callback_copy(y0, host_y0),
-                                      make_callback_copy(g, host_out_grad0)});
+        auto func0 = graph0->compile(
+                {make_callback_copy(y0, host_y0),
+                 make_callback_copy(g, host_out_grad0)});
         func0->execute();
     };
 
@@ -990,8 +990,8 @@ TEST(TestOprCollectiveComm, ReduceSumWithGrad) {
         auto loss = opr::Dot::make(y1, grad);
         auto g = opr::VirtualGrad::make(loss, x1);
 
-        auto func1 = graph1->compile(
-                {{y1, nullptr}, make_callback_copy(g, host_out_grad1)});
+        auto func1 =
+                graph1->compile({{y1, nullptr}, make_callback_copy(g, host_out_grad1)});
         func1->execute();
     };
 
@@ -1000,8 +1000,7 @@ TEST(TestOprCollectiveComm, ReduceSumWithGrad) {
         auto x0 = opr::Host2DeviceCopy::make(*graph2, host_x0, cn0);
         auto x1 = opr::Host2DeviceCopy::make(*graph2, host_x1, cn0);
         auto y0_expect = x0 + x1;
-        auto func2 = graph2->compile(
-                {make_callback_copy(y0_expect, host_y0_expect)});
+        auto func2 = graph2->compile({make_callback_copy(y0_expect, host_y0_expect)});
         func2->execute();
     };
 
@@ -1035,17 +1034,17 @@ TEST(TestOprCollectiveComm, Gather) {
     auto x1 = opr::Host2DeviceCopy::make(*graph, host_x1, cn0);
     auto x1c = opr::Copy::make(x1, cn1);
 
-    auto y0 = opr::CollectiveComm::make({x0}, graph.get(), "gather", 2, true, 0,
-                                        false, client, {Mode::GATHER},
-                                        dtype::Float32(), "nccl")[0];
-    auto y1 = opr::CollectiveComm::make({x1c}, graph.get(), "gather", 2, false,
-                                        1, false, client, {Mode::GATHER},
-                                        dtype::Float32(), "nccl")[0];
+    auto y0 = opr::CollectiveComm::make(
+            {x0}, graph.get(), "gather", 2, true, 0, false, client, {Mode::GATHER},
+            dtype::Float32(), "nccl")[0];
+    auto y1 = opr::CollectiveComm::make(
+            {x1c}, graph.get(), "gather", 2, false, 1, false, client, {Mode::GATHER},
+            dtype::Float32(), "nccl")[0];
     auto y_expect = opr::Concat::make({x0, x1}, 0);
 
-    auto func = graph->compile({make_callback_copy(y0, host_y0),
-                                make_callback_copy(y1, host_y1),
-                                make_callback_copy(y_expect, host_y_expect)});
+    auto func = graph->compile(
+            {make_callback_copy(y0, host_y0), make_callback_copy(y1, host_y1),
+             make_callback_copy(y_expect, host_y_expect)});
     func->execute();
 
     MGB_ASSERT_TENSOR_EQ(host_y_expect, host_y0);
@@ -1067,8 +1066,8 @@ TEST(TestOprCollectiveComm, GatherMultiThread) {
         auto graph0 = ComputingGraph::make();
         auto x0 = opr::Host2DeviceCopy::make(*graph0, host_x0, cn0);
         auto y0 = opr::CollectiveComm::make(
-                {x0}, graph0.get(), "gather", 2, true, 0, false, client,
-                {Mode::GATHER}, dtype::Float32(), "nccl")[0];
+                {x0}, graph0.get(), "gather", 2, true, 0, false, client, {Mode::GATHER},
+                dtype::Float32(), "nccl")[0];
         auto func0 = graph0->compile({make_callback_copy(y0, host_y0)});
         func0->execute();
     };
@@ -1088,8 +1087,7 @@ TEST(TestOprCollectiveComm, GatherMultiThread) {
         auto x0 = opr::Host2DeviceCopy::make(*graph2, host_x0, cn0);
         auto x1 = opr::Host2DeviceCopy::make(*graph2, host_x1, cn0);
         auto y_expect = opr::Concat::make({x0, x1}, 0);
-        auto func2 =
-                graph2->compile({make_callback_copy(y_expect, host_y_expect)});
+        auto func2 = graph2->compile({make_callback_copy(y_expect, host_y_expect)});
         func2->execute();
     };
 
@@ -1126,8 +1124,8 @@ TEST(TestOprCollectiveComm, GatherWithGrad) {
 
         auto x0 = opr::Host2DeviceCopy::make(*graph0, host_x0, cn0);
         auto y0 = opr::CollectiveComm::make(
-                {x0}, graph0.get(), "gather", 2, true, 0, false, client,
-                {Mode::GATHER}, dtype::Float32(), "nccl")[0];
+                {x0}, graph0.get(), "gather", 2, true, 0, false, client, {Mode::GATHER},
+                dtype::Float32(), "nccl")[0];
         y0.node()->owner_opr()->node_prop().attribute().priority = -1;
 
         auto grad0 = opr::Host2DeviceCopy::make(*graph0, host_grad0, cn0);
@@ -1136,8 +1134,9 @@ TEST(TestOprCollectiveComm, GatherWithGrad) {
         auto loss = opr::Dot::make(y0, grad);
         auto g = opr::VirtualGrad::make(loss, x0);
 
-        auto func0 = graph0->compile({make_callback_copy(y0, host_y0),
-                                      make_callback_copy(g, host_out_grad0)});
+        auto func0 = graph0->compile(
+                {make_callback_copy(y0, host_y0),
+                 make_callback_copy(g, host_out_grad0)});
         func0->execute();
     };
 
@@ -1155,8 +1154,8 @@ TEST(TestOprCollectiveComm, GatherWithGrad) {
         auto loss = opr::Dot::make(y1, grad);
         auto g = opr::VirtualGrad::make(loss, x1);
 
-        auto func1 = graph1->compile(
-                {{y1, nullptr}, make_callback_copy(g, host_out_grad1)});
+        auto func1 =
+                graph1->compile({{y1, nullptr}, make_callback_copy(g, host_out_grad1)});
         func1->execute();
     };
 
@@ -1165,8 +1164,7 @@ TEST(TestOprCollectiveComm, GatherWithGrad) {
         auto x0 = opr::Host2DeviceCopy::make(*graph2, host_x0, cn0);
         auto x1 = opr::Host2DeviceCopy::make(*graph2, host_x1, cn0);
         auto y0_expect = opr::Concat::make({x0, x1}, 0);
-        auto func2 = graph2->compile(
-                {make_callback_copy(y0_expect, host_y0_expect)});
+        auto func2 = graph2->compile({make_callback_copy(y0_expect, host_y0_expect)});
         func2->execute();
     };
 
@@ -1196,14 +1194,13 @@ TEST(TestOprCollectiveComm, Broadcast) {
     auto graph = ComputingGraph::make();
 
     auto x0 = opr::Host2DeviceCopy::make(*graph, host_x0, cn0);
-    auto y0 = opr::CollectiveComm::make({x0}, graph.get(), "broadcast", 2, true,
-                                        0, false, client, {Mode::BROADCAST},
-                                        dtype::Float32(), "nccl")[0];
-    auto y_dev =
-            std::make_shared<DeviceTensorND>(DeviceTensorND()
-                                                     .comp_node(cn1)
-                                                     .dtype(dtype::Float32())
-                                                     .resize(host_x0->shape()));
+    auto y0 = opr::CollectiveComm::make(
+            {x0}, graph.get(), "broadcast", 2, true, 0, false, client,
+            {Mode::BROADCAST}, dtype::Float32(), "nccl")[0];
+    auto y_dev = std::make_shared<DeviceTensorND>(DeviceTensorND()
+                                                          .comp_node(cn1)
+                                                          .dtype(dtype::Float32())
+                                                          .resize(host_x0->shape()));
     auto y1 = opr::CollectiveComm::make(
             {}, graph.get(), "broadcast", 2, false, 1, false, client, {y_dev},
             {Mode::BROADCAST}, dtype::Float32(), "nccl", {cn1})[0];
@@ -1239,14 +1236,14 @@ TEST(TestOprCollectiveComm, BroadcastMultiThread) {
 
     auto run_1 = [&]() {  // rank 1
         auto graph1 = ComputingGraph::make();
-        auto y_dev = std::make_shared<DeviceTensorND>(
-                DeviceTensorND()
-                        .comp_node(cn1)
-                        .dtype(dtype::Float32())
-                        .resize(host_x0->shape()));
+        auto y_dev =
+                std::make_shared<DeviceTensorND>(DeviceTensorND()
+                                                         .comp_node(cn1)
+                                                         .dtype(dtype::Float32())
+                                                         .resize(host_x0->shape()));
         auto y1 = opr::CollectiveComm::make(
-                {}, graph1.get(), "broadcast", 2, false, 1, false, client,
-                {y_dev}, {Mode::BROADCAST}, dtype::Float32(), "nccl", {cn1})[0];
+                {}, graph1.get(), "broadcast", 2, false, 1, false, client, {y_dev},
+                {Mode::BROADCAST}, dtype::Float32(), "nccl", {cn1})[0];
         auto func1 = graph1->compile({make_callback_copy(y1, host_y1)});
         func1->execute();
     };
@@ -1290,8 +1287,9 @@ TEST(TestOprCollectiveComm, BroadcastWithGrad) {
         auto loss = opr::Dot::make(y0, grad0);
         auto g = opr::VirtualGrad::make(loss, x0);
 
-        auto func0 = graph0->compile({make_callback_copy(y0, host_y0),
-                                      make_callback_copy(g, host_out_grad)});
+        auto func0 = graph0->compile(
+                {make_callback_copy(y0, host_y0),
+                 make_callback_copy(g, host_out_grad)});
         func0->execute();
     };
 
@@ -1305,12 +1303,11 @@ TEST(TestOprCollectiveComm, BroadcastWithGrad) {
 
         auto grad1 = opr::Host2DeviceCopy::make(*graph1, host_grad1, cn1);
         auto g = opr::CollectiveComm::make(
-                {grad1}, graph1.get(), "broadcast:grad", 2, false, 1, false,
-                client, Mode::REDUCE_SUM, dtype::Float32(), "nccl")[0];
+                {grad1}, graph1.get(), "broadcast:grad", 2, false, 1, false, client,
+                Mode::REDUCE_SUM, dtype::Float32(), "nccl")[0];
         g.node()->owner_opr()->node_prop().attribute().priority = 1;
 
-        auto func1 = graph1->compile(
-                {make_callback_copy(y1, host_y1), {g, nullptr}});
+        auto func1 = graph1->compile({make_callback_copy(y1, host_y1), {g, nullptr}});
         func1->execute();
     };
 
@@ -1353,12 +1350,12 @@ TEST(TestOprCollectiveComm, Scatter) {
     auto x0 = opr::Host2DeviceCopy::make(*graph, host_x0, cn0);
     auto x1 = opr::Host2DeviceCopy::make(*graph, host_x1, cn0);
     auto x = opr::Concat::make({x0, x1}, 0);
-    auto y0 = opr::CollectiveComm::make({x}, graph.get(), "scatter", 2, true, 0,
-                                        false, client, {Mode::SCATTER},
-                                        dtype::Float32(), "nccl")[0];
-    auto y1 = opr::CollectiveComm::make({}, graph.get(), "scatter", 2, false, 1,
-                                        false, client, {Mode::SCATTER},
-                                        dtype::Float32(), "nccl", {cn1})[0];
+    auto y0 = opr::CollectiveComm::make(
+            {x}, graph.get(), "scatter", 2, true, 0, false, client, {Mode::SCATTER},
+            dtype::Float32(), "nccl")[0];
+    auto y1 = opr::CollectiveComm::make(
+            {}, graph.get(), "scatter", 2, false, 1, false, client, {Mode::SCATTER},
+            dtype::Float32(), "nccl", {cn1})[0];
 
     auto func = graph->compile(
             {make_callback_copy(y0, host_y0), make_callback_copy(y1, host_y1)});
@@ -1443,8 +1440,9 @@ TEST(TestOprCollectiveComm, ScatterWithGrad) {
         auto loss = opr::Dot::make(y0, grad0);
         auto g = opr::VirtualGrad::make(loss, x);
 
-        auto func0 = graph0->compile({make_callback_copy(y0, host_y0),
-                                      make_callback_copy(g, host_out_grad)});
+        auto func0 = graph0->compile(
+                {make_callback_copy(y0, host_y0),
+                 make_callback_copy(g, host_out_grad)});
         func0->execute();
     };
 
@@ -1458,12 +1456,11 @@ TEST(TestOprCollectiveComm, ScatterWithGrad) {
 
         auto grad1 = opr::Host2DeviceCopy::make(*graph1, host_grad1, cn1);
         auto g = opr::CollectiveComm::make(
-                {grad1}, graph1.get(), "scatter:grad", 2, false, 1, false,
-                client, Mode::GATHER, dtype::Float32(), "nccl")[0];
+                {grad1}, graph1.get(), "scatter:grad", 2, false, 1, false, client,
+                Mode::GATHER, dtype::Float32(), "nccl")[0];
         g.node()->owner_opr()->node_prop().attribute().priority = 1;
 
-        auto func1 = graph1->compile(
-                {make_callback_copy(y1, host_y1), {g, nullptr}});
+        auto func1 = graph1->compile({make_callback_copy(y1, host_y1), {g, nullptr}});
         func1->execute();
     };
 
@@ -1519,17 +1516,17 @@ TEST(TestOprCollectiveComm, AllToAll) {
     auto expect_y0 = opr::Concat::make({x00, x10c}, 0);
     auto expect_y1 = opr::Concat::make({x01c, x11}, 0);
 
-    auto y0 = opr::CollectiveComm::make({x0}, graph.get(), "alltoall", 2, false,
-                                        0, false, client, {Mode::ALL_TO_ALL},
-                                        dtype::Float32(), "nccl")[0];
-    auto y1 = opr::CollectiveComm::make({x1}, graph.get(), "alltoall", 2, false,
-                                        1, false, client, {Mode::ALL_TO_ALL},
-                                        dtype::Float32(), "nccl")[0];
+    auto y0 = opr::CollectiveComm::make(
+            {x0}, graph.get(), "alltoall", 2, false, 0, false, client,
+            {Mode::ALL_TO_ALL}, dtype::Float32(), "nccl")[0];
+    auto y1 = opr::CollectiveComm::make(
+            {x1}, graph.get(), "alltoall", 2, false, 1, false, client,
+            {Mode::ALL_TO_ALL}, dtype::Float32(), "nccl")[0];
 
-    auto func = graph->compile({make_callback_copy(y0, host_y0),
-                                make_callback_copy(y1, host_y1),
-                                make_callback_copy(expect_y0, host_expect_y0),
-                                make_callback_copy(expect_y1, host_expect_y1)});
+    auto func = graph->compile(
+            {make_callback_copy(y0, host_y0), make_callback_copy(y1, host_y1),
+             make_callback_copy(expect_y0, host_expect_y0),
+             make_callback_copy(expect_y1, host_expect_y1)});
     func->execute();
 
     MGB_ASSERT_TENSOR_EQ(host_expect_y0, host_y0);
@@ -1635,8 +1632,7 @@ TEST(TestOprCollectiveComm, AllToAllWithGrad) {
         auto g = opr::VirtualGrad::make(loss, x0);
 
         auto func0 = graph0->compile(
-                {make_callback_copy(y0, host_y0),
-                 make_callback_copy(g, host_grad0),
+                {make_callback_copy(y0, host_y0), make_callback_copy(g, host_grad0),
                  make_callback_copy(expect_y0, host_expect_y0)});
         func0->execute();
     };
@@ -1662,8 +1658,7 @@ TEST(TestOprCollectiveComm, AllToAllWithGrad) {
         auto g = opr::VirtualGrad::make(loss, x1);
 
         auto func0 = graph1->compile(
-                {make_callback_copy(y1, host_y1),
-                 make_callback_copy(g, host_grad1),
+                {make_callback_copy(y1, host_y1), make_callback_copy(g, host_grad1),
                  make_callback_copy(expect_y1, host_expect_y1)});
         func0->execute();
     };
@@ -1740,8 +1735,7 @@ TEST(TestOprCollectiveComm, AllToAllWithGradThisNodeOnly) {
         auto g = opr::VirtualGrad::make(loss, x0);
 
         auto func0 = graph0->compile(
-                {make_callback_copy(y0, host_y0),
-                 make_callback_copy(g, host_grad0),
+                {make_callback_copy(y0, host_y0), make_callback_copy(g, host_grad0),
                  make_callback_copy(expect_y0, host_expect_y0)});
         func0->execute();
     };
@@ -1767,8 +1761,7 @@ TEST(TestOprCollectiveComm, AllToAllWithGradThisNodeOnly) {
         auto g = opr::VirtualGrad::make(loss, x1);
 
         auto func0 = graph1->compile(
-                {make_callback_copy(y1, host_y1),
-                 make_callback_copy(g, host_grad1),
+                {make_callback_copy(y1, host_y1), make_callback_copy(g, host_grad1),
                  make_callback_copy(expect_y1, host_expect_y1)});
         func0->execute();
     };
@@ -1777,8 +1770,7 @@ TEST(TestOprCollectiveComm, AllToAllWithGradThisNodeOnly) {
         auto graph2 = ComputingGraph::make();
         auto grad00 = opr::Host2DeviceCopy::make(*graph2, host_grad00, cn0);
         auto grad11 = opr::Host2DeviceCopy::make(*graph2, host_grad11, cn0);
-        auto zero_grad =
-                opr::Host2DeviceCopy::make(*graph2, host_zero_grad, cn0);
+        auto zero_grad = opr::Host2DeviceCopy::make(*graph2, host_zero_grad, cn0);
         auto out_grad0_expect = opr::Concat::make({grad00, zero_grad}, 0);
         auto out_grad1_expect = opr::Concat::make({zero_grad, grad11}, 0);
         auto func2 = graph2->compile(
@@ -1800,3 +1792,5 @@ TEST(TestOprCollectiveComm, AllToAllWithGradThisNodeOnly) {
     MGB_ASSERT_TENSOR_EQ(host_expect_grad0, host_grad0);
     MGB_ASSERT_TENSOR_EQ(host_expect_grad1, host_grad1);
 }
+
+#endif

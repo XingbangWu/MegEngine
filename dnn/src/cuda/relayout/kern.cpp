@@ -1,23 +1,13 @@
-/**
- * \file dnn/src/cuda/relayout/kern.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
+#include "src/cuda/relayout/kern.cuh"
 #include "megdnn/basic_types.h"
 #include "src/cuda/elemwise_helper.cuh"
 #include "src/cuda/utils.cuh"
-#include "src/cuda/relayout/kern.cuh"
 
 namespace megdnn {
 namespace cuda {
 
-void get_launch_spec_unroll16(const void* kern, size_t size, int* grid_size, int* block_size) {
+void get_launch_spec_unroll16(
+        const void* kern, size_t size, int* grid_size, int* block_size) {
     safe_size_in_kern(size);
     auto config = query_launch_config_for_kernel(kern);
     *block_size = config.block_size;
@@ -29,7 +19,8 @@ void get_launch_spec_unroll16(const void* kern, size_t size, int* grid_size, int
     megdnn_assert(static_cast<size_t>(*block_size) * *grid_size * 16 >= size);
 }
 
-void get_launch_spec_unroll4(const void* kern, size_t size, int* grid_size, int* block_size) {
+void get_launch_spec_unroll4(
+        const void* kern, size_t size, int* grid_size, int* block_size) {
     safe_size_in_kern(size);
     auto config = query_launch_config_for_kernel(kern);
     *block_size = config.block_size;
@@ -41,7 +32,7 @@ void get_launch_spec_unroll4(const void* kern, size_t size, int* grid_size, int*
     megdnn_assert(static_cast<size_t>(*block_size) * *grid_size * 4 >= size);
 }
 
-} // namespace cuda
-} // namespace megdnn
+}  // namespace cuda
+}  // namespace megdnn
 
 // vim: ft=cpp syntax=cpp.doxygen

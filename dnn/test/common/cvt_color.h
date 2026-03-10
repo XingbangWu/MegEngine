@@ -1,13 +1,3 @@
-/**
- * \file dnn/test/common/cvt_color.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include "megdnn/basic_types.h"
@@ -32,48 +22,34 @@ inline std::vector<TestArg> get_args() {
     for (size_t i = 2; i <= 10; ++i) {
         for (size_t j = 2; j <= 10; ++j) {
             cur_param.mode = Mode::RGB2GRAY;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Uint8());
             cur_param.mode = Mode::RGB2YUV;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Uint8());
             cur_param.mode = Mode::YUV2RGB;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Uint8());
             cur_param.mode = Mode::GRAY2RGB;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 1},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 1}, dtype::Uint8());
             cur_param.mode = Mode::RGBA2RGB;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 4},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 4}, dtype::Uint8());
             cur_param.mode = Mode::RGBA2BGR;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 4},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 4}, dtype::Uint8());
             cur_param.mode = Mode::RGBA2GRAY;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 4},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 4}, dtype::Uint8());
             cur_param.mode = Mode::RGB2BGR;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Uint8());
             cur_param.mode = Mode::BGR2GRAY;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Uint8());
             cur_param.mode = Mode::BGR2RGB;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Uint8());
             // float32 test
             cur_param.mode = Mode::RGB2GRAY;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Float32());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Float32());
             cur_param.mode = Mode::RGB2YUV;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Float32());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Float32());
             cur_param.mode = Mode::YUV2RGB;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Float32());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Float32());
             cur_param.mode = Mode::GRAY2RGB;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 1},
-                              dtype::Float32());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 1}, dtype::Float32());
         }
     }
     for (size_t i = 18; i < 164; i *= 3) {
@@ -94,8 +70,7 @@ inline std::vector<TestArg> get_args() {
 
              }) {
             cur_param.mode = mode;
-            args.emplace_back(cur_param, TensorShape{1, i, i, 1},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, i, 1}, dtype::Uint8());
         }
     }
 
@@ -133,32 +108,27 @@ inline std::vector<TestArg> get_cuda_args() {
     for (size_t i = 2; i <= 10; ++i) {
         for (size_t j = 2; j <= 10; ++j) {
             cur_param.mode = Mode::RGB2GRAY;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Uint8());
+            cur_param.mode = Mode::BGR2GRAY;
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Uint8());
             cur_param.mode = Mode::RGB2YUV;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Uint8());
             cur_param.mode = Mode::YUV2RGB;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Uint8());
             cur_param.mode = Mode::GRAY2RGB;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 1},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 1}, dtype::Uint8());
             // float32 test
             cur_param.mode = Mode::RGB2GRAY;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Float32());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Float32());
+            cur_param.mode = Mode::BGR2GRAY;
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Float32());
             cur_param.mode = Mode::RGB2YUV;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Float32());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Float32());
             cur_param.mode = Mode::YUV2RGB;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 3},
-                              dtype::Float32());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 3}, dtype::Float32());
             cur_param.mode = Mode::GRAY2RGB;
-            args.emplace_back(cur_param, TensorShape{1, i, j, 1},
-                              dtype::Float32());
-            args.emplace_back(cur_param, TensorShape{3, i, j, 1},
-                              dtype::Float32());
+            args.emplace_back(cur_param, TensorShape{1, i, j, 1}, dtype::Float32());
+            args.emplace_back(cur_param, TensorShape{3, i, j, 1}, dtype::Float32());
         }
     }
 
@@ -178,8 +148,7 @@ inline std::vector<TestArg> get_cuda_args() {
                      Mode::YUV2RGB_YU12,
              }) {
             cur_param.mode = mode;
-            args.emplace_back(cur_param, TensorShape{1, i, i, 1},
-                              dtype::Uint8());
+            args.emplace_back(cur_param, TensorShape{1, i, i, 1}, dtype::Uint8());
         }
     }
 

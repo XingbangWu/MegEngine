@@ -1,14 +1,3 @@
-/**
- * \file src/core/test/comp_node_helper.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "./comp_node_helper.h"
 
 #include "megbrain/opr/basic_arith_wrapper.h"
@@ -100,13 +89,32 @@ void run_comp_seq_rec_basic_level2(CompNode cn) {
         MGB_ASSERT_TENSOR_NEAR(expect, host_z, 1e-3) << "iter " << iter;
     }
     ASSERT_EQ(executed.size(), 2u);
+
+    //! test default_cpu with record2
+    {
+        HostTensorND hz;
+        graph = ComputingGraph::make();
+        x = opr::Host2DeviceCopy::make(*graph, host_x);
+        y = opr::Host2DeviceCopy::make(*graph, host_y);
+        z = opr::ConvBias::make(x, y, param);
+        z = opr::GetVarShape::make(z);
+        graph->options().comp_node_seq_record_level = 2;
+        graph->options().var_sanity_check_first_run = false;
+        auto func = graph->compile({make_callback_copy(z, hz, true)});
+        ComputingGraph::assert_destroy(graph);
+        func->execute();
+        ASSERT_TRUE(hz.comp_node() == cn);
+        ASSERT_EQ(hz.ptr<int>()[0], 3);
+        ASSERT_EQ(hz.ptr<int>()[1], 6);
+        ASSERT_EQ(hz.ptr<int>()[2], 8);
+        ASSERT_EQ(hz.ptr<int>()[3], 6);
+    }
 }
 
 void run_comp_seq_rec_dyn_elemwise(CompNode cn, bool fake_first) {
     // dynamic memory is allocated in elemwise
     HostTensorGenerator<> gen;
-    auto host_x = gen({3, 3}, cn), host_y = gen({1, 3}, cn),
-         host_z = gen({3, 1}, cn);
+    auto host_x = gen({3, 3}, cn), host_y = gen({1, 3}, cn), host_z = gen({3, 1}, cn);
 
     auto check = [&]() {
         HostTensorND ret(CompNode::load("cpux"), host_x->shape());
@@ -182,13 +190,13 @@ void run_level2(CompNode cn, bool use_multi_holder) {
              large = opr::ImmutableTensor::make(*graph, *host_large),
              z = opr::Host2DeviceCopy::make(*graph, host_z),
              // elemwise with larger tmp storage
-                t0 = opr::Elemwise::make({c, y, z},
-                                         opr::Elemwise::Mode::FUSE_MUL_ADD3) +
+                t0 = opr::Elemwise::make(
+                             {c, y, z}, opr::Elemwise::Mode::FUSE_MUL_ADD3) +
                      large,
              // t1 shape is {8, 1}
                 t1 = opr::reduce_sum(t0, z.symshape()),
-             t2 = opr::Elemwise::make({repeat2(c), y, repeat2(t1)},
-                                      opr::Elemwise::Mode::FUSE_MUL_ADD3),
+             t2 = opr::Elemwise::make(
+                     {repeat2(c), y, repeat2(t1)}, opr::Elemwise::Mode::FUSE_MUL_ADD3),
              large1 = opr::ImmutableTensor::make(*graph, *host_large);
         t2 * 2;  // unused opr
 
@@ -273,8 +281,8 @@ template <>
 void run<level2_share_storage>(CompNode cn) {
     HostTensorGenerator<> gen;
     auto host_x = gen({1}, cn), host_y = gen({1}, cn), host_z = gen({10}, cn);
-    auto make_func = [&](bool enable)
-            -> thin_function<std::array<const HostTensorND*, 2>()> {
+    auto make_func =
+            [&](bool enable) -> thin_function<std::array<const HostTensorND*, 2>()> {
         auto g0 = ComputingGraph::make(), g1 = ComputingGraph::make();
         if (enable) {
             g0->options().var_sanity_check_first_run = false;
@@ -293,8 +301,7 @@ void run<level2_share_storage>(CompNode cn) {
              host_t1 = std::make_shared<HostTensorND>();
         auto f0 = g0->compile({make_callback_copy(t0, *host_t0)});
         auto f1 = g1->compile({make_callback_copy(t1, *host_t1)});
-        std::shared_ptr<cg::AsyncExecutable> sh_f0(f0.release()),
-                sh_f1(f1.release());
+        std::shared_ptr<cg::AsyncExecutable> sh_f0(f0.release()), sh_f1(f1.release());
         if (enable) {
             ComputingGraph::assert_destroy(g0);
             ComputingGraph::assert_destroy(g1);
@@ -436,39 +443,41 @@ void run<shape_dep_const_shape>(CompNode cn) {
     HostTensorGenerator<> gen;
     auto host_x = gen({4, 5}, cn);
     auto fname = output_file("test_comp_node_record_shape_dep_const_shape");
+    auto test = [&](serialization::GraphDumpFormat format) {
+        HostTensorND y_expect;
+        {
+            // dump graph
+            auto graph = ComputingGraph::make();
+            auto x = opr::Host2DeviceCopy::make(
+                         *graph, host_x, OperatorNodeConfig{"x"}),
+                 y = x.flatten() +
+                     opr::reduce_sum(opr::GetVarShape::make(x), x.make_scalar(1));
 
-    HostTensorND y_expect;
-    {
-        // dump graph
-        auto graph = ComputingGraph::make();
-        auto x = opr::Host2DeviceCopy::make(*graph, host_x,
-                                            OperatorNodeConfig{"x"}),
-             y = x.flatten() +
-                 opr::reduce_sum(opr::GetVarShape::make(x), x.make_scalar(1));
+            graph->compile({make_callback_copy(y, y_expect)})->execute();
 
-        graph->compile({make_callback_copy(y, y_expect)})->execute();
+            auto dumper = GraphDumper::make(OutputFile::make_fs(fname.c_str()), format);
+            dumper->dump({y});
+        }
 
-        auto dumper = GraphDumper::make(OutputFile::make_fs(fname.c_str()));
-        dumper->dump({y});
-    }
+        HostTensorND host_y;
+        {
+            GraphLoadConfig config;
+            config.const_var_shape = true;
+            auto loader = GraphLoader::make(InputFile::make_fs(fname.c_str()), format);
+            auto load_rst = loader->load(config);
+            load_rst.graph->options().comp_node_seq_record_level = 2;
+            load_rst.graph->options().var_sanity_check_first_run = false;
+            auto x_inp = load_rst.tensor_map.at("x");
+            auto y = load_rst.output_var_list.at(0);
+            auto func = load_rst.graph_compile({make_callback_copy(y, host_y)});
 
-    HostTensorND host_y;
-    {
-        GraphLoadConfig config;
-        config.const_var_shape = true;
-        auto loader = GraphLoader::make(InputFile::make_fs(fname.c_str()));
-        auto load_rst = loader->load(config);
-        load_rst.graph->options().comp_node_seq_record_level = 2;
-        load_rst.graph->options().var_sanity_check_first_run = false;
-        auto x_inp = load_rst.tensor_map.at("x");
-        auto y = load_rst.output_var_list.at(0);
-        auto func = load_rst.graph_compile({make_callback_copy(y, host_y)});
-
-        x_inp->copy_from(*host_x);
-        func->execute();
-    }
-
-    MGB_ASSERT_TENSOR_EQ(y_expect, host_y);
+            x_inp->copy_from(*host_x);
+            func->execute();
+        }
+        MGB_ASSERT_TENSOR_EQ(y_expect, host_y);
+    };
+    test({});
+    test(serialization::GraphDumpFormat::FLATBUFFERS_V2);
 }
 
 //! single thread multi recorder run interleave
@@ -481,8 +490,7 @@ void run<multi_recorder_run>(CompNode cn) {
     std::vector<HostTensorND> host_z_v(2, HostTensorND());
     std::vector<std::unique_ptr<mgb::cg::AsyncExecutable>> funcs;
     auto host_x = gen({3, 4, 10, 8}, cn), host_y = gen({2, 3, 2, 3, 3}, cn);
-    auto gen_graph =
-            [&](int graph_id) -> std::unique_ptr<mgb::cg::AsyncExecutable> {
+    auto gen_graph = [&](int graph_id) -> std::unique_ptr<mgb::cg::AsyncExecutable> {
         auto graph = ComputingGraph::make();
         auto x = opr::Host2DeviceCopy::make(*graph, host_x),
              y = opr::Host2DeviceCopy::make(*graph, host_y),

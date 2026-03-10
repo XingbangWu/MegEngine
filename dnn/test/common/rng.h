@@ -1,20 +1,10 @@
-/**
- * \file dnn/test/common/rng.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 #include "megdnn/dtype.h"
 
-#include "test/common/utils.h"
-#include "test/common/random_state.h"
 #include <random>
 #include <set>
+#include "test/common/random_state.h"
+#include "test/common/utils.h"
 
 namespace megdnn {
 namespace test {
@@ -62,8 +52,7 @@ public:
              exp < (1u << exponent_bits) - (1u << (exponent_bits - 2)); ++exp) {
             for (size_t x = 0; x < 1u << mantissa_bits; ++x) {
                 size_t pos_num = (exp << mantissa_bits) + x;
-                size_t neg_num =
-                        (1u << (bits - 1)) + (exp << mantissa_bits) + x;
+                size_t neg_num = (1u << (bits - 1)) + (exp << mantissa_bits) + x;
                 union U {
                     U() {}
                     uint16_t i;
@@ -75,8 +64,7 @@ public:
                 m_sequence.push_back(i2f.f);
             }
         }
-        std::shuffle(m_sequence.begin(), m_sequence.end(),
-                     RandomState::generator());
+        std::shuffle(m_sequence.begin(), m_sequence.end(), RandomState::generator());
     }
 
     void gen(const TensorND& tensor) override {
@@ -185,22 +173,28 @@ public:
     void fill_fast_float32(dt_float32* dest, size_t size) override;
 };
 
-class UniformFloatWithZeroRNG final : public UniformFloatRNG {
+class UniformFloatWithValueRNG : public UniformFloatRNG {
 public:
-    UniformFloatWithZeroRNG(dt_float32 a, dt_float32 b,
-                            float zero_val_proportion)
-            : UniformFloatRNG(a, b) {
-        if (zero_val_proportion < 0.f)
-            zero_val_proportion_ = 0.f;
-        else if (zero_val_proportion > 1.f)
-            zero_val_proportion_ = 1.f;
+    UniformFloatWithValueRNG(
+            dt_float32 a, dt_float32 b, float val_proportion, float val)
+            : UniformFloatRNG(a, b), val_(val) {
+        if (val_proportion < 0.f)
+            val_proportion_ = 0.f;
+        else if (val_proportion > 1.f)
+            val_proportion_ = 1.f;
         else
-            zero_val_proportion_ = zero_val_proportion;
+            val_proportion_ = val_proportion;
     }
 
 private:
-    float zero_val_proportion_;
+    float val_proportion_, val_;
     void fill_fast_float32(dt_float32* dest, size_t size) override;
+};
+
+class UniformFloatWithZeroRNG final : public UniformFloatWithValueRNG {
+public:
+    UniformFloatWithZeroRNG(dt_float32 a, dt_float32 b, float zero_val_proportion)
+            : UniformFloatWithValueRNG(a, b, zero_val_proportion, 0.f) {}
 };
 
 class BernoulliRNG final : public IIDRNG {
@@ -261,6 +255,20 @@ protected:
 private:
     dt_float32 value_, delta_;
     bool has_fast_float32() override { return true; }
+};
+
+class BoolRNG final : public RNG {
+    std::mt19937_64 m_rng;
+
+public:
+    BoolRNG(size_t seed) : m_rng(seed) {}
+
+    void gen(const TensorND& tensor) override {
+        std::uniform_int_distribution<int> dist(0, 1);
+        auto ptr = tensor.ptr<bool>() + tensor.layout.span().low_elem;
+        for (size_t i = 0; i < tensor.layout.span().dist_elem(); ++i)
+            ptr[i] = (dist(m_rng) == 1);
+    }
 };
 
 }  // namespace test

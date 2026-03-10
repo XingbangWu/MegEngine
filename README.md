@@ -1,78 +1,50 @@
 # MegEngine
 
 <p align="center">
-  <img width="250" height="109" src="logo.png">
+  <img width="202" height="118" src="logo.svg">
 </p>
+<h3> <a href="https://www.megengine.org.cn/doc/stable/en/user-guide/index.html"> Documentation </a> | <a href="https://www.megengine.org.cn/doc/stable/zh/user-guide/index.html"> 中文文档 </a> </h3>
 
-English | [中文](README_CN.md)
+[![](https://img.shields.io/badge/English-%E4%B8%AD%E6%96%87-green.svg)](README_CN.md) [![](https://img.shields.io/badge/Website-MegEngine-green.svg)](https://megengine.org.cn/) [![](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE) [![](https://img.shields.io/badge/Chat-on%20QQ-green.svg?logo=tencentqq)](https://jq.qq.com/?_wv=1027&k=jJcBU1xi) [![](https://img.shields.io/badge/Discuss-on%20Zhihu-8A2BE2.svg?labelColor=00BFFF&logo=zhihu)](https://www.zhihu.com/people/megengine-bot)
 
-MegEngine is a fast, scalable and easy-to-use deep learning framework, with auto-differentiation.
+MegEngine is a fast, scalable, and user friendly deep learning framework with 3 key features.
+
+* **Unified framework for both training and inference**
+    * Quantization, dynamic shape/image pre-processing, and even derivation with a single model.
+    * After training, put everything into your model to inference on any platform with speed and precision. Check [here](https://www.megengine.org.cn/doc/stable/zh/user-guide/model-development/traced_module/index.html) for a quick guide.
+* **The lowest hardware requirements**
+    * The memory usage of the GPU can be reduced to one-third of the original memory usage when [DTR algorithm](https://www.megengine.org.cn/doc/stable/zh/user-guide/model-development/dtr/index.html) is enabled.
+    * Inference models with the lowest memory usage by leveraging our Pushdown memory planner.
+* **Inference efficiently on all platforms**
+    * Inference with speed and high-precision on x86, Arm, CUDA, and RoCM.
+    * Supports Linux, Windows, iOS, Android, TEE, etc.
+    * Optimize performance and memory usage by leveraging our [advanced features](https://www.megengine.org.cn/doc/stable/zh/user-guide/deployment/lite/advance/index.html).
 
 ------
 
 ## Installation
 
-**NOTE:** MegEngine now supports Linux-64bit/Windows-64bit/MacOS-10.14+ (CPU-Only) Platforms with Python from 3.5 to 3.8. On Windows 10 you can either install the Linux distribution through [Windows Subsystem for Linux (WSL)](https://docs.microsoft.com/en-us/windows/wsl) or install the Windows distribution directly.
+**NOTE:** MegEngine now supports Python installation on Linux-64bit/Windows-64bit/MacOS(CPU-Only)-10.14+/Android 7+(CPU-Only) platforms with Python from 3.6 to 3.9. On Windows 10 you can either install the Linux distribution through [Windows Subsystem for Linux (WSL)](https://docs.microsoft.com/en-us/windows/wsl) or install the Windows distribution directly. Many other platforms are supported for inference.
 
 ### Binaries
 
-Commands to install from binaries via pip wheels are as follows:
+To install the pre-built binaries via pip wheels:
 
 ```bash
+python3 -m pip install --upgrade pip
 python3 -m pip install megengine -f https://megengine.org.cn/whl/mge.html
 ```
 
-## Build from Source
+## Building from Source
 
-### Prerequisites
-
-Most of the dependencies of MegEngine are located in `third_party` directory, which can be prepared by executing:
-
-```bash
-./third_party/prepare.sh
-./third_party/install-mkl.sh
-```
-
-But some dependencies need to be Installed manually:
-
-* [CUDA](https://developer.nvidia.com/cuda-toolkit-archive)(>=10.1), [cuDNN](https://developer.nvidia.com/cudnn)(>=7.6)are required when building MegEngine with CUDA support.
-* [TensorRT](https://docs.nvidia.com/deeplearning/sdk/tensorrt-archived/index.html)(>=5.1.5) is required when building with TensorRT support.
-* LLVM/Clang(>=6.0) is required when building with Halide JIT support.
-* Python(>=3.5), Numpy, are required to build Python modules.
-
-### Build
-
-
-MegEngine uses CMake as the build tool.
-We provide the following scripts to facilitate building.
-
-* [host_build.sh](scripts/cmake-build/host_build.sh) is to build MegEngine targeted to run on the same host machine.
-Please run the following command to get help information:
-  ```
-  scripts/cmake-build/host_build.sh -h
-  ```
-* [cross_build_android_arm_inference.sh](scripts/cmake-build/cross_build_android_arm_inference.sh) is to build MegEngine targeted to run at Android-ARM platforms.
-Please run the following command to get help information:
-  ```
-  scripts/cmake-build/cross_build_android_arm_inference.sh -h
-  ```
-* [cross_build_linux_arm_inference.sh](scripts/cmake-build/cross_build_linux_arm_inference.sh) is to build MegEngine targeted to run at Linux-ARM platforms.
-Please run the following command to get help information:
-  ```
-  scripts/cmake-build/cross_build_linux_arm_inference.sh -h
-  ```
-* [cross_build_ios_arm_inference.sh](scripts/cmake-build/cross_build_ios_arm_inference.sh) is to build MegEngine targeted to run iphone/iPad platforms.
-Please run the following command to get help information:
-  ```
-  scripts/cmake-build/cross_build_ios_arm_inference.sh
-  ```
-Please refer to [BUILD_README.md](scripts/cmake-build/BUILD_README.md) for more details.
+* CMake build details. please refer to [BUILD_README.md](scripts/cmake-build/BUILD_README.md)
+* Python binding build details, Please refer to [BUILD_PYTHON_WHL_README.md](scripts/whl/BUILD_PYTHON_WHL_README.md)
 
 ## How to Contribute
 
-* MegEngine adopts [Contributor Covenant](https://contributor-covenant.org) to maintain our community. Please read the [Code of Conduct](CODE_OF_CONDUCT.md) to get more information.
-* Every contributor of MegEngine must sign a Contributor License Agreement (CLA) to clarify the intellectual property license granted with the contributions. For more details, please refer [Contributor License Agreement](CONTRIBUTOR_LICENSE_AGREEMENT.md)
-* You can help MegEngine better in many ways:
+* MegEngine adopts [Contributor Covenant](https://contributor-covenant.org) as a guideline to run our community. Please read the [Code of Conduct](CODE_OF_CONDUCT.md).
+* Every contributor of MegEngine must sign a [Contributor License Agreement (CLA)](CONTRIBUTOR_LICENSE_AGREEMENT.md) to clarify the intellectual property license granted with the contributions.
+* You can help to improve MegEngine in many ways:
     * Write code.
     * Improve [documentation](https://github.com/MegEngine/Docs).
     * Answer questions on [MegEngine Forum](https://discuss.megengine.org.cn), or Stack Overflow.
@@ -81,28 +53,42 @@ Please refer to [BUILD_README.md](scripts/cmake-build/BUILD_README.md) for more 
     * Report or investigate [bugs and issues](https://github.com/MegEngine/MegEngine/issues).
     * Review [Pull Requests](https://github.com/MegEngine/MegEngine/pulls).
     * Star MegEngine repo.
-    * Reference MegEngine in your papers and articles.
+    * Cite MegEngine in your papers and articles.
     * Recommend MegEngine to your friends.
-    * ...
+    * Any other form of contribution is welcomed.
 
-We believe we can build an open and friendly community and power humanity with AI.
+We strive to build an open and friendly community. We aim to power humanity with AI.
 
-## How to contact us
+## How to Contact Us
 
 * Issue: [github.com/MegEngine/MegEngine/issues](https://github.com/MegEngine/MegEngine/issues)
 * Email: [megengine-support@megvii.com](mailto:megengine-support@megvii.com)
 * Forum: [discuss.megengine.org.cn](https://discuss.megengine.org.cn)
 * QQ Group: 1029741705
-* OPENI: [openi.org.cn/MegEngine](https://www.openi.org.cn/html/2020/Framework_0325/18.html)
 
 ## Resources
 
 - [MegEngine](https://megengine.org.cn)
 - [MegStudio](https://studio.brainpp.com)
-- [Brain++](https://brainpp.megvii.com)
+- mirror repo
+   - OPENI: [openi.org.cn/MegEngine](https://www.openi.org.cn/html/2020/Framework_0325/18.html)
+   - Gitee: [gitee.com/MegEngine/MegEngine](https://gitee.com/MegEngine/MegEngine)
+
 
 ## License
 
-MegEngine is Licensed under the Apache License, Version 2.0
+MegEngine is licensed under the Apache License, Version 2.0
 
-Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
+## Citation
+If you use MegEngine in your publication,please cite it by using the following BibTeX entry.
+
+```
+@Misc{MegEngine,
+  institution = {megvii},
+  title =  {MegEngine:A fast, scalable and easy-to-use deep learning framework},
+  howpublished = {\url{https://github.com/MegEngine/MegEngine}},
+  year = {2020}
+}
+```
+
+Copyright (c) 2014-2021 Megvii Inc. All rights reserved.

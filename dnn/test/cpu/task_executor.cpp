@@ -1,14 +1,3 @@
-/**
- * \file dnn/test/cpu/task_executor.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "src/naive/handle.h"
 #include "test/common/utils.h"
 #include "test/cpu/fixture.h"
@@ -29,15 +18,13 @@ TEST_F(CPU_MULTI_THREADS, THREAD_POOL) {
             result_singel_thread[i] = data[i];
         }
     };
-    auto multi_thread_run = [&data, &result_multi_thread](size_t index,
-                                                          size_t) {
+    auto multi_thread_run = [&data, &result_multi_thread](size_t index, size_t) {
         for (size_t i = index * 5; i < (index + 1) * 5; i++) {
             result_multi_thread[i] = data[i];
         }
     };
     MEGDNN_DISPATCH_CPU_KERN(
-            static_cast<naive::HandleImpl*>(single_thread_handle.get()),
-            single_run());
+            static_cast<naive::HandleImpl*>(single_thread_handle.get()), single_run());
     MEGDNN_DISPATCH_MULTI_THREAD_CPU_KERN(
             static_cast<naive::HandleImpl*>(handle()), 20, multi_thread_run);
     for (int i = 0; i < 100; i++) {

@@ -1,14 +1,3 @@
-/**
- * \file dnn/test/common/svd.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "test/common/svd.h"
 #include "test/common/checker.h"
 #include "test/common/rng.h"
@@ -51,15 +40,15 @@ void fill_diag(const TensorND& v, TensorND& diag) {
     }
 }
 
-std::shared_ptr<Tensor<>> matmul(Handle* handle, const TensorND& A,
-                                 const TensorND& B) {
+std::shared_ptr<Tensor<>> matmul(Handle* handle, const TensorND& A, const TensorND& B) {
     auto matmul_opr = handle->create_operator<BatchedMatrixMul>();
 
     TensorLayout result_layout;
     matmul_opr->deduce_layout(A.layout, B.layout, result_layout);
     std::shared_ptr<Tensor<>> result(new Tensor<>(handle, result_layout));
-    WorkspaceWrapper ws(handle, matmul_opr->get_workspace_in_bytes(
-                                        A.layout, B.layout, result->layout()));
+    WorkspaceWrapper ws(
+            handle,
+            matmul_opr->get_workspace_in_bytes(A.layout, B.layout, result->layout()));
     matmul_opr->exec(A, B, result->tensornd(), ws.workspace());
     return result;
 }
@@ -93,13 +82,13 @@ std::vector<SVDTestcase> SVDTestcase::make() {
     NormalRNG data_rng;
     auto fill_data = [&](TensorND& data) {
         auto sz = data.layout.span().dist_byte(), szf = sz / sizeof(dt_float32);
-        auto pf = static_cast<dt_float32*>(data.raw_ptr);
+        auto pf = static_cast<dt_float32*>(data.raw_ptr());
         data_rng.fill_fast_float32(pf, szf);
     };
 
     for (auto&& i : ret) {
         i.m_mem.reset(new dt_float32[i.m_mat.layout.span().dist_elem()]);
-        i.m_mat.raw_ptr = i.m_mem.get();
+        i.m_mat.reset_ptr(i.m_mem.get());
         fill_data(i.m_mat);
     }
 
@@ -117,15 +106,15 @@ SVDTestcase::Result SVDTestcase::run(SVDForward* opr) {
 
     // Alloc tensor on device
     Tensor<> u{handle, u_layout}, s{handle, s_layout}, vt{handle, vt_layout};
-    WorkspaceWrapper ws(handle,
-                        opr->get_workspace_in_bytes(m_mat.layout, u_layout,
-                                                    s_layout, vt_layout));
+    WorkspaceWrapper ws(
+            handle,
+            opr->get_workspace_in_bytes(m_mat.layout, u_layout, s_layout, vt_layout));
 
     opr->exec(*src, u.tensornd(), s.tensornd(), vt.tensornd(), ws.workspace());
 
     auto u_host = make_tensor_d2h(handle, u.tensornd());
-    // Defined in wsdk8/Include/shared/inaddr.h Surprise! It's Windows.
-    #undef s_host
+// Defined in wsdk8/Include/shared/inaddr.h Surprise! It's Windows.
+#undef s_host
     auto s_host = make_tensor_d2h(handle, s.tensornd());
     auto vt_host = make_tensor_d2h(handle, vt.tensornd());
     if (m_param.compute_uv) {
@@ -138,8 +127,9 @@ SVDTestcase::Result SVDTestcase::run(SVDForward* opr) {
             for (int i = 0; i < (int)diag_layout.ndim - 2; i++) {
                 shape.push_back(diag_layout[i]);
             }
-            size_t x = std::min(diag_layout[diag_layout.ndim - 1],
-                                diag_layout[diag_layout.ndim - 2]);
+            size_t x = std::min(
+                    diag_layout[diag_layout.ndim - 1],
+                    diag_layout[diag_layout.ndim - 2]);
             shape.push_back(x);
             shape.push_back(x);
             diag_layout = {shape, diag_layout.dtype};

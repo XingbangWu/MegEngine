@@ -1,19 +1,8 @@
-/**
- * \file dnn/src/cuda/elemwise_helper.cuh
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #pragma once
 
 #include "src/common/elemwise_helper.cuh"
 #include "src/cuda/int_fastdiv.cuh"
+#include "src/cuda/integer_subbyte_utils.cuh"
 #include "src/cuda/query_blocksize.cuh"
 #include "src/cuda/utils.cuh"
 
@@ -34,8 +23,7 @@ namespace elemwise_intl {
  * \param kern kernel function address
  * \param size total size of elements
  */
-void get_launch_spec(const void* kern, size_t size, int* grid_size,
-                     int* block_size);
+void get_launch_spec(const void* kern, size_t size, int* grid_size, int* block_size);
 
 MEGDNN_NORETURN void on_bad_ndim(int ndim);
 
@@ -43,14 +31,7 @@ MEGDNN_NORETURN void on_bad_ndim(int ndim);
  * \brief broadcast type
  * BCAST_x[0]x[1]...: x[i] == !stride[i]
  */
-enum BcastType {
-    BCAST_OTHER,
-    BCAST_1010,
-    BCAST_101,
-    BCAST_10,
-    BCAST_01,
-    BCAST_FULL
-};
+enum BcastType { BCAST_OTHER, BCAST_1010, BCAST_101, BCAST_10, BCAST_01, BCAST_FULL };
 
 /*!
  * \brief read and write type trait for byte width integer type
@@ -62,8 +43,8 @@ struct ATTR_ALIGNED(8) half4 {
     dt_float16 x, y, z, w;
 };
 
-__device__ __forceinline__ half4 make_half4(dt_float16 x, dt_float16 y,
-                                            dt_float16 z, dt_float16 w) {
+__device__ __forceinline__ half4
+make_half4(dt_float16 x, dt_float16 y, dt_float16 z, dt_float16 w) {
     half4 t;
     t.x = x, t.y = y, t.z = z, t.w = w;
     return t;
@@ -73,26 +54,23 @@ struct ATTR_ALIGNED(8) bhalf4 {
     dt_bfloat16 x, y, z, w;
 };
 
-__device__ __forceinline__ bhalf4 make_bhalf4(dt_bfloat16 x, dt_bfloat16 y,
-                                              dt_bfloat16 z, dt_bfloat16 w) {
+__device__ __forceinline__ bhalf4
+make_bhalf4(dt_bfloat16 x, dt_bfloat16 y, dt_bfloat16 z, dt_bfloat16 w) {
     bhalf4 t;
     t.x = x, t.y = y, t.z = z, t.w = w;
     return t;
 }
 
-#define INST(_ctype, _vect_type)                                               \
-    template <>                                                                \
-    class VectTypeTrait<_ctype> {                                              \
-    public:                                                                    \
-        using vect_type = _vect_type;                                          \
-        static const size_t packed_size = sizeof(_vect_type) / sizeof(_ctype); \
-        static __device__ __forceinline__ vect_type make_vector(_ctype x,      \
-                                                                _ctype y,      \
-                                                                _ctype z,      \
-                                                                _ctype w) {    \
-            return make_##_vect_type(as_raw(x), as_raw(y), as_raw(z),          \
-                                     as_raw(w));                               \
-        }                                                                      \
+#define INST(_ctype, _vect_type)                                                  \
+    template <>                                                                   \
+    class VectTypeTrait<_ctype> {                                                 \
+    public:                                                                       \
+        using vect_type = _vect_type;                                             \
+        static const size_t packed_size = sizeof(_vect_type) / sizeof(_ctype);    \
+        static __device__ __forceinline__ vect_type                               \
+        make_vector(_ctype x, _ctype y, _ctype z, _ctype w) {                     \
+            return make_##_vect_type(as_raw(x), as_raw(y), as_raw(z), as_raw(w)); \
+        }                                                                         \
     }
 #define as_raw(x) x
 INST(dt_int8, char4);
@@ -102,10 +80,12 @@ INST(dt_float16, half4);
 INST(dt_bfloat16, bhalf4);
 INST(dt_int32, int4);
 INST(dt_int16, short4);
+INST(dt_uint16, ushort4);
 INST(dt_bool, uchar4);
 #undef as_raw
 #define as_raw(x) x.as_int8()
 INST(dt_qint8, char4);
+INST(dt_qint1, char4);
 #undef as_raw
 #define as_raw(x) x.as_uint8()
 INST(dt_quint8, uchar4);
@@ -113,6 +93,34 @@ INST(dt_quint8, uchar4);
 #define as_raw(x) x.as_int32()
 INST(dt_qint32, int4);
 #undef as_raw
+#undef INST
+
+struct int4bx2 {
+    int8_t x;
+};
+
+struct uint4bx2 {
+    uint8_t x;
+};
+
+#define INST(_ctype, _Storage, _vect_type)          \
+    template <>                                     \
+    class VectTypeTrait<_ctype> {                   \
+    public:                                         \
+        using Storage = _Storage;                   \
+        static const Storage kMask = 0xf;           \
+        static const Storage kBits = 4;             \
+        using vect_type = _vect_type;               \
+        static const size_t packed_size = 2;        \
+        static __device__ __forceinline__ vect_type \
+        make_vector(Storage x, Storage y) {         \
+            vect_type t;                            \
+            t.x = (x & kMask) | (y << kBits);       \
+            return t;                               \
+        }                                           \
+    }
+INST(dt_qint4, int8_t, int4bx2);
+INST(dt_quint4, uint8_t, uint4bx2);
 #undef INST
 
 /*!
@@ -189,8 +197,7 @@ protected:
 public:
     static const int NDIM = ndim;
 
-    void host_init(const TensorND& rv, int grid_size, int block_size,
-                   int packed_size);
+    void host_init(const TensorND& rv, int grid_size, int block_size, int packed_size);
 #if MEGDNN_CC_CUDA
     devfunc void thread_init(uint32_t) {}
 
@@ -217,6 +224,7 @@ template <int ndim, typename ctype>
 class ParamElemVisitor<ndim, ctype, BCAST_OTHER>
         : public ParamVisitorBase<ndim, ctype, BCAST_OTHER> {
 public:
+    using CType = ctype;
     PARAM_ELEM_VISITOR_COMMON_HOST
 
     void host_init(const TensorND& rv, int grid_size, int block_size) {
@@ -242,8 +250,7 @@ protected:
 public:
     static const int NDIM = 3;
 
-    void host_init(const TensorND& rv, int grid_size, int block_size,
-                   int packed_size);
+    void host_init(const TensorND& rv, int grid_size, int block_size, int packed_size);
 
 #if MEGDNN_CC_CUDA
     devfunc void thread_init(uint32_t idx) { m_shape12.device_init(idx); }
@@ -284,8 +291,7 @@ protected:
 public:
     static const int NDIM = 2;
 
-    void host_init(const TensorND& rv, int grid_size, int block_size,
-                   int packed_size);
+    void host_init(const TensorND& rv, int grid_size, int block_size, int packed_size);
 
 #if MEGDNN_CC_CUDA
     devfunc void thread_init(uint32_t idx) { m_shape1.device_init(idx); }
@@ -326,8 +332,7 @@ protected:
 public:
     static const int NDIM = 2;
 
-    void host_init(const TensorND& rv, int grid_size, int block_size,
-                   int packed_size);
+    void host_init(const TensorND& rv, int grid_size, int block_size, int packed_size);
 
 #if MEGDNN_CC_CUDA
     devfunc void thread_init(uint32_t idx) { m_shape1.device_init(idx); }
@@ -362,8 +367,7 @@ public:
     static const int NDIM = 1;
     PARAM_ELEM_VISITOR_COMMON_HOST
 
-    void host_init(const TensorND& rv, int grid_size, int block_size,
-                   int packed_size);
+    void host_init(const TensorND& rv, int grid_size, int block_size, int packed_size);
 
 #if MEGDNN_CC_CUDA
     devfunc void thread_init(uint32_t) {}
@@ -431,29 +435,66 @@ INST_PARAM_VECT_VISITOR;
 #define _brdcast_mask BCAST_101
 INST_PARAM_VECT_VISITOR;
 #undef _brdcast_mask
-#define INST_DT_IBYTE(ctype)                                                \
-    template <int ndim>                                                     \
-    class ParamVectVisitor<ndim, ctype, BCAST_FULL>                         \
-            : public ParamVisitorBase<ndim, ctype, BCAST_FULL> {            \
-    public:                                                                 \
-        using Super = ParamVisitorBase<ndim, ctype, BCAST_FULL>;            \
-        using rwtype = typename VectTypeTrait<ctype>::vect_type;            \
-        static const int packed_size = sizeof(rwtype) / sizeof(ctype);      \
-        void host_init(const TensorND& rv, int grid_size, int block_size) { \
-            ParamVisitorBase<ndim, ctype, BCAST_FULL>::host_init(           \
-                    rv, grid_size, block_size, packed_size);                \
-        }                                                                   \
-        DEVICE_WRAPPER(rwtype vect_scalar;                                  \
-                       devfunc rwtype & at(uint32_t /* idx */) {            \
-                           ctype v = Super::m_ptr[0];                       \
-                           vect_scalar = VectTypeTrait<ctype>::make_vector( \
-                                   v, v, v, v);                             \
-                           return vect_scalar;                              \
-                       })                                                   \
+#define INST_PARAM_VECT_VISITOR_BOOL                                               \
+    template <int ndim>                                                            \
+    class ParamVectVisitor<ndim, dt_bool, _brdcast_mask>                           \
+            : public ParamVisitorBase<ndim, dt_bool, _brdcast_mask> {              \
+    public:                                                                        \
+        using Super = ParamVisitorBase<ndim, dt_bool, _brdcast_mask>;              \
+        using rwtype = typename VectTypeTrait<dt_bool>::vect_type;                 \
+        static const int packed_size = sizeof(rwtype) / sizeof(dt_bool);           \
+        void host_init(const TensorND& rv, int grid_size, int block_size) {        \
+            ParamVisitorBase<ndim, dt_bool, _brdcast_mask>::host_init(             \
+                    rv, grid_size, block_size, packed_size);                       \
+        }                                                                          \
+        DEVICE_WRAPPER(rwtype vect_value; devfunc rwtype & at(uint32_t idx) {      \
+            if (reinterpret_cast<size_t>(&Super::m_ptr[Super::offset(idx)]) % 4 != \
+                0) {                                                               \
+                vect_value = VectTypeTrait<dt_bool>::make_vector(                  \
+                        Super::m_ptr[Super::offset(idx)],                          \
+                        Super::m_ptr[Super::offset(idx + 1)],                      \
+                        Super::m_ptr[Super::offset(idx + 2)],                      \
+                        Super::m_ptr[Super::offset(idx + 3)]);                     \
+                return vect_value;                                                 \
+            }                                                                      \
+            return *(rwtype*)(&Super::m_ptr[Super::offset(idx)]);                  \
+        })                                                                         \
+    };
+#define _brdcast_mask BCAST_OTHER
+INST_PARAM_VECT_VISITOR_BOOL;
+#undef _brdcast_mask
+#define _brdcast_mask BCAST_01
+INST_PARAM_VECT_VISITOR_BOOL;
+#undef _brdcast_mask
+#define _brdcast_mask BCAST_10
+INST_PARAM_VECT_VISITOR_BOOL;
+#undef _brdcast_mask
+#define _brdcast_mask BCAST_101
+INST_PARAM_VECT_VISITOR_BOOL;
+#undef _brdcast_mask
+#undef INST_PARAM_VECT_VISITOR_BOOL
+#define INST_DT_IBYTE(ctype)                                                         \
+    template <int ndim>                                                              \
+    class ParamVectVisitor<ndim, ctype, BCAST_FULL>                                  \
+            : public ParamVisitorBase<ndim, ctype, BCAST_FULL> {                     \
+    public:                                                                          \
+        using Super = ParamVisitorBase<ndim, ctype, BCAST_FULL>;                     \
+        using rwtype = typename VectTypeTrait<ctype>::vect_type;                     \
+        static const int packed_size = sizeof(rwtype) / sizeof(ctype);               \
+        void host_init(const TensorND& rv, int grid_size, int block_size) {          \
+            ParamVisitorBase<ndim, ctype, BCAST_FULL>::host_init(                    \
+                    rv, grid_size, block_size, packed_size);                         \
+        }                                                                            \
+        DEVICE_WRAPPER(rwtype vect_scalar; devfunc rwtype & at(uint32_t /* idx */) { \
+            ctype v = Super::m_ptr[0];                                               \
+            vect_scalar = VectTypeTrait<ctype>::make_vector(v, v, v, v);             \
+            return vect_scalar;                                                      \
+        })                                                                           \
     }
 INST_DT_IBYTE(dt_int8);
 INST_DT_IBYTE(dt_uint8);
 INST_DT_IBYTE(dt_qint8);
+INST_DT_IBYTE(dt_qint1);
 INST_DT_IBYTE(dt_quint8);
 INST_DT_IBYTE(dt_bool);
 #undef INST_DT_IBYTE
@@ -500,6 +541,179 @@ public:
 #endif
 };
 
+template <int ndim, BcastType brd_type>
+class ParamElemVisitor4bitBase;
+
+template <int ndim>
+class ParamElemVisitor4bitBase<ndim, BCAST_OTHER> {
+    using Storage = int8_t;
+
+protected:
+    Storage* __restrict m_ptr;
+    int m_stride[ndim];
+    int m_shape[ndim];
+    bool m_is_physical_contiguous;
+    bool m_is_min_stride_2;
+
+    //! m_shape_highdim[i] = original_shape[i + 1]
+#ifdef _MSC_VER
+    Uint32Fastdiv m_shape_highdim[ndim > 1 ? ndim - 1 : 1];
+    Uint32Fastdiv m_align_shape_highdim[ndim > 1 ? ndim - 1 : 1];
+#else
+    Uint32Fastdiv m_shape_highdim[ndim];
+    Uint32Fastdiv m_align_shape_highdim[ndim];
+#endif
+
+public:
+    static const Storage kMask = 0xf;
+    static const Storage kBits = 4;
+    static const int NDIM = ndim;
+    void host_init(const TensorND& rv, int grid_size, int block_size);
+
+#if MEGDNN_CC_CUDA
+    devfunc void thread_init(uint32_t) {}
+
+    devfunc void next() {}
+
+    devfunc void get_shape_from_access(uint32_t access_idx, int (&shape_idx)[ndim]) {
+#pragma unroll
+        for (int i = ndim - 1; i >= 1; --i) {
+            Uint32Fastdiv& align_shp = m_align_shape_highdim[i - 1];
+            uint32_t access_idx_div = access_idx / align_shp;
+            shape_idx[i] = access_idx - access_idx_div * align_shp.divisor();
+            access_idx = access_idx_div;
+        }
+        shape_idx[0] = access_idx;
+    }
+
+    devfunc int offset(uint32_t idx) {
+        int offset = 0;
+#pragma unroll
+        for (int i = ndim - 1; i >= 1; --i) {
+            Uint32Fastdiv& shp = m_shape_highdim[i - 1];
+            uint32_t idx_div = idx / shp;
+            offset += (idx - idx_div * shp.divisor()) * m_stride[i];
+            idx = idx_div;
+        }
+        offset += idx * m_stride[0];
+        return offset;
+    }
+
+    devfunc int idx(uint32_t access_idx) {
+        int idx = 0;
+        if (m_is_physical_contiguous) {
+            idx = access_idx;
+        } else if (!m_is_min_stride_2) {
+            int shape_idx[ndim];
+            bool valid = true;
+            get_shape_from_access(access_idx, shape_idx);
+#pragma unroll
+            for (int i = 0; i < ndim; ++i) {
+                valid &= (shape_idx[i] < m_shape[i]);
+            }
+#pragma unroll
+            for (int i = 0; i < ndim - 1; ++i) {
+                idx = (idx + shape_idx[i]) * m_shape[i + 1];
+            }
+            idx = valid ? idx + shape_idx[ndim - 1] : -1;
+        } else {  // min_stride == 2
+            idx = ((access_idx & 0x1) == 0) ? ((int)access_idx >> 1) : -1;
+        }
+        return idx;
+    }
+
+    devfunc Storage* ptr() { return m_ptr; }
+#endif
+};
+
+template <int ndim>
+class ParamElemVisitor<ndim, dt_qint4, BCAST_OTHER>
+        : public ParamElemVisitor4bitBase<ndim, BCAST_OTHER> {
+    using CType = dt_qint4;
+    using Storage = int8_t;
+
+public:
+    static const int packed_size = 1;
+    using Super = ParamElemVisitor4bitBase<ndim, BCAST_OTHER>;
+
+    void host_init(const TensorND& rv, int grid_size, int block_size) {
+        Super::host_init(rv, grid_size, block_size);
+    }
+
+#if MEGDNN_CC_CUDA
+    // cannot be l-value, only support read
+    devfunc dt_qint4 at(uint32_t idx) {
+        int offset_ = Super::offset(idx);
+        int vec_idx = offset_ >> 1;
+        int lane_idx = offset_ & 0x1;
+
+        Storage item = Storage(integer_subbyte::unpack_integer_4bits<true>(
+                *(Storage*)&Super::m_ptr[vec_idx], lane_idx * 4));
+
+        dt_qint4 result(item);
+
+        return result;
+    }
+#endif
+};
+
+template <int ndim>
+class ParamElemVisitor<ndim, dt_quint4, BCAST_OTHER>
+        : public ParamElemVisitor4bitBase<ndim, BCAST_OTHER> {
+    using CType = dt_quint4;
+    using Storage = uint8_t;
+    using Super = ParamElemVisitor4bitBase<ndim, BCAST_OTHER>;
+
+public:
+    static const int packed_size = 1;
+
+    void host_init(const TensorND& rv, int grid_size, int block_size) {
+        Super::host_init(rv, grid_size, block_size);
+    }
+
+#if MEGDNN_CC_CUDA
+    // cannot be l-value, only support read
+    devfunc dt_quint4 at(uint32_t idx) {
+        int offset_ = Super::offset(idx);
+        int vec_idx = offset_ >> 1;
+        int lane_idx = offset_ & 0x1;
+
+        Storage item = Storage(integer_subbyte::unpack_integer_4bits<false>(
+                *(Storage*)&Super::m_ptr[vec_idx], lane_idx * 4));
+
+        dt_quint4 result(item);
+
+        return result;
+    }
+#endif
+};
+
+#if MEGDNN_CC_CUDA
+#define DEVICE_WRAPPER(x) x
+#else
+#define DEVICE_WRAPPER(x)
+#endif
+
+#define INST_DT_IBYTE(ctype)                                                \
+    template <int ndim>                                                     \
+    class ParamVectVisitor<ndim, ctype, BCAST_OTHER>                        \
+            : public ParamElemVisitor4bitBase<ndim, BCAST_OTHER> {          \
+    public:                                                                 \
+        using Super = ParamElemVisitor4bitBase<ndim, BCAST_OTHER>;          \
+        void host_init(const TensorND& rv, int grid_size, int block_size) { \
+            Super::host_init(rv, grid_size, block_size);                    \
+        }                                                                   \
+        using rwtype = typename VectTypeTrait<ctype>::vect_type;            \
+        static const int packed_size = VectTypeTrait<ctype>::packed_size;   \
+        DEVICE_WRAPPER(devfunc rwtype& at(uint32_t access_idx) {            \
+            return *(rwtype*)(&Super::m_ptr[access_idx]);                   \
+        })                                                                  \
+    };
+INST_DT_IBYTE(dt_qint4);
+INST_DT_IBYTE(dt_quint4);
+#undef DEVICE_WRAPPER
+#undef INST_DT_IBYTE
+
 /* f}}} */
 
 #if MEGDNN_CC_CUDA
@@ -507,7 +721,8 @@ public:
 /* f{{{ user operator callers */
 
 /*
- * OpCaller is used to invoke user operator with loaded element arguments.
+ * OpCaller is used to invoke user operator with loaded element
+ * arguments.
  *
  * device interface:
  *      void thread_init(uint32_t idx);
@@ -518,8 +733,8 @@ public:
  */
 
 /*!
- * \brief call user op directly without visiting any params (i.e. arity ==
- *      0)
+ * \brief call user op directly without visiting any params (i.e. arity
+ * == 0)
  */
 template <class Op>
 struct OpCallerNull {
@@ -597,8 +812,7 @@ struct OpCallerUniform<Op, 2, PVis> {
             auto ptr0 = par[0].ptr();
             auto ptr1 = par[1].ptr();
             for (int i = 0; i < remain; i++) {
-                op(idx + i, ptr0[par[0].offset(idx + i)],
-                   ptr1[par[1].offset(idx + i)]);
+                op(idx + i, ptr0[par[0].offset(idx + i)], ptr1[par[1].offset(idx + i)]);
             }
         }
     }
@@ -636,8 +850,8 @@ struct OpCallerUniform<Op, 3, PVis> {
             auto ptr1 = par[1].ptr();
             auto ptr2 = par[2].ptr();
             for (int i = 0; i < remain; i++) {
-                op(idx + i, ptr0[par[0].offset(idx + i)],
-                   ptr1[par[1].offset(idx + i)], ptr2[par[2].offset(idx + i)]);
+                op(idx + i, ptr0[par[0].offset(idx + i)], ptr1[par[1].offset(idx + i)],
+                   ptr2[par[2].offset(idx + i)]);
             }
         }
     }
@@ -672,17 +886,15 @@ struct OpCallerUniform<Op, 4, PVis> {
     devfunc void on(uint32_t idx, uint32_t remain) {
         idx = idx * packed_size;
         if (remain >= packed_size) {
-            op(idx, par[0].at(idx), par[1].at(idx), par[2].at(idx),
-               par[3].at(idx));
+            op(idx, par[0].at(idx), par[1].at(idx), par[2].at(idx), par[3].at(idx));
         } else {
             auto ptr0 = par[0].ptr();
             auto ptr1 = par[1].ptr();
             auto ptr2 = par[2].ptr();
             auto ptr3 = par[3].ptr();
             for (int i = 0; i < remain; i++) {
-                op(idx + i, ptr0[par[0].offset(idx + i)],
-                   ptr1[par[1].offset(idx + i)], ptr2[par[2].offset(idx + i)],
-                   ptr3[par[3].offset(idx + i)]);
+                op(idx + i, ptr0[par[0].offset(idx + i)], ptr1[par[1].offset(idx + i)],
+                   ptr2[par[2].offset(idx + i)], ptr3[par[3].offset(idx + i)]);
             }
         }
     }
@@ -720,8 +932,8 @@ struct OpCallerUniform<Op, 5, PVis> {
     devfunc void on(uint32_t idx, uint32_t remain) {
         idx = idx * packed_size;
         if (remain >= packed_size) {
-            op(idx, par[0].at(idx), par[1].at(idx), par[2].at(idx),
-               par[3].at(idx), par[4].at(idx));
+            op(idx, par[0].at(idx), par[1].at(idx), par[2].at(idx), par[3].at(idx),
+               par[4].at(idx));
         } else {
             auto ptr0 = par[0].ptr();
             auto ptr1 = par[1].ptr();
@@ -729,9 +941,9 @@ struct OpCallerUniform<Op, 5, PVis> {
             auto ptr3 = par[3].ptr();
             auto ptr4 = par[4].ptr();
             for (int i = 0; i < remain; i++) {
-                op(idx + i, ptr0[par[0].offset(idx + i)],
-                   ptr1[par[1].offset(idx + i)], ptr2[par[2].offset(idx + i)],
-                   ptr3[par[3].offset(idx + i)], ptr4[par[4].offset(idx + i)]);
+                op(idx + i, ptr0[par[0].offset(idx + i)], ptr1[par[1].offset(idx + i)],
+                   ptr2[par[2].offset(idx + i)], ptr3[par[3].offset(idx + i)],
+                   ptr4[par[4].offset(idx + i)]);
             }
         }
     }
@@ -745,6 +957,116 @@ struct OpCallerUniform<Op, 5, PVis> {
     }
 };
 
+//! specialization for arity == 6
+template <class Op, class PVis>
+struct OpCallerUniform<Op, 6, PVis> {
+    Op op;
+    PVis par[6];
+    static const uint32_t packed_size = PVis::packed_size;
+
+    devfunc void thread_init(uint32_t idx) {
+        idx = idx * packed_size;
+        par[0].thread_init(idx);
+        par[1].thread_init(idx);
+        par[2].thread_init(idx);
+        par[3].thread_init(idx);
+        par[4].thread_init(idx);
+        par[5].thread_init(idx);
+    }
+
+    devfunc void on(uint32_t idx) {
+        idx = idx * packed_size;
+        op(idx, par[0].at(idx), par[1].at(idx), par[2].at(idx), par[3].at(idx),
+           par[4].at(idx), par[5].at(idx));
+    }
+
+    devfunc void on(uint32_t idx, uint32_t remain) {
+        idx = idx * packed_size;
+        if (remain >= packed_size) {
+            op(idx, par[0].at(idx), par[1].at(idx), par[2].at(idx), par[3].at(idx),
+               par[4].at(idx), par[5].at(idx));
+        } else {
+            auto ptr0 = par[0].ptr();
+            auto ptr1 = par[1].ptr();
+            auto ptr2 = par[2].ptr();
+            auto ptr3 = par[3].ptr();
+            auto ptr4 = par[4].ptr();
+            auto ptr5 = par[5].ptr();
+            for (int i = 0; i < remain; i++) {
+                op(idx + i, ptr0[par[0].offset(idx + i)], ptr1[par[1].offset(idx + i)],
+                   ptr2[par[2].offset(idx + i)], ptr3[par[3].offset(idx + i)],
+                   ptr4[par[4].offset(idx + i)], ptr5[par[5].offset(idx + i)]);
+            }
+        }
+    }
+
+    devfunc void next() {
+        par[0].next();
+        par[1].next();
+        par[2].next();
+        par[3].next();
+        par[4].next();
+        par[5].next();
+    }
+};
+
+//! specialization for arity == 7
+template <class Op, class PVis>
+struct OpCallerUniform<Op, 7, PVis> {
+    Op op;
+    PVis par[7];
+    static const uint32_t packed_size = PVis::packed_size;
+
+    devfunc void thread_init(uint32_t idx) {
+        idx = idx * packed_size;
+        par[0].thread_init(idx);
+        par[1].thread_init(idx);
+        par[2].thread_init(idx);
+        par[3].thread_init(idx);
+        par[4].thread_init(idx);
+        par[5].thread_init(idx);
+        par[6].thread_init(idx);
+    }
+
+    devfunc void on(uint32_t idx) {
+        idx = idx * packed_size;
+        op(idx, par[0].at(idx), par[1].at(idx), par[2].at(idx), par[3].at(idx),
+           par[4].at(idx), par[5].at(idx), par[6].at(idx));
+    }
+
+    devfunc void on(uint32_t idx, uint32_t remain) {
+        idx = idx * packed_size;
+        if (remain >= packed_size) {
+            op(idx, par[0].at(idx), par[1].at(idx), par[2].at(idx), par[3].at(idx),
+               par[4].at(idx), par[5].at(idx), par[6].at(idx));
+        } else {
+            auto ptr0 = par[0].ptr();
+            auto ptr1 = par[1].ptr();
+            auto ptr2 = par[2].ptr();
+            auto ptr3 = par[3].ptr();
+            auto ptr4 = par[4].ptr();
+            auto ptr5 = par[5].ptr();
+            auto ptr6 = par[6].ptr();
+            for (int i = 0; i < remain; i++) {
+                op(idx + i, ptr0[par[0].offset(idx + i)], ptr1[par[1].offset(idx + i)],
+                   ptr2[par[2].offset(idx + i)], ptr3[par[3].offset(idx + i)],
+                   ptr4[par[4].offset(idx + i)], ptr5[par[5].offset(idx + i)],
+                   ptr6[par[6].offset(idx + i)]);
+            }
+        }
+    }
+
+    devfunc void next() {
+        par[0].next();
+        par[1].next();
+        par[2].next();
+        par[3].next();
+        par[4].next();
+        par[5].next();
+        par[6].next();
+    }
+};
+
 /*!
  * \brief call binary (i.e. arity == 2) operator with different param
  *      visitors
@@ -754,8 +1076,8 @@ struct OpCallerBinary {
     Op op;
     PVis0 par0;
     PVis1 par1;
-    MEGDNN_STATIC_ASSERT(PVis0::packed_size == PVis1::packed_size,
-                         "vector size mismatch")
+    MEGDNN_STATIC_ASSERT(
+            PVis0::packed_size == PVis1::packed_size, "vector size mismatch")
 
     static const uint32_t packed_size = PVis0::packed_size;
 
@@ -800,8 +1122,7 @@ __global__ void cuda_kern(OpCaller op_caller, uint32_t size) {
 }
 
 template <class Op, int arity, class PVis>
-__global__ void cuda_kern(OpCallerUniform<Op, arity, PVis> op_caller,
-                          uint32_t size) {
+__global__ void cuda_kern(OpCallerUniform<Op, arity, PVis> op_caller, uint32_t size) {
     constexpr uint32_t packed_size = PVis::packed_size;
     const uint32_t size_packed = DIVUP(size, packed_size);
     uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x,
@@ -845,14 +1166,13 @@ class UserOpInvokerToSameNdim {
 
     template <int ndim>
     void dispatch1() {
-        typedef OpCallerUniform<Op, arity,
-                                ParamElemVisitor<ndim, ctype, BCAST_OTHER>>
+        typedef OpCallerUniform<Op, arity, ParamElemVisitor<ndim, ctype, BCAST_OTHER>>
                 Caller;
         size_t size = m_param.size;
         int grid_size, block_size;
         void (*fptr)(Caller, uint32_t) = cuda_kern<Caller>;
-        get_launch_spec(reinterpret_cast<const void*>(fptr), size, &grid_size,
-                        &block_size);
+        get_launch_spec(
+                reinterpret_cast<const void*>(fptr), size, &grid_size, &block_size);
 
         Caller caller;
         caller.op = m_op;
@@ -863,8 +1183,8 @@ class UserOpInvokerToSameNdim {
     }
 
 public:
-    UserOpInvokerToSameNdim(const ElemwiseOpParamN<arity>& param,
-                            cudaStream_t stream, const Op& op)
+    UserOpInvokerToSameNdim(
+            const ElemwiseOpParamN<arity>& param, cudaStream_t stream, const Op& op)
             : m_param(param), m_stream(stream), m_op(op) {
         dispatch0();
     }
@@ -873,12 +1193,9 @@ public:
 template <class Op, typename ctype, int arity>
 class UserOpInvokerToSameNdimIByteHelper {
 public:
-    UserOpInvokerToSameNdimIByteHelper(const ElemwiseOpParamN<arity>& param,
-                                       cudaStream_t stream, const Op& op)
-            : m_rw_size(param.size),
-              m_param(param),
-              m_stream(stream),
-              m_op(op) {
+    UserOpInvokerToSameNdimIByteHelper(
+            const ElemwiseOpParamN<arity>& param, cudaStream_t stream, const Op& op)
+            : m_rw_size(param.size), m_param(param), m_stream(stream), m_op(op) {
         if (!try_vect_load_store_contiguous() && !try_vect_load_store()) {
             dispatch0();
         }
@@ -920,8 +1237,8 @@ private:
         size_t size = m_rw_size;
         int grid_size, block_size;
         void (*fptr)(Caller, uint32_t) = cuda_kern<Op, arity, PVis>;
-        get_launch_spec(reinterpret_cast<const void*>(fptr), size, &grid_size,
-                        &block_size);
+        get_launch_spec(
+                reinterpret_cast<const void*>(fptr), size, &grid_size, &block_size);
 
         Caller caller;
         caller.op = m_op;
@@ -938,8 +1255,8 @@ private:
         size_t size = m_rw_size;
         int grid_size, block_size;
         void (*fptr)(Caller, uint32_t) = cuda_kern<Caller>;
-        get_launch_spec(reinterpret_cast<const void*>(fptr), size, &grid_size,
-                        &block_size);
+        get_launch_spec(
+                reinterpret_cast<const void*>(fptr), size, &grid_size, &block_size);
         Caller caller;
         caller.op = m_op;
         for (int i = 0; i < arity; ++i)
@@ -955,8 +1272,8 @@ private:
         size_t size = m_rw_size;
         int grid_size, block_size;
         void (*fptr)(Caller, uint32_t) = cuda_kern<Caller>;
-        get_launch_spec(reinterpret_cast<const void*>(fptr), size, &grid_size,
-                        &block_size);
+        get_launch_spec(
+                reinterpret_cast<const void*>(fptr), size, &grid_size, &block_size);
         Caller caller;
         caller.op = m_op;
         for (int i = 0; i < arity; ++i)
@@ -1003,13 +1320,15 @@ private:
         using Super = UserOpInvokerToSameNdimIByteHelper<Op, ctype, arity>; \
                                                                             \
     public:                                                                 \
-        UserOpInvokerToSameNdim(const ElemwiseOpParamN<arity>& param,       \
-                                cudaStream_t stream, const Op& op)          \
+        UserOpInvokerToSameNdim(                                            \
+                const ElemwiseOpParamN<arity>& param, cudaStream_t stream,  \
+                const Op& op)                                               \
                 : Super{param, stream, op} {}                               \
     }
 INST_DT_IBYTE(dt_int8);
 INST_DT_IBYTE(dt_uint8);
 INST_DT_IBYTE(dt_qint8);
+INST_DT_IBYTE(dt_qint1);
 INST_DT_IBYTE(dt_quint8);
 INST_DT_IBYTE(dt_bool);
 #undef INST_DT_IBYTE
@@ -1018,8 +1337,8 @@ INST_DT_IBYTE(dt_bool);
 template <class Op, typename ctype, int arity>
 class UserOpInvoker : public UserOpInvokerToSameNdim<Op, ctype, arity> {
 public:
-    UserOpInvoker(const ElemwiseOpParamN<arity>& param, cudaStream_t stream,
-                  const Op& op)
+    UserOpInvoker(
+            const ElemwiseOpParamN<arity>& param, cudaStream_t stream, const Op& op)
             : UserOpInvokerToSameNdim<Op, ctype, arity>(param, stream, op) {}
 };
 
@@ -1027,16 +1346,15 @@ public:
 template <class Op, typename ctype>
 class UserOpInvoker<Op, ctype, 0> {
 public:
-    UserOpInvoker(const ElemwiseOpParamN<0>& param, cudaStream_t stream,
-                  const Op& op) {
+    UserOpInvoker(const ElemwiseOpParamN<0>& param, cudaStream_t stream, const Op& op) {
         size_t size = param.size;
         typedef OpCallerNull<Op> Caller;
         Caller caller;
         caller.op = op;
         int grid_size, block_size;
         void (*fptr)(Caller, uint32_t) = cuda_kern<Caller>;
-        get_launch_spec(reinterpret_cast<const void*>(fptr), size, &grid_size,
-                        &block_size);
+        get_launch_spec(
+                reinterpret_cast<const void*>(fptr), size, &grid_size, &block_size);
         (*fptr)<<<grid_size, block_size, 0, stream>>>(caller, size);
         after_kernel_launch();
     }
@@ -1096,8 +1414,7 @@ class UserOpInvoker<Op, ctype, 2> {
 #define cb_header(ndim) void dispatch1_##ndim()
 #define cb_dispatch(ndim, brdcast_mask) \
     dispatch2<ParamElemVisitor<ndim, ctype, brdcast_mask>>()
-    DEFINE_BRDCAST_DISPATCH_RECEIVERS(cb_header, cb_dispatch,
-                                      m_param[0].layout.stride)
+    DEFINE_BRDCAST_DISPATCH_RECEIVERS(cb_header, cb_dispatch, m_param[0].layout.stride)
 #undef cb_header
 #undef cb_dispatch
 
@@ -1118,8 +1435,7 @@ class UserOpInvoker<Op, ctype, 2> {
     void dispatch3_##ndim()
 #define cb_dispatch(ndim, brdcast_mask) \
     do_run<PVis0, ParamElemVisitor<ndim, ctype, brdcast_mask>>()
-    DEFINE_BRDCAST_DISPATCH_RECEIVERS(cb_header, cb_dispatch,
-                                      m_param[1].layout.stride)
+    DEFINE_BRDCAST_DISPATCH_RECEIVERS(cb_header, cb_dispatch, m_param[1].layout.stride)
 #undef cb_header
 #undef cb_dispatch
 
@@ -1131,8 +1447,8 @@ class UserOpInvoker<Op, ctype, 2> {
         int grid_size, block_size;
         void (*fptr)(Caller, uint32_t) = cuda_kern<Caller>;
         size_t size = m_param.size;
-        get_launch_spec(reinterpret_cast<const void*>(fptr), size, &grid_size,
-                        &block_size);
+        get_launch_spec(
+                reinterpret_cast<const void*>(fptr), size, &grid_size, &block_size);
         Caller caller;
         caller.op = m_op;
         caller.par0.host_init(m_param[0], grid_size, block_size);
@@ -1142,8 +1458,7 @@ class UserOpInvoker<Op, ctype, 2> {
     }
 
 public:
-    UserOpInvoker(const ElemwiseOpParamN<2>& param, cudaStream_t stream,
-                  const Op& op)
+    UserOpInvoker(const ElemwiseOpParamN<2>& param, cudaStream_t stream, const Op& op)
             : m_param(param), m_stream(stream), m_op(op) {
         m_invoked = false;
         dispatch0();
@@ -1151,15 +1466,27 @@ public:
     }
 };
 
-#define DEFINE_VECT_BRDCAST_DISPATCH_RECEIVERS(_cb_header, _cb_dispatch, \
-                                               _stride)                  \
-    DEFINE_BRDCAST_DISPATCH_RECEIVERS(_cb_header, _cb_dispatch, _stride) \
-    _cb_header(4) {                                                      \
-        const ptrdiff_t* stride = _stride;                               \
-        if (!stride[0] && stride[1] && !stride[2] && stride[3]) {        \
-            return _cb_dispatch(4, BCAST_1010);                          \
-        }                                                                \
-        _cb_dispatch(4, BCAST_OTHER);                                    \
+#define INST_DT_TYPE(ctype)                                                            \
+    template <class Op>                                                                \
+    class UserOpInvoker<Op, ctype, 2> : public UserOpInvokerToSameNdim<Op, ctype, 2> { \
+    public:                                                                            \
+        UserOpInvoker(                                                                 \
+                const ElemwiseOpParamN<2>& param, cudaStream_t stream, const Op& op)   \
+                : UserOpInvokerToSameNdim<Op, ctype, 2>(param, stream, op) {}          \
+    }
+
+INST_DT_TYPE(dt_qint4);
+INST_DT_TYPE(dt_quint4);
+#undef INST_DT_TYPE
+
+#define DEFINE_VECT_BRDCAST_DISPATCH_RECEIVERS(_cb_header, _cb_dispatch, _stride) \
+    DEFINE_BRDCAST_DISPATCH_RECEIVERS(_cb_header, _cb_dispatch, _stride)          \
+    _cb_header(4) {                                                               \
+        const ptrdiff_t* stride = _stride;                                        \
+        if (!stride[0] && stride[1] && !stride[2] && stride[3]) {                 \
+            return _cb_dispatch(4, BCAST_1010);                                   \
+        }                                                                         \
+        _cb_dispatch(4, BCAST_OTHER);                                             \
     }
 
 template <class Op, typename ctype>
@@ -1231,8 +1558,8 @@ private:
         size_t size = m_rw_size;
         int grid_size, block_size;
         void (*fptr)(Caller, uint32_t) = cuda_kern<Op, 2, PVis>;
-        get_launch_spec(reinterpret_cast<const void*>(fptr), size, &grid_size,
-                        &block_size);
+        get_launch_spec(
+                reinterpret_cast<const void*>(fptr), size, &grid_size, &block_size);
 
         Caller caller;
         caller.op = m_op;
@@ -1251,16 +1578,15 @@ private:
 #define cb_header(ndim) void dispatch1_##ndim()
 #define cb_dispatch(ndim, brdcast_mask) \
     dispatch2<ParamElemVisitor<ndim, ctype, brdcast_mask>>()
-    DEFINE_BRDCAST_DISPATCH_RECEIVERS(cb_header, cb_dispatch,
-                                      m_param[0].layout.stride)
+    DEFINE_BRDCAST_DISPATCH_RECEIVERS(cb_header, cb_dispatch, m_param[0].layout.stride)
 #undef cb_header
 #undef cb_dispatch
 
 #define cb_header(ndim) void dispatch1_vect_##ndim()
 #define cb_dispatch(ndim, brdcast_mask) \
     dispatch2_vect<ParamVectVisitor<ndim, ctype, brdcast_mask>>()
-    DEFINE_VECT_BRDCAST_DISPATCH_RECEIVERS(cb_header, cb_dispatch,
-                                           m_param[0].layout.stride)
+    DEFINE_VECT_BRDCAST_DISPATCH_RECEIVERS(
+            cb_header, cb_dispatch, m_param[0].layout.stride)
 #undef cb_header
 #undef cb_dispatch
 
@@ -1295,8 +1621,7 @@ private:
     void dispatch3_##ndim()
 #define cb_dispatch(ndim, brdcast_mask) \
     do_run<PVis0, ParamElemVisitor<ndim, ctype, brdcast_mask>>()
-    DEFINE_BRDCAST_DISPATCH_RECEIVERS(cb_header, cb_dispatch,
-                                      m_param[1].layout.stride)
+    DEFINE_BRDCAST_DISPATCH_RECEIVERS(cb_header, cb_dispatch, m_param[1].layout.stride)
 #undef cb_header
 #undef cb_dispatch
 
@@ -1305,8 +1630,8 @@ private:
     void dispatch3_vect_##ndim()
 #define cb_dispatch(ndim, brdcast_mask) \
     do_run<PVis0, ParamVectVisitor<ndim, ctype, brdcast_mask>>()
-    DEFINE_VECT_BRDCAST_DISPATCH_RECEIVERS(cb_header, cb_dispatch,
-                                           m_param[1].layout.stride)
+    DEFINE_VECT_BRDCAST_DISPATCH_RECEIVERS(
+            cb_header, cb_dispatch, m_param[1].layout.stride)
 #undef cb_header
 #undef cb_dispatch
 
@@ -1318,8 +1643,8 @@ private:
         int grid_size, block_size;
         void (*fptr)(Caller, uint32_t) = cuda_kern<Caller>;
         size_t size = m_rw_size;
-        get_launch_spec(reinterpret_cast<const void*>(fptr), size, &grid_size,
-                        &block_size);
+        get_launch_spec(
+                reinterpret_cast<const void*>(fptr), size, &grid_size, &block_size);
         Caller caller;
         caller.op = m_op;
         caller.par0.host_init(m_param[0], grid_size, block_size);
@@ -1329,12 +1654,9 @@ private:
     }
 
 public:
-    UserOpInvokerBinaryIByteHelper(const ElemwiseOpParamN<2>& param,
-                                   cudaStream_t stream, const Op& op)
-            : m_rw_size(param.size),
-              m_param(param),
-              m_stream(stream),
-              m_op(op) {
+    UserOpInvokerBinaryIByteHelper(
+            const ElemwiseOpParamN<2>& param, cudaStream_t stream, const Op& op)
+            : m_rw_size(param.size), m_param(param), m_stream(stream), m_op(op) {
         m_invoked = false;
         if (!try_vect_load_store_contiguous() && !try_vect_load_store()) {
             dispatch0();
@@ -1343,20 +1665,21 @@ public:
     }
 };
 
-#define INST_DT_IBYTE(ctype)                                                 \
-    template <class Op>                                                      \
-    class UserOpInvoker<Op, ctype, 2>                                        \
-            : public UserOpInvokerBinaryIByteHelper<Op, ctype> {             \
-        using Super = UserOpInvokerBinaryIByteHelper<Op, ctype>;             \
-                                                                             \
-    public:                                                                  \
-        UserOpInvoker(const ElemwiseOpParamN<2>& param, cudaStream_t stream, \
-                      const Op& op)                                          \
-                : Super{param, stream, op} {}                                \
+#define INST_DT_IBYTE(ctype)                                                         \
+    template <class Op>                                                              \
+    class UserOpInvoker<Op, ctype, 2>                                                \
+            : public UserOpInvokerBinaryIByteHelper<Op, ctype> {                     \
+        using Super = UserOpInvokerBinaryIByteHelper<Op, ctype>;                     \
+                                                                                     \
+    public:                                                                          \
+        UserOpInvoker(                                                               \
+                const ElemwiseOpParamN<2>& param, cudaStream_t stream, const Op& op) \
+                : Super{param, stream, op} {}                                        \
     }
 INST_DT_IBYTE(dt_int8);
 INST_DT_IBYTE(dt_uint8);
 INST_DT_IBYTE(dt_qint8);
+INST_DT_IBYTE(dt_qint1);
 INST_DT_IBYTE(dt_quint8);
 INST_DT_IBYTE(dt_bool);
 #undef INST_DT_IBYTE
@@ -1386,13 +1709,13 @@ INST_DT_IBYTE(dt_bool);
  * should be implemented
  */
 template <class Op, typename ctype, int arity>
-void run_elemwise(const ElemwiseOpParamN<arity>& param, cudaStream_t stream,
-                  const Op& op = Op());
+void run_elemwise(
+        const ElemwiseOpParamN<arity>& param, cudaStream_t stream, const Op& op = Op());
 
 #if MEGDNN_CC_CUDA
 template <class Op, typename ctype, int arity>
-void run_elemwise(const ElemwiseOpParamN<arity>& param, cudaStream_t stream,
-                  const Op& op) {
+void run_elemwise(
+        const ElemwiseOpParamN<arity>& param, cudaStream_t stream, const Op& op) {
     param.assert_initialized();
     elemwise_intl::UserOpInvoker<Op, ctype, arity>(param, stream, op);
 }
@@ -1404,7 +1727,6 @@ void run_elemwise(const ElemwiseOpParamN<arity>& param, cudaStream_t stream,
 #define INST_RUN_ELEMWISE(Op, ctype, arity)       \
     template void run_elemwise<Op, ctype, arity>( \
             const ElemwiseOpParamN<arity>&, cudaStream_t, const Op&)
-
 #endif
 
 }  // namespace cuda

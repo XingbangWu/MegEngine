@@ -1,14 +1,3 @@
-/**
- * \file src/opr/test/dnn/deformable_ps_roi_pooling.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megbrain/opr/dnn/roi_pooling.h"
 #include "megbrain/test/autocheck.h"
 #include "megbrain/test/helper.h"
@@ -56,9 +45,10 @@ auto gen_rois_helper = [](HostTensorND& rois, size_t M, size_t N) {
 namespace deformable_ps_roi_pooling {
 
 using Param = opr::DeformablePSROIPooling::Param;
-void run(size_t N, size_t C, size_t M, size_t PH, size_t PW, bool no_trans,
-         size_t nr_cls, size_t part_sz, size_t sample_per_part, float trans_std,
-         float spatial_scale) {
+void run(
+        size_t N, size_t C, size_t M, size_t PH, size_t PW, bool no_trans,
+        size_t nr_cls, size_t part_sz, size_t sample_per_part, float trans_std,
+        float spatial_scale) {
     using Checker = AutoOprChecker<3, 2>;
 
     TensorShape rois_shp{M, 5};
@@ -75,25 +65,20 @@ void run(size_t N, size_t C, size_t M, size_t PH, size_t PW, bool no_trans,
     param.sample_per_part = sample_per_part;
 
     auto gen_rois = [&](HostTensorND& rois) { gen_rois_helper(rois, M, N); };
-    auto make_graph =
-            [&](const Checker::SymInpArray& inputs) -> Checker::SymOutArray {
-
-        auto o0 = opr::DeformablePSROIPoolingForward::make(inputs[0], inputs[1],
-                                                           inputs[2], param);
+    auto make_graph = [&](const Checker::SymInpArray& inputs) -> Checker::SymOutArray {
+        auto o0 = opr::DeformablePSROIPoolingForward::make(
+                inputs[0], inputs[1], inputs[2], param);
         return {o0, o0.node()->owner_opr()->output(1)};
     };
     auto fwd = [&](Checker::NumOutArray& dest, Checker::NumInpArray inp) {
         auto opr = megdnn_naive_handle()
                            ->create_operator<megdnn::DeformablePSROIPooling>();
         opr->param() = param;
-        dest[0].dtype(dtype::Float32())
-                .comp_node(inp[0]->comp_node())
-                .resize(dst_shp);
-        dest[1].dtype(dtype::Float32())
-                .comp_node(inp[0]->comp_node())
-                .resize(dst_shp);
-        opr->exec(inp[0]->as_megdnn(), inp[1]->as_megdnn(), inp[2]->as_megdnn(),
-                  dest[0].as_megdnn(), dest[1].as_megdnn(), {});
+        dest[0].dtype(dtype::Float32()).comp_node(inp[0]->comp_node()).resize(dst_shp);
+        dest[1].dtype(dtype::Float32()).comp_node(inp[0]->comp_node()).resize(dst_shp);
+        opr->exec(
+                inp[0]->as_megdnn(), inp[1]->as_megdnn(), inp[2]->as_megdnn(),
+                dest[0].as_megdnn(), dest[1].as_megdnn(), {});
     };
 
     Checker checker{make_graph, fwd};

@@ -1,25 +1,14 @@
-/**
- * \file dnn/src/aarch64/conv_bias/opr_impl.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "src/aarch64/conv_bias/opr_impl.h"
 #include "src/aarch64/conv_bias/int8/algos.h"
 #include "src/aarch64/conv_bias/quint8/algos.h"
 
-#include "src/naive/handle.h"
-#include "src/common/utils.h"
 #include "src/common/metahelper.h"
+#include "src/common/utils.h"
+#include "src/naive/handle.h"
 
-#include "src/fallback/convolution/opr_impl.h"
-#include "src/aarch64/conv_bias/fp32/algos.h"
 #include "src/aarch64/conv_bias/fp16/algos.h"
+#include "src/aarch64/conv_bias/fp32/algos.h"
+#include "src/fallback/convolution/opr_impl.h"
 
 using namespace megdnn;
 using namespace aarch64;
@@ -56,12 +45,10 @@ public:
     const SmallVector<fallback::ConvBiasImpl::AlgoBase*>& direct_algos() const {
         return m_direct_algos;
     }
-    const SmallVector<fallback::ConvBiasImpl::AlgoBase*>& matmul_algos()
-            const {
+    const SmallVector<fallback::ConvBiasImpl::AlgoBase*>& matmul_algos() const {
         return m_matmul_algos;
     }
     const AlgoBase::Mapper& all_algos_map() const { return m_all_algos_map; }
-
 };
 
 const ConvBiasImpl::AlgoPack& ConvBiasImpl::algo_pack() {
@@ -71,15 +58,16 @@ const ConvBiasImpl::AlgoPack& ConvBiasImpl::algo_pack() {
 
 MEGDNN_FB_DEF_GET_ALGO_FROM_DESC(ConvBiasImpl)
 
-SmallVector<fallback::ConvBiasImpl::AlgoBase*>
-ConvBiasImpl::get_all_packed_algo() {
+SmallVector<fallback::ConvBiasImpl::AlgoBase*> ConvBiasImpl::get_all_packed_algo() {
     auto&& algos = arm_common::ConvBiasImpl::get_all_packed_algo();
-    algos.insert(algos.begin(), algo_pack().direct_algos().begin(),
-                 algo_pack().direct_algos().end());
+    algos.insert(
+            algos.begin(), algo_pack().direct_algos().begin(),
+            algo_pack().direct_algos().end());
     //! We put matmul algos at the begin. Because matmul will get privilege when
     //! prefer return true. See
-    algos.insert(algos.begin(), algo_pack().matmul_algos().begin(),
-                 algo_pack().matmul_algos().end());
+    algos.insert(
+            algos.begin(), algo_pack().matmul_algos().begin(),
+            algo_pack().matmul_algos().end());
     return std::move(algos);
 }
 

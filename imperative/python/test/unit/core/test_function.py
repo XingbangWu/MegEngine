@@ -1,21 +1,13 @@
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import copy
 
 import numpy as np
+import pytest
 
 import megengine.autodiff as ad
 import megengine.functional as F
 import megengine.optimizer as optimizer
-from megengine import Parameter
-from megengine import Tensor as tensor
-from megengine import tensor
-from megengine.core.tensor.function import Function
+from megengine import Parameter, Tensor, tensor
+from megengine.autodiff import Function
 from megengine.module import Module
 
 
@@ -239,7 +231,7 @@ def test_none_in_out_grad():
 
         def backward(self, grad_a, grad_b):
             assert grad_b is None
-            return (grad_a, 0.0)
+            return (grad_a, None)
 
     class Simple(Module):
         def __init__(self, a, b):
@@ -271,7 +263,7 @@ def test_none_in_out_grad():
     )
 
 
-def test_zero_grad():
+def test_clear_grad():
     class StopGradient(Function):
         def forward(self, a):
             return a
@@ -303,3 +295,89 @@ def test_zero_grad():
     np.testing.assert_almost_equal(
         net.a.numpy(), np.array([1.0 - 4.0], dtype=np.float32),
     )
+
+
+def test_throw_on_non_tensor_argument():
+    class NonTensorArg(Function):
+        def forward(self, inp, c):
+            return inp + c
+
+        def backward(self, grad):
+            return grad
+
+    x = tensor(np.array([2.33], dtype=np.float32))
+    func = NonTensorArg()
+    with pytest.raises(TypeError, match=r"op .* expect type Tensor as inputs"):
+        func(x, 1)
+
+
+def test_multiple_grad():
+    data_shape = (9, 2, 6)
+    av = np.random.random(data_shape).astype(np.float32)
+
+    class MulFunc(Function):
+        def forward(self, a):
+            self.a = a
+            return a * 10
+
+        def backward(self, grad_o):
+            return grad_o * 20
+
+    class Simple(Module):
+        def __init__(self, a):
+            super().__init__()
+            self.a = Parameter(a, dtype=np.float32)
+            self.layer1 = MulFunc()
+
+        def forward(self):
+            x = self.layer1(self.a)
+            return x
+
+    net = Simple(av)
+    gm = ad.GradManager().attach(net.parameters())
+    gm2 = ad.GradManager().attach(net.parameters())
+    opt = optimizer.SGD(net.parameters(), lr=1.0)
+
+    opt.clear_grad()
+    with gm:
+        with gm2:
+            loss = net()
+        gm.backward(loss.sum())
+    opt.step()
+
+    np.testing.assert_almost_equal(loss.numpy(), (av * 10))
+    np.testing.assert_almost_equal(net.a.numpy(), (av - 20))
+
+
+def test_inplace_forward():
+    data_shape = (9, 2, 6)
+    av = np.random.random(data_shape).astype(np.float32)
+
+    class MulFunc(Function):
+        def forward(self, a):
+            self.a = a
+            a *= 10
+            return a
+
+        def backward(self, grad_o):
+            return grad_o * 10
+
+    class Simple(Module):
+        def __init__(self, a):
+            super().__init__()
+            self.a = Parameter(a, dtype=np.float32)
+            self.layer1 = MulFunc()
+
+        def forward(self):
+            x = self.layer1(self.a)
+            return x
+
+    net = Simple(av)
+    gm = ad.GradManager().attach(net.parameters())
+    opt = optimizer.SGD(net.parameters(), lr=1.0)
+
+    opt.clear_grad()
+    with gm:
+        loss = net()
+        gm.backward(loss.sum())
+    opt.step()

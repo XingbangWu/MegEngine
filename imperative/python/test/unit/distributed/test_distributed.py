@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import multiprocessing as mp
 import platform
 import queue
@@ -16,11 +9,8 @@ import pytest
 import megengine as mge
 import megengine.distributed as dist
 from megengine.core.ops.builtin import CollectiveComm, ParamPackConcat, ParamPackSplit
-from megengine.distributed.helper import (
-    get_device_count_by_fork,
-    param_pack_concat,
-    param_pack_split,
-)
+from megengine.device import get_default_device
+from megengine.distributed.helper import param_pack_concat, param_pack_split
 
 
 def _assert_q_empty(q):
@@ -37,20 +27,15 @@ def _assert_q_val(q, val):
     assert ret == val
 
 
-@pytest.mark.skipif(
-    platform.system() == "Darwin", reason="do not imp GPU mode at macos now"
-)
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="windows disable MGB_ENABLE_OPR_MM"
-)
-@pytest.mark.skipif(get_device_count_by_fork("gpu") < 2, reason="need more gpu device")
+@pytest.mark.require_ngpu(2)
+@pytest.mark.parametrize("backend", ["nccl"])
 @pytest.mark.isolated_distributed
-def test_init_process_group():
+def test_init_process_group(backend):
     world_size = 2
     server = dist.Server()
     port = server.py_server_port
 
-    def worker(rank, backend):
+    def worker(rank):
         dist.init_process_group("localhost", port, world_size, rank, rank, backend)
         assert dist.is_distributed() == True
         assert dist.get_rank() == rank
@@ -67,27 +52,18 @@ def test_init_process_group():
 
         assert isinstance(dist.get_client(), dist.Client)
 
-    def check(backend):
-        procs = []
-        for rank in range(world_size):
-            p = mp.Process(target=worker, args=(rank, backend))
-            p.start()
-            procs.append(p)
+    procs = []
+    for rank in range(world_size):
+        p = mp.Process(target=worker, args=(rank,))
+        p.start()
+        procs.append(p)
 
-        for p in procs:
-            p.join(20)
-            assert p.exitcode == 0
-
-    check("nccl")
+    for p in procs:
+        p.join(20)
+        assert p.exitcode == 0
 
 
-@pytest.mark.skipif(
-    platform.system() == "Darwin", reason="do not imp GPU mode at macos now"
-)
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="windows disable MGB_ENABLE_OPR_MM"
-)
-@pytest.mark.skipif(get_device_count_by_fork("gpu") < 3, reason="need more gpu device")
+@pytest.mark.require_ngpu(3)
 @pytest.mark.isolated_distributed
 def test_new_group():
     world_size = 3
@@ -101,18 +77,13 @@ def test_new_group():
             assert group.size == 2
             assert group.key == "2,0"
             assert group.rank == ranks.index(rank)
-            assert group.comp_node == "gpu{}:2".format(rank)
+            dt = get_default_device()[:-1]
+            assert group.comp_node == "{}{}:2".format(dt, rank)
 
     worker()
 
 
-@pytest.mark.skipif(
-    platform.system() == "Darwin", reason="do not imp GPU mode at macos now"
-)
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="windows disable MGB_ENABLE_OPR_MM"
-)
-@pytest.mark.skipif(get_device_count_by_fork("gpu") < 2, reason="need more gpu device")
+@pytest.mark.require_ngpu(2)
 @pytest.mark.isolated_distributed
 def test_group_barrier():
     world_size = 2
@@ -142,13 +113,7 @@ def test_group_barrier():
         assert p.exitcode == 0
 
 
-@pytest.mark.skipif(
-    platform.system() == "Darwin", reason="do not imp GPU mode at macos now"
-)
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="windows disable MGB_ENABLE_OPR_MM"
-)
-@pytest.mark.skipif(get_device_count_by_fork("gpu") < 2, reason="need more gpu device")
+@pytest.mark.require_ngpu(2)
 @pytest.mark.isolated_distributed
 def test_synchronized():
     world_size = 2
@@ -186,17 +151,9 @@ def test_synchronized():
         assert p.exitcode == 0
 
 
-@pytest.mark.skipif(
-    platform.system() == "Darwin", reason="do not imp GPU mode at macos now"
-)
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="windows disable MGB_ENABLE_OPR_MM"
-)
-@pytest.mark.skipif(get_device_count_by_fork("gpu") < 2, reason="need more gpu device")
+@pytest.mark.require_ngpu(2)
 @pytest.mark.isolated_distributed
 def test_user_set_get():
-    world_size = 2
-
     @dist.launcher
     def worker():
         # set in race condition
@@ -229,3 +186,83 @@ def test_param_pack_concat():
     offsets = mge.Tensor(offsets_val, np.int32)
     c = param_pack_concat([a, b], offsets, offsets_val)
     assert np.allclose(np.concatenate([a.numpy(), b.numpy().flatten()]), c.numpy())
+
+
+@pytest.mark.require_ngpu(2)
+@pytest.mark.parametrize("early_return", [False, True], ids=["common", "early_return"])
+@pytest.mark.parametrize("output_size", [10, 10000], ids=["small_size", "large_size"])
+@pytest.mark.isolated_distributed
+def test_collect_results(early_return, output_size):
+    @dist.launcher
+    def worker():
+        if early_return:
+            exit(0)
+        return [dist.get_rank()] * output_size
+
+    results = worker()
+    world_size = len(results)
+    assert world_size > 0
+    expects = (
+        [None] * world_size
+        if early_return
+        else [[dev] * output_size for dev in range(world_size)]
+    )
+    assert results == expects
+
+
+@pytest.mark.require_ngpu(2)
+@pytest.mark.isolated_distributed
+def test_user_set_pop():
+    @dist.launcher
+    def worker():
+        # set in race condition
+        dist.get_client().user_set("foo", 1)
+        if dist.get_rank() == 1:
+            ret = dist.get_client().user_pop("foo")
+            assert ret == 1
+
+    worker()
+
+
+@pytest.mark.require_ngpu(2)
+@pytest.mark.isolated_distributed
+def test_get_cuda_compute_capability():
+
+    assert mge.device.get_cuda_compute_capability(0) > 0
+    assert mge.device.get_cuda_compute_capability(1) > 0
+
+    @dist.launcher
+    def worker():
+        x = mge.tensor([1.0])
+        assert mge.device.get_cuda_compute_capability(dist.get_rank()) > 0
+
+    worker()
+
+
+@pytest.mark.require_ngpu(3)
+@pytest.mark.isolated_distributed
+def test_batch_send_recv():
+    import megengine.distributed.functional as DF
+
+    @dist.launcher(n_gpus=3)
+    def worker():
+        rank = dist.get_rank()
+        dist.group_start()
+        for i in range(3):
+            tensor = mge.tensor(np.ones(10000)) * rank
+            if i == 2:
+                tensor *= i
+            DF._remote_send_nobackward(tensor, (rank + 1) % 3)
+            DF._remote_recv_nobackward(
+                src_rank=(rank + 1) % 3, dtype="float32", shape=(10000,)
+            )
+            DF._remote_send_nobackward(tensor, (rank - 1) % 3)
+            recv = DF._remote_recv_nobackward(
+                src_rank=(rank - 1) % 3, dtype="float32", shape=(10000,)
+            )
+            if i == 2:
+                recv2 = recv
+        dist.group_end()
+        np.testing.assert_equal(recv2.numpy(), (rank - 1) % 3 * 2 * np.ones(10000))
+
+    worker()

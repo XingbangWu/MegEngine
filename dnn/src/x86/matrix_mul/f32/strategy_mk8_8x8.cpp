@@ -1,16 +1,5 @@
 /**
  * \file dnn/src/x86/matrix_mul/f32/strategy_mk8_8x8.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
-/**
- * \file dnn/src/x86/matrix_mul/f32/strategy_mk8_8x8.cpp
  *
  * This file is part of MegDNN, a deep neural network run-time library
  * developed by Megvii.
@@ -31,8 +20,8 @@ using namespace x86::matmul;
 namespace {
 
 MEGDNN_ATTRIBUTE_TARGET("fma")
-void kern_8x1(const float* a_ptr, const float* b_ptr, int LDB, size_t K,
-              float* output) {
+void kern_8x1(
+        const float* a_ptr, const float* b_ptr, int LDB, size_t K, float* output) {
     constexpr size_t KB = 8;
 
     __m256 ymm0, ymm1;
@@ -114,8 +103,8 @@ void kern_8x1(const float* a_ptr, const float* b_ptr, int LDB, size_t K,
 }
 
 MEGDNN_ATTRIBUTE_TARGET("fma")
-void kern_8x2(const float* a_ptr, const float* b_ptr, int LDB, size_t K,
-              float* output) {
+void kern_8x2(
+        const float* a_ptr, const float* b_ptr, int LDB, size_t K, float* output) {
     constexpr size_t KB = 8;
 
     __m256 ymm0, ymm1;
@@ -222,8 +211,8 @@ void kern_8x2(const float* a_ptr, const float* b_ptr, int LDB, size_t K,
 }
 
 MEGDNN_ATTRIBUTE_TARGET("fma")
-void kern_8x4(const float* a_ptr, const float* b_ptr, int LDB, size_t K,
-              float* output) {
+void kern_8x4(
+        const float* a_ptr, const float* b_ptr, int LDB, size_t K, float* output) {
     constexpr size_t KB = 8;
 
     __m256 ymm0, ymm1, ymm2, ymm3;
@@ -380,8 +369,8 @@ void kern_8x4(const float* a_ptr, const float* b_ptr, int LDB, size_t K,
 }
 
 MEGDNN_ATTRIBUTE_TARGET("fma")
-void kern_8x8(const float* a_ptr, const float* b_ptr, int LDB, size_t K,
-              float* output) {
+void kern_8x8(
+        const float* a_ptr, const float* b_ptr, int LDB, size_t K, float* output) {
     constexpr size_t KB = 8;
 
     __m256 ymm0, ymm1, ymm2, ymm3;
@@ -633,10 +622,9 @@ void kern_8x8(const float* a_ptr, const float* b_ptr, int LDB, size_t K,
 
 MEGDNN_REG_GEMM_STRATEGY_IMPL_NOPACK(sgemm_nopack_8x8_avx2);
 
-void sgemm_nopack_8x8_avx2::kern(const float* A, size_t LDA, const float* B,
-                                 size_t LDB, float* C, size_t LDC, size_t M,
-                                 size_t K, size_t N, const float*, void*,
-                                 bool trA, bool trB) const {
+void sgemm_nopack_8x8_avx2::kern(
+        const float* A, size_t LDA, const float* B, size_t LDB, float* C, size_t LDC,
+        size_t M, size_t K, size_t N, const float*, void*, bool trA, bool trB) const {
     constexpr static size_t MB = 8;
     constexpr static size_t KB = 8;
     constexpr static size_t NB = 8;

@@ -1,20 +1,10 @@
-/**
- * \file src/core/impl/graph/cg_impl.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "./eager_eval.h"
 #include "./grad_manager.h"
 #include "./graph_opt.h"
 #include "./seq_comp_node_opt_impl.h"
+#include "./seq_dtr.h"
 #include "./seq_sublinear_memory.h"
 #include "./static_infer_impl.h"
 #include "./swap/memory_swap.h"
@@ -38,6 +28,28 @@ class ComputingGraphImpl final : public ComputingGraph {
         //! extra info that must be set in the ComputingSequence
         CompSeqExtraInfo extra_info;
         const OprNodeArray* opr_seq = nullptr;
+        VarNodeArray dest_vars;
+    };
+
+    struct CallbackCallerKey {
+        OperatorNodeBase* opr;
+        CompNode comp_node;
+
+        bool operator==(const CallbackCallerKey& rhs) const {
+            return opr == rhs.opr && comp_node == rhs.comp_node;
+        }
+
+        struct Hash {
+            size_t operator()(const CallbackCallerKey& b) const {
+                return hash_pair_combine(mgb::hash(b.opr), mgb::hash(b.comp_node));
+            }
+        };
+    };
+
+    struct CallbackCallerVal {
+        SmallVector<VarNode*> vars;
+        //! indexs of vars in out_spec.
+        SmallVector<SmallVector<size_t>> indexs;
     };
 
     /*!
@@ -56,6 +68,9 @@ class ComputingGraphImpl final : public ComputingGraph {
         GraphOptimizer graph_optimizer;
 #if MGB_ENABLE_SUBLINEAR
         SeqModifierForSublinearMemory seq_modifier_for_sublinear_memory;
+#endif
+#if MGB_ENABLE_DTR
+        SeqModifierForDTR seq_modifier_for_dtr;
 #endif
 #if MGB_ENABLE_MEMORY_SWAP
         swap::MemorySwap memory_swap_support;
@@ -95,8 +110,8 @@ class ComputingGraphImpl final : public ComputingGraph {
      * \param[out] has_virtual_grad whether there are VirtualGrad oprs that
      *      need to be expanded
      */
-    VarNodeArray get_dest_vars_from_out_spec(const OutputSpec& spec,
-                                             SpecialOprStat& sopr_stat);
+    VarNodeArray get_dest_vars_from_out_spec(
+            const OutputSpec& spec, SpecialOprStat& sopr_stat);
 
     void cleanup();
 
@@ -116,13 +131,17 @@ class ComputingGraphImpl final : public ComputingGraph {
     //! finalize the computing sequence for compiling
     std::unique_ptr<AsyncExecutable> compile_commit(CompileState state);
 
+    //! process the dest var optimization
+    void dest_var_optimize(VarNodeArray& dest_vars);
+
 public:
     class ComputingSequence;
 
-    ComputingGraphImpl();
-    ~ComputingGraphImpl();
+    MGE_WIN_DECLSPEC_FUC ComputingGraphImpl();
+    MGE_WIN_DECLSPEC_FUC ~ComputingGraphImpl();
 
-    template<typename T> static ComputingGraphImpl* downcast(T* ptr) = delete;
+    template <typename T>
+    static ComputingGraphImpl* downcast(T* ptr) = delete;
 
     inline static ComputingGraphImpl* downcast(ComputingGraph* graph) {
         mgb_assert(!graph->options().imperative_proxy_graph);
@@ -131,18 +150,17 @@ public:
 
     friend struct ComputingGraph::Options;
 
-    std::unique_ptr<AsyncExecutable> compile(
-            const OutputSpec& out_spec) override;
+    std::unique_ptr<AsyncExecutable> compile(const OutputSpec& out_spec) override;
 
     SmallVector<std::unique_ptr<AsyncExecutable>> compile_multi_part(
             const SmallVector<OutputSpec>& out_specs) override;
 
-    OperatorNodeBase* insert_opr(
+    MGE_WIN_DECLSPEC_FUC OperatorNodeBase* insert_opr(
             std::unique_ptr<OperatorNodeBase> opr) override;
 
     void* alloc_varnode_storage() override;
 
-    void free_varnode_storage(void *ptr) override;
+    void free_varnode_storage(void* ptr) override;
 
     const VarReceiverInfo& var_receiver_in_current_comp_seq(
             const VarNode* var) const override;
@@ -187,14 +205,15 @@ public:
 
     GraphOptimizer& graph_optimizer() { return components().graph_optimizer; }
 
-    EagerEvalManager& eager_eval_manager() {
-        return components().eager_eval_manager;
-    }
+    EagerEvalManager& eager_eval_manager() { return components().eager_eval_manager; }
 
 #if MGB_ENABLE_SUBLINEAR
     SeqModifierForSublinearMemory& seq_modifier_for_sublinear_memory();
 #endif
 
+#if MGB_ENABLE_DTR
+    SeqModifierForDTR& seq_modifier_for_dtr();
+#endif
     void share_device_memory_with(ComputingGraph& other) override;
 
     void set_device_memory_allocator(

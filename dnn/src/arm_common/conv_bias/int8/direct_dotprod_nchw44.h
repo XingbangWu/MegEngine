@@ -1,20 +1,7 @@
-/**
- * \file dnn/src/arm_common/conv_bias/int8/direct_dotprod_nchw44.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
-#if __ARM_FEATURE_DOTPROD
-
 #pragma once
 
 #include "src/arm_common/conv_bias/opr_impl.h"
+#if MGB_ENABLE_DOT
 
 namespace megdnn {
 namespace arm_common {
@@ -43,13 +30,12 @@ using BiasMode = ConvBiasForward::BiasMode;
  * @return  none
  */
 
-template <typename dst_type, int stride, BiasMode bias_mode, typename Op,
-          int filter_size>
-void conv_direct_sdot_int8_nchw44(dst_type* dst, const int oh, const int ow,
-                                  const int8_t* src, const int ih, const int iw,
-                                  const int8_t* filter, const int32_t* bias,
-                                  const int oh_size, const int oc, const int ic,
-                                  const Op& op);
+template <
+        typename dst_type, int stride, BiasMode bias_mode, typename Op, int filter_size>
+void conv_direct_sdot_int8_nchw44(
+        dst_type* dst, const int oh, const int ow, const int8_t* src, const int ih,
+        const int iw, const int8_t* filter, const int32_t* bias, const int oh_size,
+        const int oc, const int ic, const Op& op);
 /**
  * @brief : copy data from src to dst for direct conv with no side effect
  * @param : [output ptr] dst
@@ -66,11 +52,10 @@ void conv_direct_sdot_int8_nchw44(dst_type* dst, const int oh, const int ow,
  * @return  none
  */
 template <int stride>
-void copy_packed_src_int8_nchw44(int8_t* dst, const int dst_step,
-                                 const int8_t* src, const int src_step,
-                                 const int ic, const int ic_step, const int ih,
-                                 const int pad_left, const int pad_right,
-                                 const int pad_top, const int pad_bottom);
+void copy_packed_src_int8_nchw44(
+        int8_t* dst, const int dst_step, const int8_t* src, const int src_step,
+        const int ic, const int ic_step, const int ih, const int pad_left,
+        const int pad_right, const int pad_top, const int pad_bottom);
 
 }  // namespace direct_dotprod_nchw44
 }  // namespace arm_common

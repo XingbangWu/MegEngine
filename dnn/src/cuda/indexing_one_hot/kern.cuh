@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/cuda/indexing_one_hot/kern.cuh
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "src/cuda/error_info.cuh"
@@ -37,10 +26,11 @@ struct KernParam {
         idx2 = offset - idx0 * shape_lo.divisor();
         idx1 = idx[offset];
         if (idx1 >= max_mid_index) {
-            set_async_error_info(error_info, error_tracker,
-                                 "invalid IndexingOneHot: "
-                                 "offset=%d idx0=%d indexer=%d idx2=%d",
-                                 offset, idx0, idx1, idx2);
+            set_async_error_info(
+                    error_info, error_tracker,
+                    "invalid IndexingOneHot: "
+                    "offset=%d idx0=%d indexer=%d idx2=%d",
+                    offset, idx0, idx1, idx2);
             idx1 = 0;
         }
         return idx0 * stride_hi + idx1 * shape_lo.divisor() + idx2;

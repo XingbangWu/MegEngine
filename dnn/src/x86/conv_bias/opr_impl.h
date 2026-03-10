@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/x86/conv_bias/opr_impl.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #pragma once
 
 #include "src/common/utils.h"
@@ -38,10 +27,9 @@ public:
      * IH2/IW2 would be adjusted to fit OH2/OW2.
      * The influence of padding would be incorporated in IH2/IW2.
      */
-    static void get_rectified_img_size(size_t IH, size_t IW, size_t FH,
-                                       size_t FW, size_t OH, size_t OW,
-                                       size_t PH, size_t PW, size_t& IH2,
-                                       size_t& IW2, size_t& OH2, size_t& OW2);
+    static void get_rectified_img_size(
+            size_t IH, size_t IW, size_t FH, size_t FW, size_t OH, size_t OW, size_t PH,
+            size_t PW, size_t& IH2, size_t& IW2, size_t& OH2, size_t& OW2);
 
     const char* get_algorithm_set_name() const override;
 

@@ -1,12 +1,3 @@
-/**
- * \file src/rocm/convolution/chanwise/bwd_filter.cpp.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
-
 #include "hip_header.h"
 #include "./kern.h.hip"
 #include "./kern_helper.h.hip"

@@ -20,7 +20,7 @@ function try_install_brew() {
 }
 
 function install_brew_package() {
-    BREW_PACKAGE="openssl readline sqlite3 xz gdbm zlib pyenv wget swig coreutils llvm git-lfs"
+    BREW_PACKAGE="openssl readline sqlite3 xz gdbm zlib pyenv wget swig coreutils llvm git-lfs ninja bzip2"
     for pak in ${BREW_PACKAGE}
     do
         echo "###### do command: brew install ${pak}"
@@ -45,22 +45,39 @@ fi
 SRC_DIR=$($READLINK -f "`dirname $0`/../../../")
 
 echo ${SRC_DIR}
-ALL_PYTHON="3.5.9 3.6.10 3.7.7 3.8.3"
 
+platform=$(uname -m | awk '{print $0}')
+if [ $platform = 'arm64' ];then
+    ALL_PYTHON="3.8.10 3.9.4 3.10.1"
+else
+    ALL_PYTHON="3.6.10 3.7.7 3.8.3 3.9.4 3.10.1"
+fi
+
+USER=$(whoami)
 
 function install_python_package() {
     for pak in ${ALL_PYTHON}
     do
-        echo "###### do command: env PYTHON_CONFIGURE_OPTS=\"--enable-shared\" pyenv install ${pak}"
-        if [ -e /Users/$USER/.pyenv/versions/${pak} ];then
-            echo "FOUND install /Users/$USER/.pyenv/versions/${pak} strip it..."
+        echo "###### do command: env PYTHON_CONFIGURE_OPTS=\"--enable-shared\" PYTHON_CONFIGURE_OPTS=\"--enable-framework\" pyenv install ${pak}"
+        if [ -e /Users/${USER}/.pyenv/versions/${pak} ];then
+            echo "FOUND install /Users/${USER}/.pyenv/versions/${pak} strip it..."
         else
-            env PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install ${pak}
+            os_ver=$(sw_vers -productVersion | awk '{print int($0)}')
+            if [[ $os_ver -lt 11 || $platform = 'arm64' ];then
+                env PYTHON_CONFIGURE_OPTS="--enable-shared" PYTHON_CONFIGURE_OPTS="--enable-framework" pyenv install ${pak}
+            else
+                PYTHON_CONFIGURE_OPTS="--enable-shared" \
+                PYTHON_CONFIGURE_OPTS="--enable-framework"\
+                CFLAGS="-I$(brew --prefix openssl)/include -I$(brew --prefix bzip2)/include \
+                -I$(brew --prefix readline)/include -I$(xcrun --show-sdk-path)/usr/include" \
+                LDFLAGS="-L$(brew --prefix openssl)/lib -L$(brew --prefix readline)/lib -L$(brew --prefix zlib)/lib -L$(brew --prefix bzip2)/lib" \
+                pyenv install --patch ${pak} < <(curl -sSL https://github.com/python/cpython/commit/8ea6353.patch\?full_index\=1)
+            fi
         fi
-        echo "###### do command: /Users/${USER}/.pyenv/versions/${pak}/bin/python3 -m pip install numpy wheel requests tqdm tabulate"
-        /Users/${USER}/.pyenv/versions/${pak}/bin/python3 -m pip install numpy wheel
-        echo "###### do command: /Users/${USER}/.pyenv/versions/${pak}/bin/python3 -m pip install -r ${SRC_DIR}/python_module/requires-test.txt"
-        /Users/${USER}/.pyenv/versions/${pak}/bin/python3 -m pip install -r ${SRC_DIR}/python_module/requires-test.txt
+        echo "###### do command: /Users/${USER}/.pyenv/versions/${pak}/bin/python3 -m pip install --upgrade pip"
+        /Users/${USER}/.pyenv/versions/${pak}/bin/python3 -m pip install --upgrade pip
+        echo "###### do command: /Users/$USER/.pyenv/versions/${pak}/bin/python3 -m pip install -r ${SRC_DIR}/imperative/python/requires.txt"
+        /Users/$USER/.pyenv/versions/${pak}/bin/python3 -m pip install -r ${SRC_DIR}/imperative/python/requires.txt
     done
 }
 

@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/cuda/query_blocksize.cuh
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 namespace megdnn {
@@ -49,12 +38,11 @@ static inline int query_blocksize_for_kernel(T kern) {
 }
 
 namespace detail {
-LaunchConfig query_launch_config_for_kernel_uncached(const void* kern,
-                                                     const SmemGetter& smem);
+LaunchConfig query_launch_config_for_kernel_uncached(
+        const void* kern, const SmemGetter& smem);
 }
 
 }  // namespace cuda
 }  // namespace megdnn
 
 // vim: ft=cpp syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}
-

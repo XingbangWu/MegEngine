@@ -1,15 +1,3 @@
-/**
- * \file src/core/include/megbrain/ir/base.td
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #ifndef MGB_BASE
 #define MGB_BASE
 
@@ -30,12 +18,15 @@ class MgbHashableAttrMixin {
   string hashFunction = "mgb::hash($0)";
   // return 0 for eq, else for ne
   string cmpFunction = "$0 != $1";
+  string reprFunction = "std::to_string($0)";
 }
 
-class MgbEnumAttrMixin<string namespace, string name, list<string> members> {
+class MgbEnumAttrMixin<string namespace, string name, list<string> members, bit combined, bit toString> {
   string parentNamespace = namespace;
   string enumName = name;
   list<string> enumMembers = members;
+  bit enumCombined = combined;
+  bit supportToString = toString;
 }
 
 class MgbAttrWrapper;
@@ -98,6 +89,7 @@ def MgbStringAttr : HashableAttr<"std::string"> {
   let storageType = "::mlir::StringAttr";
   let convertFromStorage = "$_self.getValue().str()";
   let constBuilderCall = "$_builder.getStringAttr($0)"; // llvm::StringRef implicit ctor
+  string reprFunction = "$0";
 }
 
 class MgbArrayAttr<MgbAttrWrapper elem>:
@@ -123,6 +115,7 @@ class MgbArrayAttr<MgbAttrWrapper elem>:
     "    });\n"
     "    return $_builder.getArrayAttr(ret" # recursionDepth # ");"
     "}()";
+   let reprFunction = "\"{std::vector}\"";
 }
 
 defvar EmptyStrList = !listsplat("", 0);
@@ -162,16 +155,17 @@ class MgbTupleAttr<list<MgbAttrWrapper> args>:
 }
 
 // -- enum types
-class MgbEnumAttr<string namespace, string enumName, list<string> members>:
-    HashableAttr<namespace # "::" # enumName>, MgbEnumAttrMixin<namespace, enumName, members> {
+class MgbEnumAttr<string namespace, string enumName, list<string> members, bit combined, bit toString=0>:
+    HashableAttr<namespace # "::" # enumName>, MgbEnumAttrMixin<namespace, enumName, members, combined, toString> {
   let storageType = "::mlir::IntegerAttr";
   let convertFromStorage = "static_cast<" # returnType # ">($_self.getInt())";
   let constBuilderCall = "$_builder.getI32IntegerAttr(static_cast<int32_t>($0))";
   let hashFunction = "mgb::enumhash()($0)";
+  string reprFunction = "std::to_string((int)$0)";
 }
 
 class MgbEnumAliasAttr<string namespace, string enumName, MgbEnumAttr base>:
-    MgbEnumAttr<namespace, enumName, base.enumMembers>, MgbAliasAttrMixin<base>;
+    MgbEnumAttr<namespace, enumName, base.enumMembers, 0>, MgbAliasAttrMixin<base>;
 
 // -- other types
 def MgbDTypeAttr: HashableAttr<"::megdnn::DType"> {
@@ -179,12 +173,14 @@ def MgbDTypeAttr: HashableAttr<"::megdnn::DType"> {
   let convertFromStorage = underlyingType # "::from_enum(static_cast<::megdnn::DTypeEnum>($_self.getInt()))";
   let constBuilderCall = "$_builder.getI32IntegerAttr(static_cast<int32_t>($0.enumv()))";
   let hashFunction = "mgb::hash($0.handle())";
+  let reprFunction = "$0.name()";
 }
 
 def MgbCompNodeAttr: HashableAttr<"::mgb::CompNode"> {
   let storageType = "::mlir::StringAttr";
   let convertFromStorage = underlyingType # "::load($_self.getValue().str())";
   let constBuilderCall = "$_builder.getStringAttr($0.to_string_logical())";
+  string reprFunction = "$0.to_string()";
 }
 
 def MgbTensorShapeAttr: HashableAttr<"::megdnn::TensorShape"> {
@@ -209,6 +205,7 @@ def MgbTensorShapeAttr: HashableAttr<"::megdnn::TensorShape"> {
     "    }\n"
     "    return $_builder.getArrayAttr(ret);"
     "}()";
+    let reprFunction = "$0.to_string()";
 }
 
 class MgbDefaultValuedAttr<MgbAttrWrapper attr, string value>:
@@ -243,6 +240,7 @@ class MgbOp<string mnemonic, list<MgbParamBase> params=[], list<OpTrait> traits=
   dag extraArguments = (ins);
   // TODO: remove it
   code extraOpdefDecl = ?;
+  code nameFunction = ?;
 
   let arguments = !con(
     !foldl(inputs, params, args, param, !con(args, param.fields)),

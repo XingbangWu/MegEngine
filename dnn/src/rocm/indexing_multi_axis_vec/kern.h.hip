@@ -1,12 +1,3 @@
-/**
- * \file src/rocm/indexing_multi_axis_vec/kern.h.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
-
 #pragma once
 
 #include "megdnn/arch.h"
@@ -18,17 +9,23 @@ namespace rocm {
 namespace indexing_multi_axis_vec {
 
     //! AxisIndexer equiv in kernel
+    template <int idx_ndim>
     struct KAxisIndexer {
-        int stride;
+        int stride[idx_ndim];
+#ifdef WIN32
+        Uint32Fastdiv shape[idx_ndim];
+#else
+        Uint32Fastdiv shape[idx_ndim - 1];
+#endif
         const int *ptr;
     };
 
     //! param for gen_offset_base
-    template<int nidx>
+    template<int nidx, int idx_ndim>
     struct GenOffsetBaseParam {
         uint32_t size;  //!< number of outputs; also size of each index
         int *output;    //!< output ptr
-        KAxisIndexer indexer[nidx];
+        KAxisIndexer<idx_ndim> indexer[nidx];
         uint32_t data_shape[nidx];
         int data_stride[nidx];
 
@@ -57,6 +54,8 @@ namespace indexing_multi_axis_vec {
         ctype *data, *value;
 
         int idx_axis;
+        int idx_axis_end;
+        int idx_nelems;
 
         int value_stride;
 
@@ -65,8 +64,8 @@ namespace indexing_multi_axis_vec {
     };
 
     //! generate offset bases for first axis in the output
-    template<int nidx>
-    void gen_offset_base(const GenOffsetBaseParam<nidx> &param,
+    template<int nidx, int idx_ndim>
+    void gen_offset_base(const GenOffsetBaseParam<nidx, idx_ndim> &param,
             hipStream_t stream);
 
     struct OprAtomicIncr {

@@ -1,26 +1,17 @@
-/**
- * \file dnn/test/rocm/type_cvt.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "hcc_detail/hcc_defs_prologue.h"
-#include "test/rocm/fixture.h"
 #include "megdnn/oprs.h"
 #include "test/common/checker.h"
+#include "test/rocm/fixture.h"
 
 using namespace megdnn;
 using namespace test;
 
 TEST_F(ROCM, TYPE_CVT) {
     UniformFloatRNG init(0, 20);
-    std::vector<DType> dtypes = {dtype::Float32(), MEGDNN_INC_FLOAT16(dtype::Float16() MEGDNN_COMMA)
-                                 dtype::Int32(),   dtype::Int16(),
-                                 dtype::Int8(),    dtype::Uint8()};
+    std::vector<DType> dtypes = {
+            dtype::Float32(),
+            DNN_INC_FLOAT16(dtype::Float16() MEGDNN_COMMA) dtype::Int32(),
+            dtype::Int16(), dtype::Int8(), dtype::Uint8()};
     for (auto sdtype : dtypes)
         for (auto ddtype : dtypes) {
             TensorLayout src({10, 10}, sdtype), dst({10, 10}, ddtype);

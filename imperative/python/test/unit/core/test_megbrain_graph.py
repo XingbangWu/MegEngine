@@ -1,27 +1,16 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 from concurrent.futures import Future
 
 import numpy as np
 
-import megengine.functional as F
+from megengine.core.ops.builtin import Elemwise
 from megengine.core.tensor import megbrain_graph as mgb_graph
-from megengine.core.tensor.raw_tensor import as_raw_tensor
-
-
-def make_dev_tensor(value, dtype=None, device=None):
-    return as_raw_tensor(value, dtype=dtype, device=device)._dev_tensor()
+from megengine.tensor import Tensor
 
 
 def test_io():
     g = mgb_graph.Graph()
-    x = make_dev_tensor(np.random.randn(3).astype("float32"), device="xpux")
+    x = Tensor(np.random.randn(3).astype("float32"), device="xpux")._dev_tensor()
     vx, _ = mgb_graph.input_callback(
         lambda: x, device=x.comp_node, dtype=x.dtype, graph=g
     )
@@ -43,7 +32,7 @@ def test_io2():
 
     for _ in range(3):
         f.execute()
-        x = make_dev_tensor(np.random.randn(10).astype(dtype), device=device)
+        x = Tensor(np.random.randn(10).astype(dtype), device=device)._dev_tensor()
         px.set_value(x)
         y = py.get_value()
         np.testing.assert_equal(x.numpy(), y.numpy())
@@ -60,7 +49,7 @@ def test_attr_output():
 
     for shape in [(2,), (3,), (5,)]:
         f.execute()
-        x = make_dev_tensor(np.random.randn(*shape).astype(dtype), device=device)
+        x = Tensor(np.random.randn(*shape).astype(dtype), device=device)._dev_tensor()
         px.set_value(x)
         ay = py.get_value()
         assert ay.shape == shape
@@ -71,11 +60,12 @@ def test_attr_output():
 
 def test_op():
     g = mgb_graph.Graph()
-    x = make_dev_tensor(np.random.randn(10).astype("float32"), device="xpux")
+    x = Tensor(np.random.randn(10).astype("float32"), device="xpux")._dev_tensor()
     v, _ = mgb_graph.input_callback(
         lambda: x, device=x.comp_node, dtype=x.dtype, graph=g
     )
-    v = F.neg(v)
+    neg = Elemwise(Elemwise.Mode.NEGATE)
+    v = mgb_graph.apply_normal_varnode(neg, v)[0]
     y = Future()
     v = mgb_graph.output_callback(y.set_result, v)
     f = g.compile(v)
@@ -92,7 +82,8 @@ def test_exception():
 
     g = mgb_graph.Graph()
     x, _ = mgb_graph.input_callback(throw_exc, device="xpux", dtype="float32", graph=g)
-    y = mgb_graph.OutputNode(F.neg(x))
+    neg = Elemwise(Elemwise.Mode.NEGATE)
+    y = mgb_graph.OutputNode(mgb_graph.apply_normal_varnode(neg, x)[0])
     f = g.compile(y.outputs[0])
     try:
         f.execute()

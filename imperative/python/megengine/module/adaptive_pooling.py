@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 from abc import abstractmethod
 from typing import Tuple, Union
 
@@ -15,10 +8,8 @@ from .module import Module
 
 
 class _AdaptivePoolNd(Module):
-    def __init__(
-        self, oshp: Union[Tuple[int, int], int, Tensor],
-    ):
-        super(_AdaptivePoolNd, self).__init__()
+    def __init__(self, oshp: Union[Tuple[int, int], int, Tensor], **kwargs):
+        super(_AdaptivePoolNd, self).__init__(**kwargs)
         self.oshp = oshp
 
     @abstractmethod
@@ -27,8 +18,7 @@ class _AdaptivePoolNd(Module):
 
 
 class AdaptiveMaxPool2d(_AdaptivePoolNd):
-    r"""
-    Applies a 2D max adaptive pooling over an input.
+    r"""Applies a 2D max adaptive pooling over an input.
 
     For instance, given an input of the size :math:`(N, C, H, W)` and
     an output shape :math:`(OH, OW)`, this layer generates the output of
@@ -42,30 +32,31 @@ class AdaptiveMaxPool2d(_AdaptivePoolNd):
         \end{aligned}
 
     ``kernel_size`` and ``stride`` can be inferred from input shape and out shape:
+
     * padding: (0, 0)
     * stride: (floor(IH / OH), floor(IW / OW))
     * kernel_size: (IH - (OH - 1) * stride_h, IW - (OW - 1) * stride_w)
 
+    Args:
+        oshp(Union[Tuple[int, int], int, Tensor]): the target output shape of the image of the form Height * Width.
+            Can be tuple (H, W) or a single H for a square image H * H.
+        
+    Shape:
+        - Input: :math:`(N, C, H_{in}, W_{in})` or :math:`(C, H_{in}, W_{in})`.
+        - Output: :math:`(N, C, H_{out}, W_{out})` or :math:`(C, H_{out}, W_{out})`, where
+          :math:`(H_{out}, W_{out})=\text{output\_shape}`.
+
+    Returns:
+        Return type: module. The instance of the ``AdaptiveMaxPool2d`` module.
+
     Examples:
-
-    .. testcode::
-
-        import numpy as np
-        import megengine as mge
-        import megengine.module as M
-
-        m = M.AdaptiveMaxPool2d((2, 2))
-        inp = mge.tensor(np.arange(0, 16).astype("float32").reshape(1, 1, 4, 4))
-        oup = m(inp)
-        print(oup.numpy())
-
-    Outputs:
-
-    .. testoutput::
-
-        [[[[ 5.  7.]
-           [13. 15.]]]]
-
+        >>> import numpy as np
+        >>> m = M.AdaptiveMaxPool2d((2, 2))
+        >>> inp = mge.tensor(np.arange(0, 16).astype("float32").reshape(1, 1, 4, 4))
+        >>> oup = m(inp)
+        >>> oup.numpy()
+        array([[[[ 5.,  7.],
+                 [13., 15.]]]], dtype=float32)
     """
 
     def forward(self, inp):
@@ -73,8 +64,7 @@ class AdaptiveMaxPool2d(_AdaptivePoolNd):
 
 
 class AdaptiveAvgPool2d(_AdaptivePoolNd):
-    r"""
-    Applies a 2D average pooling over an input.
+    r"""Applies a 2D average pooling over an input.
 
     For instance, given an input of the size :math:`(N, C, H, W)` and
     an output shape :math:`(OH, OW)`, this layer generates the output of
@@ -86,30 +76,31 @@ class AdaptiveAvgPool2d(_AdaptivePoolNd):
                                input(N_i, C_j, stride[0] \times h + m, stride[1] \times w + n)
 
     ``kernel_size`` and ``stride`` can be inferred from input shape and out shape:
+
     * padding: (0, 0)
     * stride: (floor(IH / OH), floor(IW / OW))
     * kernel_size: (IH - (OH - 1) * stride_h, IW - (OW - 1) * stride_w)
 
+    Args:
+        oshp(Union[Tuple[int, int], int, Tensor]): the target output shape of the image of the form Height * Width.
+            Can be tuple (H, W) or a single H for a square image H * H.
+
+    Shape:
+        - Input: :math:`(N, C, D_{in}, H_{in}, W_{in})` or :math:`(C, D_{in}, H_{in}, W_{in})`.
+        - Output: :math:`(N, C, D_{out}, H_{out}, W_{out})` or :math:`(C, D_{out}, H_{out}, W_{out})`,
+          where :math:`(D_{out}, H_{out}, W_{out})=\text{output\_shape}`.
+
+    Returns:
+        Return type: module. The instance of the ``AdaptiveAvgPool2d`` module.
+
     Examples:
-
-    .. testcode::
-
-        import numpy as np
-        import megengine as mge
-        import megengine.module as M
-
-        m = M.AdaptiveAvgPool2d((2, 2))
-        inp = mge.tensor(np.arange(0, 16).astype("float32").reshape(1, 1, 4, 4))
-        oup = m(inp)
-        print(oup.numpy())
-
-    Outputs:
-
-    .. testoutput::
-
-        [[[[ 2.5  4.5]
-           [10.5 12.5]]]]
-
+        >>> import numpy as np
+        >>> m = M.AdaptiveAvgPool2d((2, 2))
+        >>> inp = mge.tensor(np.arange(0, 16).astype("float32").reshape(1, 1, 4, 4))
+        >>> oup = m(inp)
+        >>> oup.numpy()
+        array([[[[ 2.5,  4.5],
+                 [10.5, 12.5]]]], dtype=float32)
     """
 
     def forward(self, inp):

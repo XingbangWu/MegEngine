@@ -1,18 +1,7 @@
-/**
- * \file src/core/test/comp_node_helper.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megbrain/comp_node.h"
 #include "megbrain/opr/dnn/convolution.h"
-#include "megbrain/test/helper.h"
 #include "megbrain/opr/io.h"
+#include "megbrain/test/helper.h"
 
 using namespace mgb;
 
@@ -20,9 +9,10 @@ namespace mgb {
 namespace comp_node_test {
 
 template <typename Opr>
-HostTensorND eval_conv(const std::shared_ptr<HostTensorND>& src,
-                       const std::shared_ptr<HostTensorND>& filter,
-                       const typename Opr::Param& param = {}) {
+HostTensorND eval_conv(
+        const std::shared_ptr<HostTensorND>& src,
+        const std::shared_ptr<HostTensorND>& filter,
+        const typename Opr::Param& param = {}) {
     auto graph = ComputingGraph::make();
     graph->options().log_level = 0;
     SymbolVar x = opr::Host2DeviceCopy::make(*graph, src);
@@ -37,8 +27,9 @@ HostTensorND eval_conv(const std::shared_ptr<HostTensorND>& src,
 }
 
 template <typename Opr>
-HostTensorND eval_conv_cpu(const HostTensorND& xv, const HostTensorND& fv,
-                           const typename Opr::Param& param = {}) {
+HostTensorND eval_conv_cpu(
+        const HostTensorND& xv, const HostTensorND& fv,
+        const typename Opr::Param& param = {}) {
     auto cn = CompNode::load("cpux");
     auto src = std::make_shared<HostTensorND>(cn, xv.layout()),
          filter = std::make_shared<HostTensorND>(cn, fv.layout());

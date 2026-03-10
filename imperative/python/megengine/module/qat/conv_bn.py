@@ -1,12 +1,4 @@
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 from ...functional import ones, relu, sqrt, sum, zeros
-from ...quantization.utils import fake_quant_bias
 from .. import conv_bn as Float
 from .module import QATModule
 
@@ -122,10 +114,7 @@ class _ConvBnActivation2d(Float._ConvBnActivation2d, QATModule):
             b_fold = beta + gamma * (conv_bias - bn_mean) * bn_istd
 
         w_qat = self.apply_quant_weight(w_fold)
-        if self.weight_fake_quant and self.weight_fake_quant.enabled:
-            b_qat = fake_quant_bias(b_fold, inp, w_qat)
-        else:
-            b_qat = b_fold
+        b_qat = self.apply_quant_bias(b_fold, inp, w_qat)
         conv = self.conv.calc_conv(inp, w_qat, b_qat)
         if not (self.training and approx):
             return conv
@@ -140,10 +129,6 @@ class _ConvBnActivation2d(Float._ConvBnActivation2d, QATModule):
 
     @classmethod
     def from_float_module(cls, float_module: Float._ConvBnActivation2d):
-        r"""
-        Return a :class:`~.QATModule` instance converted from
-        a float :class:`~.Module` instance.
-        """
         qat_module = cls(
             float_module.conv.in_channels,
             float_module.conv.out_channels,
@@ -153,8 +138,10 @@ class _ConvBnActivation2d(Float._ConvBnActivation2d, QATModule):
             float_module.conv.dilation,
             float_module.conv.groups,
             float_module.conv.bias is not None,
-            float_module.conv.conv_mode.name,
-            float_module.conv.compute_mode.name,
+            float_module.conv.conv_mode,
+            float_module.conv.compute_mode,
+            padding_mode=float_module.conv.padding_mode,
+            name=float_module.name,
         )
         qat_module.conv.weight = float_module.conv.weight
         qat_module.conv.bias = float_module.conv.bias
@@ -163,9 +150,8 @@ class _ConvBnActivation2d(Float._ConvBnActivation2d, QATModule):
 
 
 class ConvBn2d(_ConvBnActivation2d):
-    r"""
-    A fused :class:`~.QATModule` including Conv2d, BatchNorm2d with QAT support.
-    Could be applied with :class:`~.Observer` and :class:`~.FakeQuantize`.
+    r"""A fused :class:`~.QATModule` including :class:`~.module.Conv2d` and :class:`~.module.BatchNorm2d` with QAT support.
+    Could be applied with :class:`~.Observer` and :class:`~.quantization.fake_quant.FakeQuantize`.
     """
 
     def forward(self, inp):
@@ -173,9 +159,8 @@ class ConvBn2d(_ConvBnActivation2d):
 
 
 class ConvBnRelu2d(_ConvBnActivation2d):
-    r"""
-    A fused :class:`~.QATModule` including Conv2d, BatchNorm2d and relu with QAT support.
-    Could be applied with :class:`~.Observer` and :class:`~.FakeQuantize`.
+    r"""A fused :class:`~.QATModule` including :class:`~.module.Conv2d`, :class:`~.module.BatchNorm2d` and :func:`~.relu` with QAT support.
+    Could be applied with :class:`~.Observer` and :class:`~.quantization.fake_quant.FakeQuantize`.
     """
 
     def forward(self, inp):

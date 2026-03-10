@@ -1,20 +1,14 @@
-/**
- * \file imperative/src/impl/op_trait.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
+#include <exception>
 #include <sstream>
+#include <stdexcept>
 
+#include "megbrain/imperative/op_def.h"
 #include "megbrain/imperative/ops/opr_attr.h"
+#include "megbrain/imperative/proxy_graph_detail.h"
+#include "megbrain/imperative/subgraph_detail.h"
+#include "megbrain/tensor.h"
 
 #include "./op_trait.h"
-#include "./proxy_graph_detail.h"
 
 namespace mgb {
 namespace imperative {
@@ -34,9 +28,58 @@ StaticData& static_data() {
     return data;
 }
 
-} // detail
+void OpMethFallbackByProxyGraph::impl(
+        ApplyOnPhysicalTensor& func, op_meth_tag::ApplyOnPhysicalTensor) {
+    func.Base::operator=(proxy_graph_detail::apply_on_physical_tensor);
+}
+void OpMethFallbackByProxyGraph::impl(
+        InferOutputAttrsFallible& func, op_meth_tag::InferOutputAttrsFallible) {
+    func.Base::operator=(proxy_graph_detail::infer_output_attrs_fallible);
+}
+void OpMethFallbackByProxyGraph::impl(
+        GetInputLayoutConstraint& func, op_meth_tag::GetInputLayoutConstraint) {
+    func.Base::operator=(proxy_graph_detail::get_input_layout_constraint);
+}
+void OpMethFallbackByProxyGraph::impl(GradMaker& func, op_meth_tag::GradMaker) {
+    func.Base::operator=(proxy_graph_detail::make_backward_graph);
+}
 
-OpTrait::OpTrait(const char* name_): name(name_) {}
+void OpMethFallbackFromSubgraph::impl(
+        ApplyOnPhysicalTensor& func, op_meth_tag::ApplyOnPhysicalTensor) {
+    func.Base::operator=(subgraph_detail::apply_on_physical_tensor);
+}
+void OpMethFallbackFromSubgraph::impl(
+        ApplyOnVarNode& func, op_meth_tag::ApplyOnVarNode) {
+    func.Base::operator=(subgraph_detail::apply_on_var_node);
+}
+void OpMethFallbackFromSubgraph::impl(
+        InferOutputAttrsFallible& func, op_meth_tag::InferOutputAttrsFallible) {
+    func.Base::operator=(subgraph_detail::infer_output_attrs_fallible);
+}
+void OpMethFallbackFromSubgraph::impl(
+        GetInputLayoutConstraint& func, op_meth_tag::GetInputLayoutConstraint) {
+    func.Base::operator=(subgraph_detail::get_input_layout_constraint);
+}
+void OpMethFallbackFromSubgraph::impl(GradMaker& func, op_meth_tag::GradMaker) {
+    func.Base::operator=(subgraph_detail::make_backward_graph);
+}
+
+void OpMethFallback::impl(DecideDispatchMode& func, op_meth_tag::DecideDispatchMode) {
+    static auto decide_dispatch_mode = [](const OpDef&,
+                                          const SmallVector<LogicalTensorDesc>&) {
+        return DispatchMode::KERNEL;
+    };
+    func.Base::operator=(decide_dispatch_mode);
+}
+void OpMethFallback::impl(MakeNameFunc& func, op_meth_tag::MakeNameFunc) {
+    static auto make_name = [](const OpDef& def) -> std::string {
+        return def.trait()->name;
+    };
+    func.Base::operator=(make_name);
+}
+}  // namespace detail
+
+OpTrait::OpTrait(const char* name_) : name(name_) {}
 
 OpTrait* OpTrait::find_by_typeinfo(Typeinfo* type) {
     auto&& type2reg = detail::static_data().type2reg;
@@ -56,35 +99,34 @@ OpTrait* OpTrait::find_by_name(const char* name) {
     return iter->second;
 }
 
-void OpTrait::for_each_trait(thin_function<void(OpTrait&)> visitor){
-    for(auto& trait: detail::static_data().registries){
+void OpTrait::for_each_trait(thin_function<void(OpTrait&)> visitor) {
+    for (auto& trait : detail::static_data().registries) {
         visitor(trait);
     }
 }
 
 OpTraitRegistry& OpTraitRegistry::fallback() {
-    if (trait->apply_on_var_node) {
-        // fallback to proxy graph impl
-        if (!trait->apply_on_physical_tensor) {
-            trait->apply_on_physical_tensor =
-                    proxy_graph_detail::apply_on_physical_tensor;
-        }
-        if (!trait->infer_output_attrs_fallible) {
-            trait->infer_output_attrs_fallible =
-                    proxy_graph_detail::infer_output_attrs_fallible;
-        }
-        if (!trait->make_backward_graph) {
-            trait->make_backward_graph =
-                    proxy_graph_detail::make_backward_graph;
-        }
+    using Mode = detail::OpMethFallbackMode;
+    uint64_t mode = Mode::None;
+    if (trait->make_forward_graph) {
+        mode |= Mode::FromSubgraph;
     }
+    if (trait->apply_on_var_node) {
+        mode |= Mode::ByProxyGraph;
+    }
+    mode |= Mode::Default;
+#define SET_FALLBACK_MODE(meth) trait->meth.fallback_mode = mode;
+    FOR_EACH_OP_METH(SET_FALLBACK_MODE)
+#undef SET_FALLBACK_MODE
+
     return *this;
 }
 
 void OpTraitRegistry::do_insert(Typeinfo* type) {
     auto&& sd = detail::static_data();
     auto ret = sd.type2reg.emplace(type, trait);
-    mgb_assert(ret.second || ret.first->second == trait,
+    mgb_assert(
+            ret.second || ret.first->second == trait,
             "OpTrait for %s has already been registered", type->name);
 }
 
@@ -104,7 +146,7 @@ OpTraitRegistry OpTraitRegistry::do_insert(const char* name) {
     return {ret};
 }
 
-} // namespace imperative
-} // namespace mgb
+}  // namespace imperative
+}  // namespace mgb
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

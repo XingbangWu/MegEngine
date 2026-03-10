@@ -1,14 +1,3 @@
-/**
- * \file src/opr/impl/cond.sereg.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megbrain/opr/cond.h"
 #include "megbrain/opr/utility.h"
 #include "megbrain/serialization/sereg.h"
@@ -33,25 +22,22 @@ namespace serialization {
 template <>
 struct OprMaker<opr::CondExecPred, 0> {
     using Param = opr::CondExecPred::Param;
-    static cg::OperatorNodeBase* make(const Param& param,
-                                      const cg::VarNodeArray& inputs,
-                                      ComputingGraph& graph,
-                                      const OperatorNodeConfig& config) {
+    static cg::OperatorNodeBase* make(
+            const Param& param, const cg::VarNodeArray& inputs, ComputingGraph& graph,
+            const OperatorNodeConfig& config) {
         MGB_MARK_USED_VAR(graph);
         return opr::CondExecPred::make_opr(
-                inputs.back(),
-                {inputs.data(), inputs.data() + inputs.size() - 1}, param,
-                config);
+                inputs.back(), {inputs.data(), inputs.data() + inputs.size() - 1},
+                param, config);
     }
 };
 
 template <>
 struct OprMaker<opr::CondExecPredLogical, 0> {
     using Param = opr::CondExecPredLogical::Param;
-    static cg::OperatorNodeBase* make(const Param& param,
-                                      const cg::VarNodeArray& inputs,
-                                      ComputingGraph& graph,
-                                      const OperatorNodeConfig& config) {
+    static cg::OperatorNodeBase* make(
+            const Param& param, const cg::VarNodeArray& inputs, ComputingGraph& graph,
+            const OperatorNodeConfig& config) {
         MGB_MARK_USED_VAR(graph);
         return opr::CondExecPredLogical::make(inputs, param, config)
                 .node()
@@ -62,28 +48,24 @@ struct OprMaker<opr::CondExecPredLogical, 0> {
 template <>
 struct OprMaker<opr::CondExecMark, 0> {
     using Param = opr::CondExecMark::Param;
-    static cg::OperatorNodeBase* make(const Param& param,
-                                      const cg::VarNodeArray& inputs,
-                                      ComputingGraph& graph,
-                                      const OperatorNodeConfig& config) {
+    static cg::OperatorNodeBase* make(
+            const Param& param, const cg::VarNodeArray& inputs, ComputingGraph& graph,
+            const OperatorNodeConfig& config) {
         MGB_MARK_USED_VAR(graph);
         return opr::CondExecMark::make_opr(
-                inputs.back(),
-                {inputs.data(), inputs.data() + inputs.size() - 1}, param,
-                config);
+                inputs.back(), {inputs.data(), inputs.data() + inputs.size() - 1},
+                param, config);
     }
 };
 
 template <>
 struct OprMaker<opr::CondExecMarkIfNeed, 0> {
     using Param = opr::CondExecMarkIfNeed::Param;
-    static cg::OperatorNodeBase* make(const Param& param,
-                                      const cg::VarNodeArray& inputs,
-                                      ComputingGraph& graph,
-                                      const OperatorNodeConfig& config) {
+    static cg::OperatorNodeBase* make(
+            const Param& param, const cg::VarNodeArray& inputs, ComputingGraph& graph,
+            const OperatorNodeConfig& config) {
         mgb_assert(inputs.size() == 2);
-        auto out = opr::CondExecMark::mark_if_need(inputs[0], inputs[1], param,
-                                                   config)
+        auto out = opr::CondExecMark::mark_if_need(inputs[0], inputs[1], param, config)
                            .node();
         if (out->owner_opr()->output().size() != 1) {
             out = opr::Identity::make(out).node();
@@ -95,10 +77,9 @@ struct OprMaker<opr::CondExecMarkIfNeed, 0> {
 template <>
 struct OprMaker<opr::CondExecMerge, 0> {
     using Param = opr::CondExecMerge::Param;
-    static cg::OperatorNodeBase* make(const Param& param,
-                                      const cg::VarNodeArray& inputs,
-                                      ComputingGraph& graph,
-                                      const OperatorNodeConfig& config) {
+    static cg::OperatorNodeBase* make(
+            const Param& param, const cg::VarNodeArray& inputs, ComputingGraph& graph,
+            const OperatorNodeConfig& config) {
         MGB_MARK_USED_VAR(graph);
         size_t nr_val_inp = inputs.size();
         Maybe<VarNodeArrayView> out_shapes_storage;

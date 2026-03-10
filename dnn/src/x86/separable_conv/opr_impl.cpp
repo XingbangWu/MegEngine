@@ -47,55 +47,47 @@
  *
  * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
  *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
+ * Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *
  * This file has been modified by Megvii ("Megvii Modifications").
- * All Megvii Modifications are Copyright (C) 2014-2019 Megvii Inc. All rights reserved.
+ * All Megvii Modifications are Copyright (C) 2014-2021 Megvii Inc. All rights reserved.
  *
  * ---------------------------------------------------------------------------
  */
 
 #include "src/x86/separable_conv/opr_impl.h"
+#include <cstring>
 #include "./sep_conv_filter.h"
 #include "src/common/utils.h"
-#include "src/x86/utils.h"
 #include "src/x86/handle.h"
-#include <cstring>
+#include "src/x86/utils.h"
 
 namespace megdnn {
 namespace x86 {
 using namespace sep_conv;
 
-void SeparableConvImpl::exec(_megdnn_tensor_in src,
-        _megdnn_tensor_in filter_x,
-        _megdnn_tensor_in filter_y,
-        _megdnn_tensor_out dst,
-        _megdnn_workspace workspace)
-{
-    check_exec(src.layout, filter_x.layout, filter_y.layout, dst.layout, workspace.size);
+void SeparableConvImpl::exec(
+        _megdnn_tensor_in src, _megdnn_tensor_in filter_x, _megdnn_tensor_in filter_y,
+        _megdnn_tensor_out dst, _megdnn_workspace workspace) {
+    check_exec(
+            src.layout, filter_x.layout, filter_y.layout, dst.layout, workspace.size);
     int ih = src.layout.shape[2];
     int iw = src.layout.shape[3];
     int oh = dst.layout.shape[2];
     int ow = dst.layout.shape[3];
 
-	filter_engine_ = new FilterEngine(ih, iw, oh, ow,
-                     param().ksize_h,  param().ksize_w,
-                     param().anchor_h, param().anchor_w,
-                     param().borderMode, param().is_symm_kernel);
+    std::shared_ptr<FilterEngine> filter_engine = std::make_shared<FilterEngine>(
+            ih, iw, oh, ow, param().ksize_h, param().ksize_w, param().anchor_h,
+            param().anchor_w, param().borderMode, param().is_symm_kernel);
 
-	MEGDNN_DISPATCH_CPU_KERN_OPR(
-  		filter_engine_->exec(src, filter_x, filter_y, dst);
-  	);
-
-	delete(filter_engine_);
-
+    MEGDNN_DISPATCH_CPU_KERN_OPR(filter_engine->exec(src, filter_x, filter_y, dst));
 }
 
-} // namespace x86
-} // namespace megdnn
+}  // namespace x86
+}  // namespace megdnn
 
 // vim: syntax=cpp.doxygen

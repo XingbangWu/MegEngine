@@ -1,13 +1,3 @@
-/**
- * \file dnn/test/common/topk.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include "megdnn/handle.h"
@@ -26,6 +16,7 @@ private:
 public:
     OprProxy() = default;
     OprProxy(int k) : m_k{k} {}
+    void init(TopK*, const TensorNDArray&) {}
 
     void deduce_layout(TopK* opr, TensorLayoutArray& layouts) {
         if (layouts.size() == 3) {
@@ -43,10 +34,8 @@ public:
         }
         if (tensors.size() == 3) {
             m_workspace.update(opr->get_workspace_in_bytes(
-                    m_k, tensors[0].layout, tensors[1].layout,
-                    tensors[2].layout));
-            opr->exec(m_k, tensors[0], tensors[1], tensors[2],
-                      m_workspace.workspace());
+                    m_k, tensors[0].layout, tensors[1].layout, tensors[2].layout));
+            opr->exec(m_k, tensors[0], tensors[1], tensors[2], m_workspace.workspace());
         } else {
             m_workspace.update(opr->get_workspace_in_bytes(
                     m_k, tensors[0].layout, tensors[1].layout, {}));
@@ -56,7 +45,7 @@ public:
 };
 
 template <typename Dtype>
-void run_topk_test(Handle* handle);
+void run_topk_test(Handle* handle, bool test_kth_only = true);
 
 }  // namespace test
 }  // namespace megdnn

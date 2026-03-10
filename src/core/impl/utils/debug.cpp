@@ -1,18 +1,6 @@
-/**
- * \file src/core/impl/utils/debug.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
+#include "megbrain/utils/debug.h"
 #include <cerrno>
 #include <cmath>
-#include "megbrain/utils/debug.h"
 #include "megdnn/tensor_iter.h"
 
 using namespace mgb;
@@ -43,7 +31,7 @@ using namespace debug;
 #include <signal.h>
 #include <sys/types.h>
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__OHOS__)
 #include <dlfcn.h>
 #include <unwind.h>
 #include <iomanip>
@@ -128,8 +116,8 @@ class SigHandlerInit {
         if (signum == -1) {
             mgb_log_error("%s: std::terminate() called", msg0);
         } else {
-            mgb_log_error("%s: caught deadly signal %d(%s)", msg0, signum,
-                          strsignal(signum));
+            mgb_log_error(
+                    "%s: caught deadly signal %d(%s)", msg0, signum, strsignal(signum));
         }
         std::string bp;
         debug::backtrace(2).fmt_to_str(bp);
@@ -178,11 +166,9 @@ public:
 
     static void init() {
 #if !defined(WIN32)
-        int err = pthread_atfork(&CudaCheckOnFork::atfork_prepare, nullptr,
-                                 nullptr);
+        int err = pthread_atfork(&CudaCheckOnFork::atfork_prepare, nullptr, nullptr);
         if (err) {
-            mgb_throw(SystemError, "failed to setup atfork handler: %s",
-                      strerror(err));
+            mgb_throw(SystemError, "failed to setup atfork handler: %s", strerror(err));
         }
 #endif
     }
@@ -194,7 +180,14 @@ class InitCaller {
 
     InitCaller() {
 #ifndef WIN32
-        SigHandlerInit::init_for_segv();
+        if (MGB_GETENV("MGB_REGISTER_SEGV_HANDLER")) {
+            mgb_log_warn(
+                    "env config MGB_REGISTER_SEGV_HANDLER, which means "
+                    "megbrain will catch crash SEGV signal, if you do not want "
+                    "to megbrain do this, do unset MGB_REGISTER_SEGV_HANDLER "
+                    "and rerun");
+            SigHandlerInit::init_for_segv();
+        }
 #endif
 #if MGB_CUDA
         CudaCheckOnFork::init();
@@ -220,7 +213,8 @@ BacktraceResult mgb::debug::backtrace(int nr_exclude) {
     recursive_call = true;
     BacktraceResult result;
 
-#if (defined(__linux__) || defined(__APPLE__)) && !defined(__ANDROID__)
+#if (defined(__linux__) || defined(__APPLE__)) && !defined(__ANDROID__) && \
+        !defined(__OHOS__)
     int i = 0;
     int depth = ::backtrace(stack_mem, MAX_DEPTH);
     char** strs = backtrace_symbols(stack_mem, depth);
@@ -244,8 +238,8 @@ BacktraceResult mgb::debug::backtrace(int nr_exclude) {
         recursive_call = false;
         return {};
     }
-    pSymbol = (SYMBOL_INFO*)calloc(
-            sizeof(SYMBOL_INFO) + MAX_NAME_LEN * sizeof(char), 1);
+    pSymbol =
+            (SYMBOL_INFO*)calloc(sizeof(SYMBOL_INFO) + MAX_NAME_LEN * sizeof(char), 1);
     WORD depth = CaptureStackBackTrace(0, MAX_DEPTH, stack_mem, NULL);
     if (depth > nr_exclude)
         i = nr_exclude;
@@ -261,8 +255,8 @@ BacktraceResult mgb::debug::backtrace(int nr_exclude) {
 
         if (SymFromAddr(p, address, 0, pSymbol) &&
             SymGetLineFromAddr64(p, address, &displacementLine, &line)) {
-            frame_info << i << " " << line.FileName << ":" << line.LineNumber
-                       << " " << pSymbol->Name << std::endl;
+            frame_info << i << " " << line.FileName << ":" << line.LineNumber << " "
+                       << pSymbol->Name << std::endl;
         } else {
             frame_info << i << " "
                        << "null" << std::endl;
@@ -289,8 +283,7 @@ BacktraceResult mgb::debug::backtrace(int nr_exclude) {
             symbol = info.dli_sname;
         }
 
-        frame_info << "  #" << std::setw(2) << idx << ": " << addr << "  "
-                   << symbol;
+        frame_info << "  #" << std::setw(2) << idx << ": " << addr << "  " << symbol;
         auto frame = std::string{frame_info.str().c_str()};
         result.stack.emplace_back(frame);
     }
@@ -365,10 +358,9 @@ struct RealCtype<dt_qint8> {
 };
 
 template <typename ctype>
-Maybe<std::string> do_compare_tensor_value(const char* expr0, const char* expr1,
-                                           const HostTensorND& v0,
-                                           const HostTensorND& v1,
-                                           float maxerr) {
+Maybe<std::string> do_compare_tensor_value(
+        const char* expr0, const char* expr1, const HostTensorND& v0,
+        const HostTensorND& v1, float maxerr) {
     auto it0 = megdnn::tensor_iter<ctype>(v0.as_megdnn()).begin(),
          it1 = megdnn::tensor_iter<ctype>(v1.as_megdnn()).begin();
     for (size_t i = 0, it = v0.shape().total_nr_elems(); i < it; ++i) {
@@ -376,8 +368,9 @@ Maybe<std::string> do_compare_tensor_value(const char* expr0, const char* expr1,
                                          iv1 = RealCtype<ctype>::trans(*it1);
         double err = std::abs(iv0 - iv1) /
                      std::max<double>(
-                             1, std::min(std::abs(static_cast<double>(iv0)),
-                                         std::abs((static_cast<double>(iv1)))));
+                             1, std::min(
+                                        std::abs(static_cast<double>(iv0)),
+                                        std::abs((static_cast<double>(iv1)))));
         if (!good_float(iv0) || !good_float(iv1) || err >= maxerr) {
             TensorShape idx_shp;
             idx_shp.ndim = v0.shape().ndim;
@@ -391,8 +384,7 @@ Maybe<std::string> do_compare_tensor_value(const char* expr0, const char* expr1,
                     "At index: %s/%s\n"
                     "   error: %.6g",
                     expr1, num2str(iv1).c_str(), expr0, num2str(iv0).c_str(),
-                    idx_shp.to_string().c_str(), v0.shape().to_string().c_str(),
-                    err);
+                    idx_shp.to_string().c_str(), v0.shape().to_string().c_str(), err);
         }
 
         ++it0;
@@ -403,11 +395,9 @@ Maybe<std::string> do_compare_tensor_value(const char* expr0, const char* expr1,
 
 }  // anonymous namespace
 
-Maybe<std::string> debug::compare_tensor_value(const HostTensorND& v0,
-                                               const char* expr0,
-                                               const HostTensorND& v1,
-                                               const char* expr1,
-                                               float maxerr) {
+Maybe<std::string> debug::compare_tensor_value(
+        const HostTensorND& v0, const char* expr0, const HostTensorND& v1,
+        const char* expr1, float maxerr) {
     if (!v0.shape().eq_shape(v1.shape())) {
         return mgb_ssprintf_log(
                 "Shape mismatch\n"
@@ -426,8 +416,7 @@ Maybe<std::string> debug::compare_tensor_value(const HostTensorND& v0,
                 "  Actual: %s\n"
                 "Expected: %s\n"
                 "Which is: %s",
-                expr1, v1.layout().dtype.name(), expr0,
-                v0.layout().dtype.name());
+                expr1, v1.layout().dtype.name(), expr0, v0.layout().dtype.name());
     }
 
     switch (dtype.enumv()) {
@@ -444,8 +433,7 @@ Maybe<std::string> debug::compare_tensor_value(const HostTensorND& v0,
     }
 }
 
-std::string debug::dump_tensor(const HostTensorND& value,
-                               const std::string& name) {
+std::string debug::dump_tensor(const HostTensorND& value, const std::string& name) {
     struct Header {
         uint32_t name_len;
         uint32_t dtype;
@@ -469,18 +457,18 @@ std::string debug::dump_tensor(const HostTensorND& value,
     return ret;
 }
 
-void debug::write_to_file(const char* filename, const std::string& content,
-                          const char* mode) {
+void debug::write_to_file(
+        const char* filename, const std::string& content, const char* mode) {
     FILE* fout = fopen(filename, mode);
-    mgb_throw_if(!fout, SystemError, "failed to open %s: %s", filename,
-                 strerror(errno));
+    mgb_throw_if(
+            !fout, SystemError, "failed to open %s: %s", filename, strerror(errno));
     auto nr = fwrite(content.data(), 1, content.size(), fout);
-    mgb_throw_if(nr != content.size(), SystemError,
-                 "failed to write to %s: num=%zu size=%zu %s", filename, nr,
-                 content.size(), strerror(errno));
+    mgb_throw_if(
+            nr != content.size(), SystemError,
+            "failed to write to %s: num=%zu size=%zu %s", filename, nr, content.size(),
+            strerror(errno));
     auto err = fclose(fout);
-    mgb_throw_if(err, SystemError, "failed to close %s: %s", filename,
-                 strerror(errno));
+    mgb_throw_if(err, SystemError, "failed to close %s: %s", filename, strerror(errno));
 }
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

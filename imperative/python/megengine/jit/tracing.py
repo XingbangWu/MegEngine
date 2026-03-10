@@ -1,48 +1,64 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import collections
 import contextlib
 import functools
 import itertools
 import json
 import os
-import typing
-import warnings
-import weakref
+import pickle
+import re
+import struct
+import sys
+from collections import OrderedDict, defaultdict
+from typing import Any, Sequence
 
+import cv2
 import numpy as np
 
-from ..core._imperative_rt import GraphProfiler
+from .. import tensor
+from ..core import _imperative_rt as rt
+from ..core._imperative_rt import (
+    CompNode,
+    GraphProfiler,
+    GraphProfiler2,
+    SerializationMetadata,
+)
+from ..core._imperative_rt.core2 import Tensor as RawTensor
+from ..core._imperative_rt.core2 import Trace, TraceError  # skip_tracing,
+from ..core._imperative_rt.core2 import add_backward_callback as _add_backward_callback
+from ..core._imperative_rt.core2 import (
+    get_marked_input_tensor,
+    get_marked_output_tensor,
+    get_marked_tensor,
+    marked_input_tensor,
+    name_tensor,
+    set_python_backtrace,
+)
+from ..core._imperative_rt.graph import _set_priority_to_id
 from ..core._imperative_rt.ops import (
+    AssertEqual,
     CollectiveComm,
-    GaussianRNG,
+    ExternOpr,
     RemoteRecv,
     RemoteSend,
-    UniformRNG,
-    VirtualDep,
+    set_jit_enabled,
 )
 from ..core._trace_option import set_symbolic_shape
-from ..core._wrap import device as as_device
-from ..core.ops.special import Const
 from ..core.tensor import megbrain_graph as G
-from ..core.tensor.core import OpBase, TensorBase, TensorWrapperBase, apply
-from ..core.tensor.raw_tensor import OpDef, RawTensor, as_raw_tensor
-from ..core.tensor.tensor import Tensor
+from ..logger import get_logger
+from ..tensor import Tensor
+from ..utils import comp_graph_tools as cgtools
+from ..utils.naming import AutoNaming
+from ..utils.profiler import is_profiling
+from .dtr_config import DTRConfig
+from .graph_opt_config import GraphOptimizationConfig
 from .sublinear_memory_config import SublinearMemoryConfig
+
+logger = get_logger(__name__)
 
 
 def _input_node_use_static_shape():
     return os.environ.get("MEGENGINE_INPUT_NODE_USE_STATIC_SHAPE") is not None
-
-
-class TraceMismatchError(RuntimeError):
-    pass
 
 
 active_trace = None
@@ -59,7 +75,7 @@ def is_tracing():
 @contextlib.contextmanager
 def exclude_from_trace():
     global skip_tracing
-    if skip_tracing:
+    if skip_tracing or (active_trace is None):
         yield
         return
     try:
@@ -67,63 +83,42 @@ def exclude_from_trace():
         if active_trace is not None:
             active_trace._begin_excluded_region()
         yield
+        if active_trace is not None:
+            active_trace._end_excluded_region()
     finally:
         skip_tracing = False
 
 
-class TensorInfo:
-    __slots__ = (
-        # collected attributes
-        "external",
-        "exported",
-        "data_read",
-        "shape_read",
-        "value_read",
-        "device",
-        "dtype",
-        "shape",
-        "is_const",
-        "bound_data",
-        # resources for execution
-        "varnode",
-        "data_setter",
-        "shape_reader",
-        "value_reader",
-        "data_reader",
-    )
-
-    def __init__(self):
-        self.exported = None
-        self.data_read = None
-        self.shape_read = None
-        self.value_read = None
-        self.bound_data = None
-
-        self.data_setter = None
-        self.shape_reader = None
-        self.value_reader = None
-        self.data_reader = None
-
-
-_io_op_types = {CollectiveComm, RemoteSend, RemoteRecv}
+def array_comparator(lhs, rhs):
+    return np.all(lhs == rhs)
 
 
 class trace:
-    """
-    Wraps a callable and provide:
+    """Wraps a callable and provide:
 
     * tracing via :meth:`.trace` and :meth:`.dump`
     * accelerated evalutaion via :meth:`.__call__`
 
-    :param function: the function will be traced.
-    :param symbolic: whether to apply symbolic execution for tracing. Default: False
-    :param capture_as_const: capture global vars or closures as const value. Default: False
-    :param sublinear_memory_config: configuration for sublinear memory optimization.
-        If not None, it enables sublinear memory optimization with given setting.
-    :param profiling: whether to profile compiled trace. Default: False
-    :param opt_level: optimization level for compiling trace.
-    :param symbolic_shape: whether to use symbolic shape for tracing. Default: True
+    Args:
+        function(Callable): the function will be traced.
+        symbolic(bool): whether to apply symbolic execution for tracing. Default: False
+        capture_as_const(bool): capture global vars or closures as const value. Default: False
+        record_only: if True, won't run even if call the function. Default: False
+        sublinear_memory_config(SublinearMemoryConfig): configuration for sublinear memory optimization.
+            If not None, it enables sublinear memory optimization with given setting.
+        dtr_config(DTRConfig): configuration for DTR sublinear memory optimization.
+            If not None, it enables DTR optimization with given setting.
+        profiling(bool): whether to profile compiled trace. Default: False
+        opt_level(int): optimization level for compiling trace. Default: 2
+        graph_opt_config(GraphOptimizationConfig): configuration for graph optimization. Default: None
+        symbolic_shape(bool): whether to use symbolic shape for tracing. Default: True
+        without_host(bool): if True, will run python code of wrapped function on the first call,
+            and run the compiled graph/function on subsequent calls. if False, will run python code every time.
+            Default: False
+        imperative(bool): if True, will use imperative runtime to execute captured op seq. Default: False
     """
+
+    third_party_backend = False
 
     def __new__(cls, *args, **kwargs):
         if not args:
@@ -133,483 +128,974 @@ class trace:
     def __init__(
         self,
         function,
+        *,
         symbolic=False,
         capture_as_const=False,
+        record_only=False,
         sublinear_memory_config: SublinearMemoryConfig = None,
+        dtr_config: DTRConfig = None,
         profiling: bool = False,
-        opt_level: int = None,
+        opt_level: int = 2,
+        graph_opt_config: GraphOptimizationConfig = None,
         symbolic_shape: bool = True,
+        without_host: bool = False,
+        imperative: bool = False,
     ):
         self.__wrapped__ = function
-        self._symbolic = symbolic
-        self._capture_as_const = capture_as_const
-        self._sublinear_memory_config = sublinear_memory_config
-        self._profiling = profiling
-        self._profiler = None
-        self._graph_opt_level = opt_level
-        self._symbolic_shape = symbolic_shape
-
-        self._reset()
-
-    def _reset(self):
-        self._untraced = True
-        self._tinfo = []  # handle -> TensorInfo
-        self._seq = []
-        self._pc = 0
-        self._graph = None
-        self._need_reset_nodes = None
-        self._lazy_eval_graph = None
-        self._lazy_eval_tensors = weakref.WeakSet()
-        self._lazy_eval_links = None
-        self._active_tensors = weakref.WeakSet()
-        self._tensor_remaps = None
-        self._inputs_to_restore = None
+        self._capture_as_const = capture_as_const or record_only
         self._arg_bindings = None
         self._kwarg_bindings = None
         self._output_bindings = None
-        self._output_names = None
+        self._symbolic_shape = symbolic_shape
+        # todo: add the switch for the with_backtrace flag in the XLA opr checker's MR
+        self._with_backtrace = False
+        self._graph_options = {
+            "no_force_inplace": True,
+            "graph_opt_level": opt_level,
+            "seq_opt.enable_seq_comp_node_opt": False,
+        }
 
-    def _new_handle(self):
-        handle = len(self._tinfo)
-        info = TensorInfo()
-        self._tinfo.append(info)
-        return handle, info
+        # prevent cyclic reference
+        graph_options = self._graph_options
+        if dtr_config is not None:
+            graph_options["enable_dtr_memory_opt"] = True
+            graph_options[
+                "dtr_config.eviction_threshold"
+            ] = dtr_config.eviction_threshold
+            graph_options[
+                "dtr_config.evictee_minimum_size"
+            ] = dtr_config.evictee_minimum_size
+            graph_options[
+                "dtr_config.recomp_memory_factor"
+            ] = dtr_config.recomp_memory_factor
+            graph_options[
+                "dtr_config.recomp_time_factor"
+            ] = dtr_config.recomp_time_factor
+        if graph_opt_config is not None:
+            mapping = {None: 0, False: 1, True: 2}
+            graph_options["graph_opt.jit_config.fuse_dimshuffle"] = mapping[
+                graph_opt_config.jit_fuse_dimshuffle
+            ]
+            graph_options["graph_opt.jit_config.fuse_reduce"] = mapping[
+                graph_opt_config.jit_fuse_reduce
+            ]
 
-    def _apply_op(self, op, args):
-        assert not self._untraced
-        # check against trace
-        if self._pc >= len(self._seq):
-            raise TraceMismatchError("trace should end here, but more op observed")
-        record = self._seq[self._pc]
-        op_, ihandles, ohandles = record
-        if op != op_:
-            raise TraceMismatchError("op different from last time")
-        if len(ihandles) != len(args):
-            raise TraceMismatchError("op input size different from last time")
+        if sublinear_memory_config is not None:
+            graph_options["enable_sublinear_memory_opt"] = True
+            graph_options[
+                "sublinear_mem_config.lb_memory_mb"
+            ] = sublinear_memory_config.lb_memory_mb
+            graph_options[
+                "sublinear_mem_config.genetic_nr_iter"
+            ] = sublinear_memory_config.genetic_nr_iter
+            graph_options[
+                "sublinear_mem_config.genetic_pool_size"
+            ] = sublinear_memory_config.genetic_pool_size
+            graph_options[
+                "sublinear_mem_config.thresh_nr_try"
+            ] = sublinear_memory_config.thresh_nr_try
+            graph_options[
+                "sublinear_mem_config.num_worker"
+            ] = sublinear_memory_config.num_worker
+        if int(os.getenv("MEGENGINE_INPLACE_UPDATE", "0")):
+            graph_options["var_sanity_check_first_run"] = False
 
-        for h, x in zip(ihandles, args):
-            info = self._tinfo[h]
-            if info.external:
-                if (
-                    x.__class__ is CompiledTensorProxy
-                    and not self._tinfo[x._CompiledTensorProxy__handle].exported
-                ):
-                    raise TraceMismatchError(
-                        "failed to capture: input was an external tensor "
-                        "last time, got an internal tensor this time"
-                    )
-                if info.bound_data:
-                    if x.__class__ is CompiledTensorProxy:
-                        raise TraceMismatchError(
-                            "const capture violated: was an external tensor "
-                            "last time, got an internal tensor this time"
-                        )
-                    if x._handle != info.bound_data._handle:
-                        if not np.array_equal(x.numpy(), info.bound_data.numpy()):
-                            raise TraceMismatchError(
-                                "const capture violated: got "
-                                "a different tensor this time"
-                            )
-                else:
-                    if info.dtype != x.dtype:
-                        raise TraceMismatchError(
-                            "failed to capture: different dtype from last time"
-                        )
-                    if info.device != x.device:
-                        raise TraceMismatchError(
-                            "failed to capture: different device from last time"
-                        )
-                    info.data_setter.set_value(x._dev_tensor())
-            else:
-                if x.__class__ is not CompiledTensorProxy:
-                    if x not in self._tensor_remaps:
-                        raise TraceMismatchError(
-                            "unexpected capture: trying to use an external tensor as "
-                            "input, but that input was an internal tensor last time"
-                        )
-                    else:
-                        x = self._tensor_remaps[x]
-                if x._CompiledTensorProxy__handle != h:
-                    raise TraceMismatchError(
-                        "mis-wiring: input edge to an data flow "
-                        "graph node is different from last time"
-                    )
+        def apply_options(options):
+            for k, v in graph_options.items():
+                words = k.split(".")
+                suboptions = options
+                for word in words[:-1]:
+                    suboptions = getattr(suboptions, word)
+                setattr(suboptions, words[-1], v)
 
-        self._pc += 1
-        outputs = tuple([CompiledTensorProxy(h) for h in ohandles])
-        self._active_tensors.update(outputs)
-        return outputs
+        self._trace = Trace()
+        self._trace.symbolic = symbolic or record_only
+        self._trace.capture_as_const = capture_as_const or record_only
+        self._trace.no_exec = record_only
+        self._trace.imperative = imperative
+        self._trace.options_visitor = apply_options
+        self._trace.profile = profiling
+        self._trace.array_comparator = array_comparator
+        self._trace.record_input_shapes = _input_node_use_static_shape()
+        self._trace.without_host = without_host
+        self.check_external = True
+        self.traced = False
+        self.overall = True
+        self.reset_third_party_variable()
 
-    def _apply_const(self, op, args):
-        assert not self._untraced
-        # check against trace
-        if self._pc >= len(self._seq):
-            raise TraceMismatchError("trace should end here, but more op observed")
-        record = self._seq[self._pc]
-        op_, ihandles, ohandles = record
-        assert isinstance(op_, Const)
+    @property
+    def check_external(self):
+        return self._trace.check_external
 
-        eq = op_.value == op.value
-        if not isinstance(eq, bool):
-            eq = all(eq)
-        if not eq:
-            raise TraceMismatchError(
-                "const tensor violated: got a different tensor this time"
-            )
+    @check_external.setter
+    def check_external(self, flag):
+        self._trace.check_external = flag
 
-        self._pc += 1
-        (h,) = ohandles
-        outputs = tuple([self._tinfo[h].bound_data])
-        return outputs
+    @property
+    def without_host(self):
+        return self._trace.without_host
 
-    def _record_op(self, op, inputs, outputs):
-        if skip_tracing:
-            for x in inputs:
-                h = getattr(x, "_TraceMixin__handle", None)
-                if h is not None:
-                    self._tinfo[h].data_read = True
-            return
+    def flatten_inputs(self, *args, **kwargs):
+        from ..traced_module.pytree import tree_flatten, SUPPORTED_LEAF_CLS
+        from ..module import Module
+        from ..optimizer import Optimizer
 
-        ihandles = []
-        for x in inputs:
-            h = getattr(x, "_TraceMixin__handle", None)
-            if h is None or (not self._capture_as_const and self._tinfo[h].exported):
-                h, info = self._new_handle()
-                info.external = True
-                info.device = x.device
-                info.dtype = x.dtype
-                info.shape = x.shape
-                if self._capture_as_const:
-                    info.bound_data = x
+        if Optimizer not in SUPPORTED_LEAF_CLS:
+            SUPPORTED_LEAF_CLS.append(Optimizer)
 
-            ihandles.append(h)
+        tensor_args = []
+        modules = []
+        fargs, _ = tree_flatten((args, kwargs))
+        for a in fargs:
+            if isinstance(a, RawTensor):
+                tensor_args.append(a)
+            elif isinstance(a, Module):
+                modules.append(a)
+            elif isinstance(a, Optimizer):
+                states = a._state.values()
+                for s in states:
+                    assert isinstance(s, dict)
+                    tensor_args.extend(list(s.values()))
+        for m in modules:
+            tensor_args.extend(list(m.parameters()))
+        grads = []
+        for t in tensor_args:
+            if t.grad is not None:
+                grads.append(t.grad)
+        for m in modules:
+            tensor_args.extend(list(m.buffers()))
+        tensor_args.extend(grads)
+        return tensor_args
 
-        ohandles = []
-        for x in outputs:
-            h, info = self._new_handle()
-            ohandles.append(h)
-            info.external = False
-            TraceMixin._TraceMixin__inject(x, h)
+    def compile(self):
+        raise NotImplementedError
 
-        self._seq.append((op, tuple(ihandles), tuple(ohandles)))
-        self._active_tensors.update(outputs)
+    def execute(self, *args, **kwargs):
+        raise NotImplementedError
 
-    def _record_const(self, op, outputs):
-        if skip_tracing:
-            (x,) = outputs
-            h = getattr(x, "_TraceMixin__handle", None)
-            if h is not None:
-                self._tinfo[h].data_read = True
-            return
+    def setup_env(self):
+        pass
 
-        (x,) = outputs
-        h, info = self._new_handle()
-        ohandles = [h]
-        info.external = True
-        info.device = x.device
-        info.dtype = x.dtype
-        info.shape = x.shape
-        info.bound_data = x
-        info.is_const = True
-        TraceMixin._TraceMixin__inject(x, h)
-        self._seq.append((op, tuple(), tuple(ohandles)))
+    def unset_env(self):
+        pass
 
-    def _set_active(self, active: bool):
-        global active_trace
-        if active:
-            if active_trace:
-                raise NotImplementedError("sorry, not implemented: nested trace")
-            active_trace = self
-        else:
-            assert active_trace is self
-            active_trace = None
+    def reset_third_party_variable(self):
+        self.input_num = 0
+        self.output_num = 0
+        self.arg_list = []
+        self.out_list = []
 
-    def _init_trace(self, symbolic: bool):
-        apply.enable(apply_with_tracing)
-        apply.enable(apply_const_with_tracing)
-        if symbolic:
-            apply.enable(apply_symbolic_mode)
-            apply.enable(apply_const_symbolic_mode)
-            self._lazy_eval_graph = G.Graph()
-            self._apply_graph_options(self._lazy_eval_graph)
-            self._lazy_eval_links = ()
+        # forward keeped activation
+        self.keeped_activation = []
 
-    def _take_escaped_tensors(self):
-        escaped_tensors = tuple(self._active_tensors)
-        self._active_tensors.clear()
-        return escaped_tensors
+        self.third_party_backend_compiled = False
 
-    def _lazy_eval(self, lazy_eval_graph, lazy_eval_tensors, lazy_eval_links):
-        readers = [
-            G.OutputNode(x._LazyEvalTensor__varnode).outputs[0]
-            for x in lazy_eval_tensors
-        ]
-        self._apply_graph_options(lazy_eval_graph)
-        # FIXME
-        if self._graph_opt_level is not None:
-            lazy_eval_graph.options.graph_opt_level = self._graph_opt_level
-        else:
-            lazy_eval_graph.options.graph_opt_level = 2
-        lazy_eval_graph.compile(*lazy_eval_links, *readers)
-        lazy_eval_graph()
-        for r, x in zip(readers, lazy_eval_tensors):
-            assign_raw_tensor(x, as_raw_tensor(r.op.get_value()))
+    def compile_and_exec(self, *args, **kwargs):
+        if not self.third_party_backend_compiled:
+            self.compile()
+            self.third_party_backend_compiled = True
+        return self.execute(*args, **kwargs)
 
-    @contextlib.contextmanager
-    def _setup(self):
-        interrupted = False
+    def convert_optimizer_state_to_tensor(self, *args, **kwargs):
+        from ..traced_module.pytree import tree_flatten, SUPPORTED_LEAF_CLS
+        from ..optimizer import Optimizer
+        from ..tensor import Tensor
 
-        def do_enter():
-            self._save_symbolic_shape = set_symbolic_shape(self._symbolic_shape)
-            self._set_active(True)
-            if self._untraced:
-                self._init_trace(self._symbolic)
-            else:
-                apply.enable(apply_compiled_mode)
-                apply.enable(apply_const_compiled_mode)
-                if self._graph is None:
-                    self._compile()
-                self._graph.execute()
+        if Optimizer not in SUPPORTED_LEAF_CLS:
+            SUPPORTED_LEAF_CLS.append(Optimizer)
+        args, _ = tree_flatten((args, kwargs))
+        for arg in args:
+            if isinstance(arg, Optimizer):
+                for param_group in arg.param_groups:
+                    for k, v in param_group.items():
+                        if k == "params":
+                            continue
+                        if not isinstance(v, (Tensor, Sequence)):
+                            param_group[k] = Tensor(v, dtype="float32")
+                        elif isinstance(v, Sequence) and not isinstance(v[0], Tensor):
+                            new_v = []
+                            for i in range(len(v)):
+                                new_v.append(Tensor(v[i], dtype="float32"))
+                            param_group[k] = new_v
 
-        def do_finalize():
-            escaped_tensors = self._take_escaped_tensors()
-            if self._untraced:
-                for x in escaped_tensors:
-                    info = self._tinfo[x._TraceMixin__handle]
-                    info.data_read = True
-                    x._TraceMixin__restore()
-                if self._inputs_to_restore:
-                    for x in self._inputs_to_restore:
-                        x._TraceMixin__restore()
-                if self._symbolic and (
-                    self._lazy_eval_tensors or self._lazy_eval_links
-                ):
-                    # eval lazy eval tensors
-                    self._lazy_eval(
-                        self._lazy_eval_graph,
-                        tuple(self._lazy_eval_tensors),
-                        self._lazy_eval_links,
-                    )
-                    self._lazy_eval_graph = None
-                    self._lazy_eval_tensors = None
-                    self._lazy_eval_links = None
-                self._untraced = False
-            else:
-                # compiled_tensor leaks
-                if self._pc == len(self._seq):
-                    for x in escaped_tensors:
-                        try:
-                            assign_raw_tensor(x, as_raw_tensor(x._dev_tensor()))
-                        except TraceMismatchError:
-                            # TraceMismatchError thrown in do_exit
-                            pass
-                    self._graph.wait()
-                    self._reset_exec_env()
+    def setup_io_without_trace(self, inputs, outputs):
+        self.traced = True
+        self.arg_list = [i for i in inputs if i != -1]
+        self.out_list = outputs
+        self.input_num = len(self.arg_list)
+        self.output_num = len([i for i in outputs if i != -1])
 
-            # reset status
-            self._pc = 0
-            self._tensor_remaps = None
-            apply.disable(apply_with_tracing)
-            apply.disable(apply_const_with_tracing)
-            apply.disable(apply_symbolic_mode)
-            apply.disable(apply_const_symbolic_mode)
-            apply.disable(apply_compiled_mode)
-            apply.disable(apply_const_compiled_mode)
-            self._set_active(False)
-            # Restore global variable
-            set_symbolic_shape(self._save_symbolic_shape)
-
-        def do_exit():
-            if not self._untraced and self._pc != len(self._seq):
-                raise TraceMismatchError("premature end")
-            if not self._symbolic or not self._untraced:
-                for x in self._active_tensors:
-                    x._dev_tensor()
-
-        try:
-            do_enter()
-            yield
-            do_exit()
-        except:
-            interrupted = True
-            raise
-        finally:
-            do_finalize()
-            if interrupted:
-                self._reset()
-
-    def _begin_excluded_region(self):
-        if self._capture_as_const:
-            raise RuntimeError(
-                "exclude_from_trace cannot be used with capture_as_const"
-            )
-        if self._untraced:
-            # conditionally reading a compiled tensor in excluded region
-            # is permitted, so we have to assume every tensor might be read
-            for x in self._active_tensors:
-                info = self._tinfo[x._TraceMixin__handle]
-                info.exported = True
-                info.data_read = True
-
-    def _apply_graph_options(self, graph):
-
-        graph.options.no_force_inplace = True
-        graph.options.seq_opt.enable_seq_comp_node_opt = False
-        # graph opt level
-        # if self._graph_opt_level is not None:
-        #     graph.options.graph_opt_level = self._graph_opt_level
-        # FIXME
-        graph.options.graph_opt_level = 0
-        # sublinear
-        if self._sublinear_memory_config is not None:
-            graph.options.enable_sublinear_memory_opt = True
-            sublinear_config = graph.options.sublinear_mem_config
-            sublinear_config.lb_memory = self._sublinear_memory_config.lb_memory
-            sublinear_config.genetic_nr_iter = (
-                self._sublinear_memory_config.genetic_nr_iter
-            )
-            sublinear_config.genetic_pool_size = (
-                self._sublinear_memory_config.genetic_pool_size
-            )
-            sublinear_config.thresh_nr_try = self._sublinear_memory_config.thresh_nr_try
-            sublinear_config.num_worker = self._sublinear_memory_config.num_worker
-        # profile
-        if self._profiling:
-            self._profiler = GraphProfiler(graph)
-
-    def _compile(self):
-        graph = self._graph = G.Graph()
-        graph.options.async_exec_level = 0b100
-        self._apply_graph_options(graph)
-        # graph.options.graph_opt_level = 0
-        need_reset_nodes = self._need_reset_nodes = []
-        # links enforce ordering of I/O nodes
-        links = ()
-        readers = []
-
-        if self._capture_as_const:
-            for h in itertools.chain(self._arg_bindings, self._kwarg_bindings.values()):
-                info = self._tinfo[h]
-                opnode = info.data_setter = G.InputNode(
-                    device=info.device,
-                    dtype=info.dtype,
-                    shape=info.shape or (1,),
-                    graph=graph,
-                    use_static_shape=_input_node_use_static_shape(),
-                )
-                need_reset_nodes.append(opnode)
-                info.varnode = opnode.outputs[0]
-                links += opnode.outputs[1:]
-
-        for op, ihandles, ohandles in self._seq:
-            if isinstance(op, Const):
-                assert len(ihandles) == 0
-                (h,) = ohandles
-                info = self._tinfo[h]
-                if not hasattr(info, "varnode"):
-                    assert info.external
-                    assert info.bound_data
-                    info.varnode = graph.make_const(
-                        info.bound_data.numpy(),
-                        info.bound_data.dtype,
-                        info.bound_data.device,
-                    )
-                continue
-
-            require_links = type(op) in _io_op_types
-            ivars = []
-            for i, h in enumerate(ihandles):
-                info = self._tinfo[h]
-                if not hasattr(info, "varnode"):
-                    assert info.external
-                    if info.bound_data:
-                        if hasattr(info, "is_const") and info.is_const:
-                            info.varnode = graph.make_const(
-                                info.bound_data.numpy(),
-                                info.bound_data.dtype,
-                                info.bound_data.device,
-                            )
-                        else:
-                            info.varnode = graph.make_const(
-                                info.bound_data._dev_tensor()
-                                # info.bound_data.numpy()
-                            )
-                    else:
-                        opnode = info.data_setter = G.InputNode(
-                            *links,
-                            device=info.device,
-                            dtype=info.dtype,
-                            shape=info.shape or (1,),
-                            graph=graph,
-                            use_static_shape=_input_node_use_static_shape(),
-                        )
-                        need_reset_nodes.append(opnode)
-                        info.varnode, *links = opnode.outputs
-                if require_links and i == 0 and len(links) > 0:
-                    info.varnode = apply(VirtualDep(), info.varnode, *links)[0]
-                    links = (info.varnode,)
-
-                ivars.append(info.varnode)
-            ovars = apply(op, *ivars)
-            if require_links and len(ovars) > 0:
-                links = (ovars[0],)
-            assert len(ovars) == len(ohandles)
-            for h, v in zip(ohandles, ovars):
-                info = self._tinfo[h]
-                info.varnode = v
-
-                def add_reader(opnode):
-                    nonlocal links
-                    need_reset_nodes.append(opnode)
-                    readers.append(opnode.outputs[0])
-                    links = opnode.outputs
-
-                if info.data_read:
-                    # Shape can be obtained from data so doesn't need its own
-                    # output node. On the other hand, value is read separately
-                    # to leverage eager h2d copy
-                    info.shape_read = False
-                    opnode = info.data_reader = G.OutputNode(v, *links)
-                    add_reader(opnode)
-                if info.value_read:
-                    opnode = info.value_reader = G.ValueOutputNode(v, *links)
-                    add_reader(opnode)
-                if info.shape_read:
-                    opnode = info.shape_reader = G.AttrOutputNode(v, *links)
-                    add_reader(opnode)
-        # FIXME
-        if self._graph_opt_level is not None:
-            graph.options.graph_opt_level = self._graph_opt_level
-        else:
-            graph.options.graph_opt_level = 2
-        graph.compile(*readers, *links)
-
-    def _reset_exec_env(self):
-        for opnode in self._need_reset_nodes:
-            opnode.reset()
-
-    def _require_shape(self, handle):
-        info = self._tinfo[handle]
-        info.shape_read = True
-
-    def _require_value(self, handle):
-        info = self._tinfo[handle]
-        info.value_read = True
-
-    def _require_data(self, handle):
-        info = self._tinfo[handle]
-        info.data_read = True
+    def setup_without_host(self):
+        # all the modules in traced func args
+        self.inp_modules = set()
+        self.module_tensors = set()
+        # record how to map a tensorwrapper to which attr of which module
+        # the batchnorm running_mean and running_var is also saved here
+        self.tensor_to_attr = dict()
+        # map (module, tensor_name) to the input id
+        self.attr_to_key = dict()
+        # map (module, tensor_name) to the output id
+        self.update_param_dict = dict()
+        # map optimizer state tensor wrapper exclude lr to output id
+        self.update_opt_param_dict = dict()
+        # include optimizer state such as "exp_avg" of adamw and hyperparam like "weight_decay"
+        # "lr" is not include here
+        self.capture_optimizer_state = set()
+        # currently, only the input id of learning rate is recorded here
+        self.capture_optimizer_hyper_param = []
+        # map a tensor wrapper in self.capture_optimizer_state to input_id
+        self.opt_param_dict = dict()
 
     def __call__(self, *args, **kwargs):
-        if is_tracing():
-            return self.__wrapped__(*args, **kwargs)
-        with self._setup():
+        if not self.without_host:
+            return self.trace_normal(*args, **kwargs)
+        elif self.overall:
+            return self.trace_without_host_overall(*args, **kwargs)
+        else:
+            return self.trace_without_host(*args, **kwargs)
+
+    def trace_normal(self, *args, **kwargs):
+        global active_trace
+        symbolic_shape = None
+        enable_backtrace = None
+        outputs = None
+        try:
+            active_trace = self
+            self._trace.enter()
             if self._capture_as_const:
                 self._process_inputs(*args, **kwargs)
+            symbolic_shape = set_symbolic_shape(self._symbolic_shape)
+            enable_backtrace = set_python_backtrace(self._with_backtrace)
             outputs = self.__wrapped__(*args, **kwargs)
-            if self._capture_as_const:
+        finally:
+            handling_exc = sys.exc_info() != (None,) * 3
+            active_trace = None
+            if enable_backtrace is not None:
+                enable_backtrace = set_python_backtrace(enable_backtrace)
+                assert enable_backtrace == self._with_backtrace
+            if symbolic_shape is not None:
+                symbolic_shape = set_symbolic_shape(symbolic_shape)
+                assert symbolic_shape == self._symbolic_shape
+            if self._capture_as_const and (outputs is not None):
                 self._process_outputs(outputs)
-            return outputs
+            try:
+                # may raise TraceError
+                self._trace.exit()
+            except TraceError:
+                if not handling_exc:
+                    raise
+        return outputs
+
+    def trace_without_host(self, *args, **kwargs):
+        from ..traced_module.pytree import tree_flatten, SUPPORTED_LEAF_CLS
+        from ..module import Module
+        from ..utils.module_utils import get_expand_structure
+        from ..tensor import Tensor
+        from ..optimizer import Optimizer
+
+        assert self.without_host and not self.overall
+        global active_trace
+        symbolic_shape = None
+        enable_backtrace = None
+        outputs = None
+        if self.traced and self.third_party_backend:
+            return self.compile_and_exec(*args, **kwargs)
+        try:
+            active_trace = self
+            self._trace.enter()
+            if self._trace.compiled():
+                arglist = self.flatten_inputs(*args, **kwargs)
+                idx = 0
+                inp_dict = {}
+                for a in arglist:
+                    if isinstance(a, RawTensor):
+                        inp_dict[self.arg_list[idx]] = a
+                        idx += 1
+                self._trace.put_datas(inp_dict)
+                outlist = []
+                for i in self.out_list:
+                    if i == -1:
+                        if not hasattr(self, "outdef"):
+                            outlist.append(None)
+                    else:
+                        outlist.append(self._trace.get_data(i))
+                keep_vars = []
+                for i in self.keeped_activation:
+                    keep_vars.append(self._trace.get_data(i))
+
+                outputs = (
+                    self.outdef.unflatten(outlist)
+                    if hasattr(self, "outdef")
+                    else outlist
+                )
+                if keep_vars:
+                    return outputs, keep_vars
+                else:
+                    return outputs
+
+            arg_list = self.flatten_inputs(*args, **kwargs)
+            for i, arg in enumerate(arg_list):
+                arg_list[i]._reset(get_marked_input_tensor(self.input_num, arg))
+                self.arg_list.append(self.input_num)
+                self.input_num += 1
+            arg_ids = [id(i) for i in arg_list]
+            del arg_list
+            self.input_need_update_dict = {}
+            origin_reset = Tensor._reset
+
+            def tensor_reset_hook(obj, other):
+                if id(obj) in arg_ids:
+                    other = get_marked_output_tensor(self.output_num, other)
+                    self.input_need_update_dict[
+                        arg_ids.index(id(obj))
+                    ] = self.output_num
+                    self.output_num += 1
+                origin_reset(obj, other)
+
+            symbolic_shape = set_symbolic_shape(self._symbolic_shape)
+            enable_backtrace = set_python_backtrace(self._with_backtrace)
+            Tensor._reset = tensor_reset_hook
+            if self.third_party_backend:
+                self.setup_env()
+            outputs = self.__wrapped__(*args, **kwargs)
+            Tensor._reset = origin_reset
+        except Exception as e:
+            raise e
+        finally:
+            handling_exc = sys.exc_info() != (None,) * 3
+            active_trace = None
+            if enable_backtrace is not None:
+                enable_backtrace = set_python_backtrace(enable_backtrace)
+                assert enable_backtrace == self._with_backtrace
+            if symbolic_shape is not None:
+                symbolic_shape = set_symbolic_shape(symbolic_shape)
+                assert symbolic_shape == self._symbolic_shape
+            if self.third_party_backend:
+                self.unset_env()
+            if (
+                self._capture_as_const
+                and (outputs is not None)
+                and not self.without_host
+            ):
+                self._process_outputs(outputs)
+            if not self._trace.compiled():
+                outlist, self.outdef = tree_flatten(outputs)
+                if outputs is not None:
+                    for i, out in enumerate(outlist):
+                        assert isinstance(out, RawTensor), type(out)
+                        outlist[i] = get_marked_output_tensor(self.output_num, out)
+                        del out
+                        self.out_list.append(self.output_num)
+                        self.output_num += 1
+                    outputs = self.outdef.unflatten(outlist)
+            try:
+                # may raise TraceError
+                self._trace.exit()
+            except Exception as e:
+                if isinstance(e, TraceError):
+                    if not handling_exc:
+                        raise
+                else:
+                    self._trace.set_execption(str(e))
+                    raise
+            self.traced = True
+        return outputs
+
+    def trace_without_host_overall(self, *args, **kwargs):
+        # record overall train step include forward, backward, param update in a single trace object
+        from ..traced_module.pytree import tree_flatten, SUPPORTED_LEAF_CLS
+        from ..module import Module
+        from ..utils.module_utils import get_expand_structure
+        from ..tensor import Tensor
+        from ..optimizer import Optimizer
+
+        assert self.without_host
+        global active_trace
+        symbolic_shape = None
+        enable_backtrace = None
+        outputs = None
+
+        if Optimizer not in SUPPORTED_LEAF_CLS:
+            SUPPORTED_LEAF_CLS.append(Optimizer)
+
+        def get_shape_hash(*args, **kwargs):
+            tuple_shape = []
+            fargs, _ = tree_flatten((args, kwargs))
+
+            def map_scalar_to_tuple(ishape):
+                return (1,) if ishape == tuple() else ishape
+
+            for a in fargs:
+                if isinstance(a, RawTensor):
+                    tuple_shape.append(map_scalar_to_tuple(a._tuple_shape))
+
+            return hash(tuple(tuple_shape))
+
+        shape_hash = get_shape_hash(*args, **kwargs)
+        if (
+            self.third_party_backend
+            and self.hash_shape_set
+            and shape_hash not in self.hash_shape_set
+        ):
+            from .xla_backend import apply_external_convert_hook
+
+            logger.warning("Trace XLA shape mismatch, graph will be retraced!!!")
+            self.traced = False
+            self.reset_third_party_variable()
+            self._trace.reset_trace_result()
+
+            tensor_res = self.flatten_inputs(*args, **kwargs)
+            for t in tensor_res:
+                if t._is_external_value():
+                    t._reset(apply_external_convert_hook(t._external_obj(), t.device))
+
+        if self.traced and self.third_party_backend:
+            return self.compile_and_exec(*args, **kwargs)
+        try:
+            active_trace = self
+            if not self.traced:
+                self.convert_optimizer_state_to_tensor(*args, **kwargs)
+            self._trace.enter()
+            # trace without host with megbrain graph backend
+            if self._trace.compiled():
+                arglist, _ = tree_flatten((args, kwargs))
+                idx = 0
+                inp_dict = {}
+                opt_hyper_inps = []
+                for a in arglist:
+                    if isinstance(a, RawTensor):
+                        inp_dict[self.arg_list[idx]] = a
+                        idx += 1
+                    if isinstance(a, Optimizer):
+                        opt_hyper_inps.extend(
+                            [Tensor(pg["lr"]) for pg in a.add_param_groups]
+                        )
+                for t, key in zip(opt_hyper_inps, self.capture_optimizer_hyper_param):
+                    inp_dict[key] = t
+                for t, key in self.opt_param_dict.items():
+                    inp_dict[key] = t
+                self._trace.put_datas(inp_dict)
+                for attr, key in self.attr_to_key.items():
+                    param = get_expand_structure(attr[0], attr[1])
+                    self._trace.put_data(key, param)
+                outlist = []
+                for i in self.out_list:
+                    if i == -1:
+                        if not hasattr(self, "outdef"):
+                            outlist.append(None)
+                    else:
+                        outlist.append(self._trace.get_data(i))
+                for attr, key in self.update_param_dict.items():
+                    param = get_expand_structure(attr[0], attr[1])
+                    param._reset(self._trace.get_data(key))
+                for state, key in self.update_opt_param_dict.items():
+                    state._reset(self._trace.get_data(key))
+                keep_vars = []
+                for i in self.keeped_activation:
+                    keep_vars.append(self._trace.get_data(i))
+
+                outputs = (
+                    self.outdef.unflatten(outlist)
+                    if hasattr(self, "outdef")
+                    else outlist
+                )
+                if keep_vars:
+                    return outputs, keep_vars
+                else:
+                    return outputs
+
+            self.setup_without_host()
+
+            def get_attr_hook(obj, attr):
+                rst = object.__getattribute__(obj, attr)
+                # code like `@property def _weight(self): return self.weight`, we should ignore `_weight`
+                typ = object.__getattribute__(obj, "__class__")
+                if hasattr(typ, attr) and isinstance(getattr(typ, attr), property):
+                    return rst
+                if isinstance(rst, RawTensor):
+                    assert (
+                        rst in self.tensor_to_attr
+                    ), "tensor not found, may be you have changed tensors of module non-inplaced when forwarding such as `self.weight = self.weight + 1`, you should use `self.weight[...] = self.weight + 1`"
+                    # according to the tensor wrapper to find the (module, attr) tuple
+                    attr = self.tensor_to_attr[rst]
+                    if attr not in self.attr_to_key:
+                        # record how to map (module, attr) to input id
+                        self.attr_to_key[attr] = self.input_num
+                        self.input_num += 1
+                        marked_input_tensor(self.attr_to_key[attr], rst)
+                return rst
+
+            origin_reset = Tensor._reset
+            self.update_param_num = 0
+
+            def tensor_wrapper_resethook(obj, other):
+                if obj in self.tensor_to_attr:
+                    attr = self.tensor_to_attr[obj]
+                    # add module.params to output list
+                    other = get_marked_output_tensor(self.output_num, other)
+                    self.update_param_num += 1
+                    self.update_param_dict[attr] = self.output_num
+                    self.output_num += 1
+                elif obj in self.capture_optimizer_state:
+                    other = get_marked_output_tensor(self.output_num, other)
+                    # add optimizer states to output list
+                    self.update_opt_param_dict[obj] = self.output_num
+                    self.output_num += 1
+                origin_reset(obj, other)
+
+            arg_list, self.argdef = tree_flatten((args, kwargs))
+            for i, arg in enumerate(arg_list):
+                if isinstance(arg, Module):
+                    for k, v in arg.named_tensors():
+                        if v not in self.tensor_to_attr:
+                            self.tensor_to_attr[v] = (arg, k)
+                    self.inp_modules.add(arg)
+                elif isinstance(arg, RawTensor):
+                    arg_list[i] = get_marked_input_tensor(self.input_num, arg)
+                    self.arg_list.append(self.input_num)
+                    self.input_num += 1
+                elif isinstance(arg, Optimizer):
+                    # opt_state_dict is a dict like
+                    # [{'betas': [Tensor(0.9, device=xpux:0), Tensor(0.999, device=xpux:0)],
+                    #   'eps': Tensor(1e-08, device=xpux:0),
+                    #   'params': [0, 1, 2, 3, 4], # params ids
+                    #   'weight_decay': Tensor(0.01, device=xpux:0)}]
+                    #  {
+                    #      0: {"key", state_tensor}, ~, 4:  {"key", state_tensor}
+                    #  }
+                    opt_state_dict = arg.state_dict(keep_var=True)
+                    for state in opt_state_dict["param_groups"]:
+                        state.pop("lr")
+                    opt_params, _ = tree_flatten(opt_state_dict)
+                    for p in opt_params:
+                        if isinstance(p, Tensor):
+                            self.capture_optimizer_state.add(p)
+                    for pg in arg.param_groups:
+                        pg["lr"] = get_marked_input_tensor(
+                            self.input_num, Tensor(pg["lr"])
+                        )
+                        self.capture_optimizer_hyper_param.append(self.input_num)
+                        self.input_num += 1
+            self.opt_param_dict = {}
+            # optimizer states and hyper param is also added into inputs
+            for t in self.capture_optimizer_state:
+                if t not in self.tensor_to_attr:  # not module parameter
+                    mark_param = get_marked_input_tensor(self.input_num, t)
+                    # record how to map the optimizer tensors to input id
+                    self.opt_param_dict[t] = self.input_num
+                    t[...] = mark_param
+                    self.input_num += 1
+            args, kwargs = self.argdef.unflatten(arg_list)
+            module_org_getattr = Module.__getattribute__
+            Module.__getattribute__ = get_attr_hook
+            Tensor._reset = tensor_wrapper_resethook
+            enable_backtrace = set_python_backtrace(self._with_backtrace)
+            symbolic_shape = set_symbolic_shape(self._symbolic_shape)
+            if self.third_party_backend:
+                self.setup_env()
+            outputs = self.__wrapped__(*args, **kwargs)
+            del arg_list
+            del args
+            del kwargs
+
+            Module.__getattribute__ = module_org_getattr
+            Tensor._reset = origin_reset
+
+            # TODO: may be deleted
+            for attr, key in self.attr_to_key.items():
+                param = get_expand_structure(attr[0], attr[1])
+        except Exception as e:
+            raise e
+        finally:
+            handling_exc = sys.exc_info() != (None,) * 3
+            active_trace = None
+            if enable_backtrace is not None:
+                enable_backtrace = set_python_backtrace(enable_backtrace)
+                assert enable_backtrace == self._with_backtrace
+            if symbolic_shape is not None:
+                symbolic_shape = set_symbolic_shape(symbolic_shape)
+                assert symbolic_shape == self._symbolic_shape
+            if self.third_party_backend:
+                self.unset_env()
+            if (
+                self._capture_as_const
+                and (outputs is not None)
+                and not self.without_host
+            ):
+                self._process_outputs(outputs)
+            if not self._trace.compiled():
+                # process the returned value of traced function
+                outlist, self.outdef = tree_flatten(outputs)
+                for i, out in enumerate(outlist):
+                    assert isinstance(
+                        out, RawTensor
+                    ), f"return value of traced function must be tensor, get {type(out)}"
+                    outlist[i] = get_marked_output_tensor(self.output_num, out)
+                    del out
+                    self.out_list.append(self.output_num)
+                    self.output_num += 1
+                outputs = self.outdef.unflatten(outlist)
+            try:
+                # may raise TraceError
+                self._trace.exit()
+            except Exception as e:
+                if isinstance(e, TraceError):
+                    if not handling_exc:
+                        raise
+                else:
+                    self._trace.set_execption(str(e))
+                    raise
+            if self.third_party_backend:
+                self.hash_shape_set.add(shape_hash)
+            self.traced = True
+        return outputs
+
+    @property
+    def ops(self):
+        return self._trace.ops
+
+    @property
+    def vars(self):
+        return self._trace.vars
+
+    def _process_inputs(self, *args, **kwargs):
+        for i, arg in enumerate(args):
+            assert isinstance(
+                arg, RawTensor
+            ), "Only support tensor type args when capture_as_const is enabled"
+            name_tensor("arg_{}".format(i), arg)
+
+        # TODO: mark kwargs in order
+        for k, kwarg in kwargs.items():
+            if isinstance(kwarg, RawTensor):
+                name_tensor("kwarg_{}".format(k), kwarg)
+
+        if self._arg_bindings is None:
+            self._arg_bindings = [
+                ("arg_{}".format(i), arg._tuple_shape) for i, arg in enumerate(args)
+            ]
+
+        if self._kwarg_bindings is None:
+            self._kwarg_bindings = {
+                "kwarg_{}".format(k): (k, kwarg._tuple_shape)
+                for k, kwarg in kwargs.items()
+                if isinstance(kwarg, RawTensor)
+            }
+
+    def _process_outputs(self, outputs):
+        assert (
+            isinstance(outputs, RawTensor)
+            or (
+                isinstance(outputs, Sequence) and not (isinstance(outputs[0], Sequence))
+            )
+            or isinstance(outputs, collections.abc.Mapping)
+        ), "Unsupport outputs type, should be Tensor, List[Tensor] or Dict[tensor_name, Tensor]"
+        if isinstance(outputs, RawTensor):
+            outputs = [outputs]
+        if not isinstance(outputs, Sequence):
+            outputs = [outputs]
+        if isinstance(outputs, collections.abc.Mapping):
+            output_names, outputs = zip(*sorted(outputs.items()))
+        else:
+            # output_names = ["output_{}".format(i) for i in range(len(outputs))]
+            output_names = None
+        self._output_names = output_names
+        for i, output in enumerate(outputs):
+            assert isinstance(
+                output, RawTensor
+            ), "Only support return tensors when capture_as_const is enabled"
+            name_tensor("output_{}".format(i), output)
+        if self._output_bindings is None:
+            self._output_bindings = ["output_{}".format(i) for i in range(len(outputs))]
+
+    def _begin_excluded_region(self):
+        self._trace.begin_excluded_region()
+
+    def _end_excluded_region(self):
+        self._trace.end_excluded_region()
+
+    def _make_feed(
+        self,
+        graph,
+        outputs,
+        input_data,
+        repeat,
+        silent,
+        no_assert,
+        maxerr,
+        resize_input,
+        input_transform,
+    ):
+        def auto_reformat_image(path, data, dst_shape):
+            """reformat image to target shape
+
+            :param data: image data as numpy array
+            :param dst_shape: target shape
+            """
+            dim3_format = False  # required input format does not contain batch
+            hwc_format = False  # required input format is NHWC
+
+            if not dst_shape:  # input tensor shape is not predefined
+                if len(data.shape) == 2:
+                    chl = 1
+                    h = data.shape[0]
+                    w = data.shape[1]
+                else:
+                    assert (
+                        len(data.shape) == 3
+                    ), "Input image must be of dimension 2 or 3"
+                    h, w, chl = data.shape
+                dst_shape = (1, chl, h, w)
+
+            if len(dst_shape) == 3:
+                dst_shape = (1,) + dst_shape
+                dim3_format = True
+
+            assert len(dst_shape) == 4, "bad dst_shape: {}".format(dst_shape)
+            chl = dst_shape[1]
+            if chl in [1, 3]:
+                n, c, h, w = dst_shape
+                dst_shape = (n, h, w, c)
+            else:
+                chl = dst_shape[3]
+                assert chl in [
+                    1,
+                    3,
+                ], "can not infer input format from shape: {}".format(dst_shape)
+                hwc_format = True
+
+            # dst_shape has now been normalized to NHWC format
+
+            if resize_input:
+                h, w = dst_shape[1:3]
+                data = cv2.resize(data, (w, h))
+                logger.info("input {} resized to {}".format(path, data.shape))
+
+            if chl == 1:
+                data = cv2.cvtColor(data, cv2.COLOR_BGR2GRAY)
+                data = data[:, :, np.newaxis]
+
+            assert data.ndim == 3
+            data = data[np.newaxis]
+            # data normalized to NHWC format
+
+            if not hwc_format:
+                data = np.transpose(data, (0, 3, 1, 2))
+
+            if dim3_format:
+                data = np.squeeze(data, 0)
+
+            return data
+
+        def read_input_data(dst_shape, dtype, path):
+            def check_shape_equal(dst_shape, data_shape):
+                if len(dst_shape):
+                    assert len(data_shape) == len(
+                        dst_shape
+                    ), "input/data shapes mismatch: {} vs {}".format(
+                        dst_shape, data_shape
+                    )
+
+                    if data_shape[1:] != dst_shape[1:]:
+                        logger.warning(
+                            "dst_shape is {}; data_shape is {}".format(
+                                dst_shape, data_shape
+                            )
+                        )
+
+            if path.startswith("#"):
+                assert not resize_input
+                assert not input_transform
+                spec = path
+                m = re.match(
+                    r"^#rand\(([-0-9.]*)\s*,\s*([-0-9.]*)\s*(,[^\)]+)?\)$", spec
+                )
+                assert m, "bad spec {}".format(spec)
+
+                rng_min = float(m.group(1))
+                rng_max = float(m.group(2))
+                if m.group(3):
+                    shape_str = m.group(3)
+                    try:
+                        shape = shape_str[1:].split(",")
+                        if shape[-1].strip() == "...":
+                            shape = shape[:-1]
+                            shape.extend(list(dst_shape[len(shape) :]))
+                        data_shape = tuple(map(int, shape))
+                    except ValueError as e:
+                        raise ValueError("bad spec {}: {}".format(spec, e.args))
+                else:
+                    data_shape = dst_shape
+
+                check_shape_equal(dst_shape, data_shape)
+                return np.random.uniform(rng_min, rng_max, data_shape).astype(dtype)
+
+            # try to load image
+            data = cv2.imread(path, cv2.IMREAD_COLOR)
+            if data is None:
+                assert not resize_input
+                data = np.load(path)
+                assert isinstance(data, np.ndarray)
+            else:
+                # load image succeeds, so we expect input format is image format
+                data = auto_reformat_image(path, data, dst_shape)
+
+            data = np.repeat(data, repeat, axis=0)
+            if repeat > 1:
+                logger.info(
+                    "repeat input for {} times, data shape is {}".format(
+                        repeat, data.shape
+                    )
+                )
+
+            check_shape_equal(dst_shape, data.shape)
+
+            if input_transform:
+                data = eval(input_transform, {"data": data, "np": np})
+
+            return data
+
+        def gen_one_testcase(inputs, spec):
+            paths = spec.split(";")
+            if len(paths) != len(inputs):
+                if len(paths) == 1 and paths[0].startswith("#"):
+                    paths = ["{}:{}".format(name, paths[0]) for name in inputs.keys()]
+            assert len(paths) == len(
+                inputs
+            ), "required inputs: {}; data paths: {}".format(inputs.keys(), paths)
+            if len(paths) == 1 and ":" not in paths[0]:
+                paths[0] = next(iter(inputs.keys())) + ":" + paths[0]
+
+            ret = {}
+            for path in paths:
+                var, path = path.split(":")
+                ret[var] = read_input_data(inputs[var].shape, inputs[var].dtype, path)
+            return ret
+
+        inputs = cgtools.get_dep_vars(outputs, "Host2DeviceCopy")
+        inputs = {i.name: i for i in inputs}
+
+        if not no_assert:
+
+            replace_varmap = {}
+            inp_map = {}
+            # replace var use InputNode
+            for name, var in inputs.items():
+                inp = G.InputNode(
+                    device="xpux", dtype=var.dtype, shape=var.shape, graph=graph
+                )
+                replace_varmap[var] = inp.outputs[0]._node
+                inp_map[name] = inp
+
+            new = cgtools.replace_vars(outputs, replace_varmap)
+            if isinstance(new, rt.VarNode):
+                new = list(new)
+
+            output_nodes = [G.OutputNode(var) for var in new]
+            func = graph.compile(*[node.outputs[0]._node for node in output_nodes])
+
+            def make_dev_tensor(value, dtype=None, device=None):
+                return tensor(value, dtype=dtype, device=device)._dev_tensor()
+
+            def calculate(*args, **kwargs):
+                output_val = []
+                # set inputs value
+                for name, var in inputs.items():
+                    val = kwargs.pop(name, None)
+                    assert val is not None, "miss input name{}".format(name)
+                    dev_tensor = make_dev_tensor(val, dtype=var.dtype, device="xpux")
+                    inp_map[name].set_value(dev_tensor)
+
+                func.execute()
+
+                for res in output_nodes:
+                    output_val.append(res.get_value().numpy())
+                return output_val
+
+            def expect_name(var):
+                return "{}:expect".format(var.name)
+
+        testcases = []
+
+        np.set_printoptions(precision=2, threshold=4, suppress=True)
+
+        data_list = []
+        for item in input_data:
+            if item.startswith("@"):
+                with open(item[1:], "r") as f:
+                    data_list.extend(
+                        [line.rstrip() for line in f if line.rstrip() != ""]
+                    )
+            else:
+                data_list.append(item)
+
+        for inp_spec in data_list:
+            cur_testcase = gen_one_testcase(inputs, inp_spec)
+            assert len(cur_testcase) == len(
+                inputs
+            ), "required inputs: {}; given data: {}".format(
+                inputs.keys(), cur_testcase.keys()
+            )
+
+            if not no_assert:
+                outputs_get = calculate(**cur_testcase)
+                for var, val in zip(outputs, outputs_get):
+                    cur_testcase[expect_name(var)] = val
+                    logger.info(
+                        "generate test groundtruth: var={} shape={} range=({}, {})"
+                        " mean={} var={}".format(
+                            var,
+                            val.shape,
+                            val.min(),
+                            val.max(),
+                            np.mean(val),
+                            np.var(val),
+                        )
+                    )
+            testcases.append(cur_testcase)
+            logger.info(
+                "add testcase: \n {}".format(
+                    "\n ".join(
+                        "{}: shape={} dtype={} range=({:.2f},{:.2f}) "
+                        "mean={:.2f} sd={:.2f}".format(
+                            k, v.shape, v.dtype, v.min(), v.max(), np.mean(v), np.std(v)
+                        )
+                        for k, v in sorted(cur_testcase.items())
+                    )
+                )
+            )
+
+        if not no_assert:
+
+            def expect_shp(var):
+                ret = var.shape
+                if ret:
+                    return ret
+                return testcases[0][expect_name(var)].shape
+
+            def assert_equal(expect, real, **kwargs):
+                op = AssertEqual(**kwargs)
+                (res,) = G.apply_normal_varnode(op, expect, real)
+                return res._node
+
+            verbose = not silent
+
+            outputs_new = []
+            for i in outputs:
+                device = rt.CompNode("xpux")
+                dtype = i.dtype
+                name = expect_name(i)
+                shape = expect_shp(i)
+                # make expect output as one input of model.
+                expect_get = rt.make_h2d(graph, device, dtype, shape, name)
+                # insert assert opr to check expect and real.
+                outputs_new.append(
+                    assert_equal(expect_get, i, verbose=verbose, maxerr=maxerr,)
+                )
+                inputs[expect_name(i)] = expect_get
+            outputs = outputs_new
+
+        return {"outputs": outputs, "testcases": testcases}
 
     def dump(
         self,
@@ -618,71 +1104,159 @@ class trace:
         arg_names=None,
         output_names=None,
         append=False,
+        keep_var_name: int = 1,
+        keep_opr_name: bool = False,
+        keep_param_name: bool = False,
+        keep_opr_priority: bool = False,
+        no_change_graph: bool = False,
+        strip_info_file=None,
+        append_json=False,
         optimize_for_inference=True,
+        user_info: Any = None,
+        enable_metadata: bool = True,
+        input_data=None,
+        repeat=1,
+        silent=False,
+        no_assert=False,
+        maxerr=1e-4,
+        resize_input=False,
+        input_transform=None,
+        dump_format: str = None,
+        model_version: int = 2,
+        compat_older_version: str = None,
         **kwargs
     ):
-        r"""
-        Serializes trace to file system.
+        r"""Serializes trace to file system.
 
-        :param file: output file, could be file object or filename.
-        :param arg_names: names of the input tensors in the traced function.
-        :param output_names: names of the output tensors in the traced function,
-            use the default name if not specified.
-        :param append: whether output is appended to ``file``.
-            Only works when ``file`` is str.
-        :param optimize_for_inference: enbale optmizations,
-            will skip all optimize options if this is False. Default: True
+        Args:
+            file: output file, could be file object or filename.
+            arg_names: names of the input tensors in the traced function.
+            output_names: names of the output tensors in the traced function,
+                use the default name if not specified.
+            append: whether output is appended to ``file``.
+                Only works when ``file`` is str.
+            keep_var_name: level for keeping variable names:
 
-        :Keyword Arguments:
+                * 0: none of the names are kept
+                * 1: (default)keep names of output vars
+                * 2: keep names of all (output and internal) vars
 
-            * enable_io16xc32 --
-                whether to use float16 for I/O between oprs and use
-                float32 as internal computation precision. Note the output var would be
-                changed to float16.
-            * enable_ioc16 --
-                whether to use float16 for both I/O and computation
-                precision.
+            keep_opr_name: whether to keep operator names.
+            keep_param_name: whether to keep param names, so param values can be
+                easily manipulated after loading model
+            keep_opr_priority: whether to keep priority setting for operators
+            no_change_graph: whether to change the compute graph when dump, for
+                model compatibility, some operators will convert to its compatible
+                format in this version.
 
-            * enable_hwcd4 --
-                whether to use NHWCD4 data layout. This is faster on some
-                OpenCL backend.
-            * enable_nchw88 --
-                whether to use NCHW88 data layout, currently
-                used in X86 AVX backend.
-            * enable_nchw44 --
-                whether to use NCHW44 data layout, currently
-                used in arm backend.
-            * enable_nchw44_dot --
-                whether to use NCHW44_dot data layout, currently
-                used in armv8.2+dotprod backend.
-            * enable_nchw4 --
-                whether to use NCHW4 data layout, currently
-                used in nvidia backend(based on cudnn).
-            * enable_nchw32 --
-                whether to use NCHW32 data layout, currently
-                used in nvidia backend with tensorcore(based on cudnn).
-            * enable_chwn4 --
-                whether to use CHWN4 data layout, currently
-                used in nvidia backend with tensorcore.
+                * if set False, some operators maybe convert to other operator for
+                  compatibility, all operators will ensure compatibility.
+                * if set True, no operator will change in the graph when dump.
 
-            * enable_fuse_conv_bias_nonlinearity: whether to fuse conv+bias+nonlinearty
-                into one opr.
-            * enable_fuse_conv_bias_with_z: whether to fuse conv_bias with z
-                input for inference on nvidia backend(this optimization pass will
-                result in mismatch of the precision of output of training and
-                inference)
+            strip_info_file: a string for path or a file handler. if is not None,
+                then the dump information for code strip would be written to ``strip_info_file``
+            append_json: will be check when `strip_info_file` is not None. if set
+                true, the information for code strip will be append to strip_info_file.
+                if set false, will rewrite strip_info_file
+            optimize_for_inference: enbale optmizations,
+                will skip all optimize options if this is False. Default: True
+            user_info: any type object, which will be pickled to bytes.
+            enable_metadata: whether to save metadata into output file.
+            input_data: input test data and current network output would be used as groundtruth.
+                The format is "var0:file0;var1:file1..." to specify data files for input vars.
+                It can also be "#rand(min,max,shape...)" for generating random input data, for
+                example, "#rand(0,255)", "#rand(0,255,1,3,224,224)" or "#rand(0, 255, 1, ...)"
+                where `...` means the remaining part of the original shape. If the shape is not
+                specified, the shape of corresponding input tensors in the network will be used.
+                If there is only one input var, its name can be omitted. Each data file can either
+                be an image which can be loaded by opencv, or a pickled numpy.ndarray. This option
+                can be given multiple times to add multiple testcases. If you start the data
+                with the letter @, the rest should be a filename, and each line in the file should
+                be a single datum in the format described above. *NOTE* If `input_data` is not None,
+                you can only use load-and-run to run the output file.
+            repeat: how many times the input image is repeated. Useful when running benchmark for
+                batch size other than one. Have no effect on randomly generated input data.
+            silent: whether set verbose to False in assert_equal opr.
+            no_assert: whether insert assert_equal opr to check result; this option is useful for
+                benchmarking.
+            maxerr: max error for assert_equal check during runtime.
+            resize_input: whether resize input image to fit input var shape.
+            input_transform: a python expression to transform the input data.
+                Example: data / np.std(data)
+            dump_format: using different dump formats. the open source MegEngine
+                defaults to the FBS_V2 format, there are two format FBS_V2 and FBS to choose,
+                internal MegEngine have an other choice of internal proprietary formats
+            model_version: the model version of FBS_V2, begin with version 2, this
+                works only when dump format is FBS_V2.
+            compat_older_version: the specified megbrain version which is less than 8.16 for model forward compatibility, only support "8.14" currently. Default: None.
+
+
+        Keyword Arguments:
+
+        * enable_io16xc32 --
+          whether to use float16 for I/O between oprs and use
+          float32 as internal computation precision. Note the output var would be
+          changed to float16.
+        * enable_ioc16 --
+          whether to use float16 for both I/O and computation
+          precision.
+        * enable_hwcd4 --
+          whether to use NHWCD4 data layout. This is faster on some
+          OpenCL backend.
+        * enable_nchw88 --
+          whether to use NCHW88 data layout, currently
+          used in X86 AVX backend.
+        * enable_nchw44 --
+          whether to use NCHW44 data layout, currently
+          used in arm backend.
+        * enable_nchw44_dot --
+          whether to use NCHW44_dot data layout, currently
+          used in armv8.2+dotprod backend.
+        * enable_nchw4 --
+          whether to use NCHW4 data layout, currently
+          used in nvidia backend(based on cudnn).
+        * enable_nchw32 --
+          whether to use NCHW32 data layout, currently
+          used in nvidia backend with tensorcore(based on cudnn).
+        * enable_chwn4 --
+          whether to use CHWN4 data layout, currently
+          used in nvidia backend with tensorcore.
+        * enable_nchw64 --
+          whether to use NCHW64 data layout, used for fast int4
+          support on Nvidia GPU.
+        * enable_fuse_conv_bias_nonlinearity: whether to fuse conv+bias+nonlinearty
+          into one opr.
+        * enable_fuse_conv_bias_with_z: whether to fuse conv_bias with z
+          input for inference on nvidia backend(this optimization pass will
+          result in mismatch of the precision of output of training and
+          inference)
+        * enable_fuse_preprocess: whether to fuse astype\pad_channel\dimshuffle and
+          etc opr
         """
+        if compat_older_version:
+            compat_older_version = compat_older_version.strip()
+            assert (
+                compat_older_version == "8.14"
+            ), "Forward compatibility for older version only support 8.14 currently."
+            assert (
+                not no_change_graph
+            ), "forward compatibility for mgb8.14 will change the graph."
+            assert (
+                dump_format == "FBS"
+            ), "forward compatibility for older version only works when dump_format is FBS"
         if not self._capture_as_const:
             raise ValueError(
                 "you must specify capture_as_const=True at __init__ to use dump"
             )
-        if self._untraced:
-            raise RuntimeError("should run at least once before calling dump")
+        if not hasattr(self, "_output_names"):
+            raise ValueError(
+                "the traced function without return values cannot be dumped, the traced function should return List[Tensor] or Dict[str, Tensor]"
+            )
         if self._output_names and output_names:
             raise TypeError(
                 "cannot specify output_names when output is already in dict format"
             )
-        if output_names and not isinstance(output_names, collections.abc.Sequence):
+        if output_names and isinstance(output_names, str):
             output_names = (output_names,)
         if output_names and len(output_names) != len(self._output_bindings):
             raise ValueError(
@@ -690,10 +1264,12 @@ class trace:
                     len(self._output_bindings)
                 )
             )
+        prefer_input_names = arg_names is not None
         if arg_names is None:
             arg_names = ["arg_%d" % i for i in range(len(self._arg_bindings))]
-        if arg_names and not isinstance(arg_names, collections.abc.Sequence):
+        if isinstance(arg_names, str):
             arg_names = (arg_names,)
+        arg_names = [arg_name if arg_name is not None else "" for arg_name in arg_names]
         if arg_names and len(arg_names) != len(self._arg_bindings):
             raise ValueError(
                 "wrong number of arg_names, should be {} values".format(
@@ -702,516 +1278,117 @@ class trace:
             )
         output_names = output_names or self._output_names
 
-        dumped_device = as_device("xpux")
+        if output_names is None:
+            output_names = [""] * len(self._output_bindings)
+            # output_names = ["output_{}".format(i) for i in range(len(self._output_bindings))]
 
-        h2v = {}
+        input_bindings = []
+
+        def normalize_shape(shape):
+            return (1,) if shape == () else shape
+
+        for arg_name, (arg_id, arg_shape) in zip(arg_names, self._arg_bindings):
+            input_bindings.append((arg_id, arg_name, normalize_shape(arg_shape)))
+
+        for kwarg_id, (kwarg_name, kwarg_shape) in self._kwarg_bindings.items():
+            input_bindings.append((kwarg_id, kwarg_name, normalize_shape(kwarg_shape)))
+
         graph = G.Graph()
-        # only graph_opt_level takes effect in dump
-        self._apply_graph_options(graph)
 
-        for i, h in enumerate(self._arg_bindings):
-            info = self._tinfo[h]
-            h2v[h] = graph.make_h2d(
-                dtype=info.dtype,
-                device=dumped_device,
-                shape=info.shape or (1,),
-                name=arg_names[i] if arg_names else None,
+        jit_enabled = set_jit_enabled(False)
+        dest_vars = self._trace.dump(
+            graph,
+            input_bindings,
+            [*zip(self._output_bindings, output_names)],
+            prefer_input_names,
+        )
+        set_jit_enabled(jit_enabled)
+
+        # dest_vars = [i._node for i in dest_vars]
+
+        if input_data is not None:
+            feeds = self._make_feed(
+                graph,
+                dest_vars,
+                input_data,
+                repeat,
+                silent,
+                no_assert,
+                maxerr,
+                resize_input,
+                input_transform,
             )
-        for k, h in self._kwarg_bindings.items():
-            info = self._tinfo[h]
-            h2v[h] = graph.make_h2d(
-                dtype=info.dtype, device=dumped_device, shape=info.shape or (1,), name=k
-            )
-
-        for op, ihandles, ohandles in self._seq:
-            if isinstance(op, Const):
-                assert len(ihandles) == 0
-                (h,) = ohandles
-                info = self._tinfo[h]
-                if h not in h2v:
-                    assert info.external
-                    assert info.bound_data
-                    h2v[h] = graph.make_const(
-                        info.bound_data.numpy(), dtype=info.dtype, device=info.device,
-                    )
-                continue
-            ivars = []
-            for h in ihandles:
-                info = self._tinfo[h]
-                if h not in h2v:
-                    assert info.external
-                    assert info.bound_data
-                    h2v[h] = graph.make_const(
-                        info.bound_data.numpy(), dtype=info.dtype, device=dumped_device
-                    )
-                ivars.append(h2v[h])
-            ovars = apply(op, *ivars)
-            assert len(ovars) == len(ohandles)
-            h2v.update(zip(ohandles, ovars))
-
-        dest_vars = []
-        for i, h in enumerate(self._output_bindings):
-            v = h2v[h]
-            if output_names:
-                v.name = output_names[i]
-            dest_vars.append(v)
+            assert (
+                isinstance(feeds, dict) and feeds["testcases"]
+            ), "testcases can not be empty"
+            dest_vars = feeds["outputs"]
 
         if optimize_for_inference:
-            dest_vars = G.optimize_for_inference(dest_vars, **kwargs)
+            dest_vars, optimize_options = G.optimize_for_inference(dest_vars, **kwargs)
+            dest_vars = [i._node for i in dest_vars]
+
+        metadata = SerializationMetadata()
+        if enable_metadata:
+            metadata.user_info = pickle.dumps(user_info)
+            metadata.is_valid = True
+            metadata.graph_modified = False
+            if optimize_for_inference:
+                metadata.optimize_options = optimize_options
 
         if isinstance(file, str):
             permission = "wb" if append == False else "ab"
             file = open(file, permission)
-        dump_content, dump_info = G.dump_graph(dest_vars)
+
+        if keep_opr_priority:
+            _set_priority_to_id(dest_vars)
+
+        if input_data is not None:
+            file.write(b"mgbtest0")
+            file.write(struct.pack("I", len(feeds["testcases"])))
+        dump_content, dump_info = G.dump_graph(
+            dest_vars,
+            keep_var_name=keep_var_name,
+            keep_opr_name=keep_opr_name,
+            keep_param_name=keep_param_name,
+            keep_opr_priority=keep_opr_priority,
+            no_change_graph=no_change_graph,
+            strip_info_file=strip_info_file,
+            append_json=append_json,
+            metadata=metadata,
+            dump_format=dump_format,
+            model_version=model_version,
+            compat_older_version=compat_older_version,
+        )
         file.write(dump_content)
+
+        if input_data is not None:
+            inputs = cgtools.get_dep_vars(dest_vars, "Host2DeviceCopy")
+            inputs = sorted((i.name, i.dtype) for i in inputs)
+
+            def make_dev_tensor(value, dtype=None, device=None):
+                return tensor(value, dtype=dtype, device=device)._dev_tensor()
+
+            for testcase in feeds["testcases"]:
+                assert isinstance(testcase, dict)
+                cg = G.Graph()
+                output_mgbvars = []
+                for name, dtype in inputs:
+                    output_mgbvars.append(
+                        cg.make_const(
+                            make_dev_tensor(
+                                testcase.pop(name), dtype=dtype, device="cpux"
+                            )
+                        )
+                    )
+                assert not testcase, "extra inputs provided in testcase: {}".format(
+                    testcase.keys()
+                )
+                dump_content, _ = G.dump_graph(
+                    output_mgbvars, strip_info_file=strip_info_file, append_json=True,
+                )
+                file.write(dump_content)
+
         return dump_info
 
-    def _process_inputs(self, *args, **kwargs):
-        if self._untraced:
-            self._inputs_to_restore = []
-
-            def record_input(x):
-                if x is None:
-                    return
-                h, info = self._new_handle()
-                info.external = False
-                info.device = x.device
-                info.dtype = x.dtype
-                info.shape = x.shape
-                TraceMixin._TraceMixin__inject(x, h)
-                self._inputs_to_restore.append(x)
-                return h
-
-            self._arg_bindings = []
-            for i, x in enumerate(args):
-                x = find_raw_tensor(x)
-                if x is None:
-                    raise TypeError(
-                        "positional arguments should all be tensor "
-                        "but args[%d] cannot be recognized as one" % i
-                    )
-                self._arg_bindings.append(record_input(x))
-
-            self._kwarg_bindings = {}
-            for k, x in kwargs.items():
-                x = find_raw_tensor(x)
-                if x is not None:
-                    self._kwarg_bindings[k] = record_input(x)
-        else:
-            if len(args) != len(self._arg_bindings):
-                raise TraceMismatchError("positional argument length mismatch")
-
-            self._tensor_remaps = {}
-
-            for i, (h, x) in enumerate(zip(self._arg_bindings, args)):
-                x = find_raw_tensor(x)
-                if x is None:
-                    raise TypeError(
-                        "positional arguments should all be tensor "
-                        "but args[%d] cannot be recognized as one" % i
-                    )
-                info = self._tinfo[h]
-                if x.dtype != info.dtype:
-                    raise TypeError("args[%d].dtype different from last time" % i)
-                if x.device != info.device:
-                    raise TypeError("args[%d].device different from last time" % i)
-                info.data_setter.set_value(x._dev_tensor())
-                self._tensor_remaps[x] = CompiledTensorProxy(h)
-
-            kwargs_tensors = {}
-            for k, x in kwargs.items():
-                x = find_raw_tensor(x)
-                if x is not None:
-                    kwargs_tensors[k] = x
-            if set(kwargs_tensors) != set(self._kwarg_bindings):
-                too_many = set(kwargs_tensors) - set(self._kwarg_bindings)
-                too_few = set(self._kwarg_bindings) - set(kwargs_tensors)
-                if too_many:
-                    raise TraceMismatchError(
-                        "keyword arguments found to be tensor this time "
-                        "but were non-tensor previously: %s" % " ".join(too_many)
-                    )
-                if too_few:
-                    raise TraceMismatchError(
-                        "keyword arguments found to be non-tensor this time "
-                        "but were tensor previously: %s" % " ".join(too_few)
-                    )
-            for k, h in self._kwarg_bindings.items():
-                x = kwargs_tensors[k]
-                info = self._tinfo[h]
-                if x.dtype != info.dtype:
-                    raise TypeError("kwargs[%s].dtype different from last time" % k)
-                if x.device != info.device:
-                    raise TypeError("kwargs[%s].device different from last time" % k)
-                info.data_setter.set_value(x._dev_tensor())
-                self._tensor_remaps[x] = CompiledTensorProxy(h)
-
-    def _process_outputs(self, outputs):
-        output_names = None
-        if isinstance(outputs, collections.abc.Mapping):
-            output_names, outputs = zip(*sorted(outputs.items()))
-        elif not isinstance(outputs, collections.abc.Sequence):
-            outputs = (outputs,)
-
-        if not self._untraced:
-            if output_names != self._output_names:
-                too_many = set(output_names) - set(self._output_names)
-                too_few = set(self._output_names) - set(output_names)
-                if too_many:
-                    raise TraceMismatchError(
-                        "output has more keys than last time: %s" % " ".join(too_many)
-                    )
-                if too_few:
-                    raise TraceMismatchError(
-                        "output has less keys than last time: %s" % " ".join(too_few)
-                    )
-            if len(outputs) != len(self._output_bindings):
-                raise TraceMismatchError("output size differs from last time")
-        else:
-            self._output_names = output_names
-            self._output_bindings = []
-
-        for i, x in enumerate(outputs):
-            x = find_raw_tensor(x)
-            if x is None:
-                raise TypeError("every item of return value should be tensor")
-            if self._untraced:
-                if not isinstance(x, TraceMixin):
-                    raise RuntimeError("output is not computed from inputs")
-                h = x._TraceMixin__handle
-                self._output_bindings.append(h)
-            else:
-                if not isinstance(x, CompiledTensorProxy):
-                    raise RuntimeError("output is not computed from inputs")
-                h = x._CompiledTensorProxy__handle
-                if h != self._output_bindings[i]:
-                    raise TraceMismatchError(
-                        "retval[%s] is a different tensor than last time"
-                        % (output_names and output_names[i] or i)
-                    )
-
     def get_profile(self):
-        """
-        Get profiling result for compiled trace.
-
-        :return: a json compatible object.
-        """
-        if not self._profiler:
-            raise RuntimeError("trace is not set with profiling=True")
-        return json.loads(self._profiler.get())
-
-    def trace(self, *args, **kwargs):
-        raise NotImplementedError(
-            "trace is deemed unbeneficial with the new "
-            "tracing mechanism. You should alwasy use __call__."
-        )
-
-
-class CompiledTensorProxy(RawTensor):
-    """
-    Duck-typed RawTensor
-    """
-
-    def __init__(self, handle):
-        self.__handle = handle
-        self._isscalar = False
-        self.__info = active_trace._tinfo[handle]
-        self.__shape = None
-        self.__data = None
-        self.__value = None
-
-    @property
-    def dtype(self):
-        return self.__info.varnode.dtype
-
-    @property
-    def device(self):
-        return self.__info.varnode.device
-
-    @property
-    def shape(self):
-        if self._isscalar:
-            return ()
-        if self.__shape is None:
-            if self.__info.shape_read:
-                self.__shape = self.__info.shape_reader.get_value().shape
-            elif self.__info.data_read:
-                self.__shape = self._dev_tensor().shape
-            else:
-                raise TraceMismatchError("shape of this tensor is not read in trace")
-        return self.__shape
-
-    def numpy(self):
-        if self.__value is None:
-            if self.__info.value_read:
-                self.__value = self.__info.value_reader.get_value()
-            elif self.__info.data_read:
-                self.__value = self._dev_tensor().numpy()
-            else:
-                raise TraceMismatchError("value of this tensor is not read in trace")
-            if self._isscalar:
-                self.__value = self.__value.squeeze()
-        return self.__value
-
-    def _dev_tensor(self):
-        if self.__data is None:
-            if not self.__info.data_read:
-                raise TraceMismatchError("raw data of this tensor is not read in trace")
-            self.__data = self.__info.data_reader.get_value()
-        return self.__data
-
-    def _drop(self):
-        return
-
-    def _swap_in(self):
-        return
-
-    def _swap_out(self):
-        return
-
-    def __del__(self):
-        if self.__info.shape_read and self.__shape is not None:
-            self.__info.shape_reader.drop_value()
-        if self.__info.value_read and self.__value is not None:
-            self.__info.value_reader.drop_value()
-        if self.__info.data_read and self.__data is not None:
-            self.__info.data_reader.drop_value()
-
-
-class LazyEvalTensor(RawTensor):
-    def __init__(self, varnode, isscalar=False):
-        super().__init__()
-        self.__varnode = varnode
-        self._isscalar = isscalar
-
-    @property
-    def dtype(self):
-        return self.__varnode.dtype
-
-    @property
-    def device(self):
-        return self.__varnode.device
-
-    @property
-    def shape(self):
-        if self._isscalar:
-            return ()
-        return self.__varnode.shape
-
-    def numpy(self):
-        ret = self.__varnode.value
-        if self._isscalar:
-            ret = ret.squeeze()
-        return ret
-
-    def _drop(self):
-        return
-
-    def _swap_in(self):
-        return
-
-    def _swap_out(self):
-        return
-
-    def _dev_tensor(self):
-        raise RuntimeError("cannot access data during symbolic tracing")
-
-
-class TraceMixin:
-    __subclass_cache = {}
-
-    def __inject(self, handle):
-        cache = __class__.__subclass_cache
-        cls = self.__class__
-        subcls = cache.get(cls)
-        if subcls is None:
-            subcls = cache[cls] = type("Traced" + cls.__name__, (__class__, cls), {})
-        self.__class__ = subcls
-        self.__handle = handle
-        self.__cls = cls
-        return self
-
-    def __restore(self):
-        cls = self.__cls
-        del self.__handle
-        del self.__cls
-        self.__class__ = cls
-        return self
-
-    @property
-    def shape(self):
-        if not skip_tracing:
-            active_trace._require_shape(self.__handle)
-        return super().shape
-
-    def numpy(self):
-        if not skip_tracing:
-            active_trace._require_value(self.__handle)
-        return super().numpy()
-
-    def _dev_tensor(self):
-        if not skip_tracing:
-            active_trace._require_data(self.__handle)
-        return super()._dev_tensor()
-
-    def _drop(self):
-        return
-
-    def _swap_in(self):
-        return
-
-    def _swap_out(self):
-        return
-
-
-class TracedRawTensor(TraceMixin, RawTensor):
-    pass
-
-
-class TracedLazyTensor(TraceMixin, LazyEvalTensor):
-    pass
-
-
-def assign_raw_tensor(lhs, rhs):
-    handle = rhs._handle
-    # Keep isscalar of lhs
-    isscalar = lhs._isscalar
-    rhs.__dict__.clear()
-    lhs.__dict__.clear()
-    lhs.__class__ = RawTensor
-    lhs.__init__(handle, isscalar=isscalar)
-
-
-# this hook turns RawTensor into LazyEvalTensor
-@apply.register()
-def apply_symbolic_mode(op: OpDef, *args: RawTensor):
-    graph = active_trace._lazy_eval_graph
-    ivars = []
-    for x in args:
-        var = getattr(x, "_LazyEvalTensor__varnode", None)
-        if var:
-            ivars.append(var)
-        else:
-            data_setter = G.InputNode(
-                device=x.device,
-                dtype=x.dtype,
-                shape=x.shape or (1,),
-                graph=graph,
-                use_static_shape=True,
-            )
-            var = data_setter.outputs[0]
-            ivars.append(var)
-            data_setter.set_value(x._dev_tensor())
-
-    require_links = type(op) in _io_op_types
-
-    if require_links and active_trace._lazy_eval_links:
-        assert len(ivars) > 0, "op should has at least one input"
-        ivars[0] = apply(VirtualDep(), ivars[0], *active_trace._lazy_eval_links)[0]
-        active_trace._lazy_eval_links = (ivars[0],)
-
-    ovars = apply(op, *ivars)
-
-    if require_links:
-        active_trace._lazy_eval_links = (ovars[0],)
-
-    outputs = [LazyEvalTensor(v) for v in ovars]
-    active_trace._lazy_eval_tensors.update(outputs)
-    return outputs
-
-
-apply.disable(apply_symbolic_mode)
-
-
-@apply.register()
-def apply_const_symbolic_mode(op: Const, *args: RawTensor):
-    graph = active_trace._lazy_eval_graph
-    ret = LazyEvalTensor(
-        graph.make_const(op.value, dtype=op.dtype, device=op.device), isscalar=True
-    )
-    active_trace._lazy_eval_tensors.add(ret)
-    return (ret,)
-
-
-apply.disable(apply_const_symbolic_mode)
-
-
-@apply.register()
-def apply_compiled_mode(op: OpDef, *args: RawTensor):
-    if skip_tracing:
-        args = [
-            as_raw_tensor(x._dev_tensor()) if x.__class__ is CompiledTensorProxy else x
-            for x in args
-        ]
-        return apply.super(op, *args)
-    return active_trace._apply_op(op, args)
-
-
-apply.disable(apply_compiled_mode)
-
-
-@apply.register()
-def apply_const_compiled_mode(op: Const, *args: RawTensor):
-    if skip_tracing:
-        args = [
-            as_raw_tensor(x._dev_tensor()) if x.__class__ is CompiledTensorProxy else x
-            for x in args
-        ]
-        return apply.super(op, *args)
-    return active_trace._apply_const(op, args)
-
-
-apply.disable(apply_const_compiled_mode)
-
-
-# this hook injects TraceMixin
-@apply.register()
-def apply_with_tracing(op: OpDef, *args: RawTensor):
-    outputs = apply.super(op, *args)
-    active_trace._record_op(op, args, outputs)
-    return outputs
-
-
-apply.disable(apply_with_tracing)
-
-
-@apply.register()
-def apply_const_with_tracing(op: Const, *args: RawTensor):
-    outputs = apply.super(op, *args)
-    active_trace._record_const(op, outputs)
-    return outputs
-
-
-apply.disable(apply_const_with_tracing)
-
-
-class BrokenRawTensor(RawTensor):
-    def __getattribute__(self, _):
-        raise RuntimeError("broken due to misuse of tracing")
-
-    def __setattr__(self, *_):
-        raise RuntimeError("broken due to misuse of tracing")
-
-
-@functools.singledispatch
-def find_raw_tensor(x):
-    return None
-
-
-@find_raw_tensor.register(RawTensor)
-def _(x):
-    return x
-
-
-@find_raw_tensor.register(TensorWrapperBase)
-def _(x):
-    x = getattr(x, "__wrapped__", None)
-    if x is not None:
-        return find_raw_tensor(x)
-
-
-@find_raw_tensor.register(Tensor)
-def _(x):
-    x = getattr(x, "_data", None)
-    if x is not None:
-        return find_raw_tensor(x)
+        return json.loads(self._trace.get_profile())

@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/cuda/utils.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #include "src/cuda/utils.cuh"
 #include "src/cuda/utils.h"
 
@@ -59,20 +48,23 @@ const char* cublasGetErrorString(cublasStatus_t error) {
 }  // anonymous namespace
 
 void cuda::__throw_cuda_error__(cudaError_t err, const char* msg) {
-    auto s = ssprintf("cuda error %s(%d) occurred; expr: %s",
-                      cudaGetErrorString(err), int(err), msg);
+    auto s = ssprintf(
+            "cuda error %s(%d) occurred; expr: %s", cudaGetErrorString(err), int(err),
+            msg);
     megdnn_throw(s.c_str());
 }
 
 void cuda::__throw_cudnn_error__(cudnnStatus_t err, const char* msg) {
-    auto s = ssprintf("cudnn error %s(%d) occurred; expr: %s",
-                      cudnnGetErrorString(err), int(err), msg);
+    auto s = ssprintf(
+            "cudnn error %s(%d) occurred; expr: %s", cudnnGetErrorString(err), int(err),
+            msg);
     megdnn_throw(s.c_str());
 }
 
 void cuda::__throw_cublas_error__(cublasStatus_t err, const char* msg) {
-    auto s = ssprintf("cublas error %s(%d) occurred; expr: %s",
-                      cublasGetErrorString(err), int(err), msg);
+    auto s = ssprintf(
+            "cublas error %s(%d) occurred; expr: %s", cublasGetErrorString(err),
+            int(err), msg);
     megdnn_throw(s.c_str());
 }
 
@@ -82,13 +74,18 @@ void cuda::__throw_cusolver_error__(cusolverStatus_t err, const char* msg) {
 }
 
 void cuda::__throw_cuda_driver_error__(CUresult err, const char* msg) {
-    auto s = ssprintf("cuda driver error %d occurred; expr: %s", int(err), msg);
+    const char* err_str = nullptr;
+    cuGetErrorName(err, &err_str);
+    err_str = err_str ? err_str : "unknown error";
+    auto s = ssprintf(
+            "cuda driver error %d(%s) occurred; expr: %s", int(err), err_str, msg);
     megdnn_throw(s.c_str());
 }
 
 void cuda::__throw_cutlass_error__(cutlass::Status err, const char* msg) {
-    auto s = ssprintf("cutlass error %s(%d) occurred; expr: %s",
-                      cutlass::cutlassGetStatusString(err), int(err), msg);
+    auto s = ssprintf(
+            "cutlass error %s(%d) occurred; expr: %s",
+            cutlass::cutlassGetStatusString(err), int(err), msg);
     megdnn_throw(s.c_str());
 }
 
@@ -99,10 +96,10 @@ void cuda::report_error(const char* msg) {
 
 uint32_t cuda::safe_size_in_kern(size_t size) {
     if (!size || size > Uint32Fastdiv::MAX_DIVIDEND) {
-        megdnn_throw(
-                ssprintf("invalid size for element-wise kernel: %zu; "
-                         "max supported size is %u",
-                         size, Uint32Fastdiv::MAX_DIVIDEND));
+        megdnn_throw(ssprintf(
+                "invalid size for element-wise kernel: %zu; "
+                "max supported size is %u",
+                size, Uint32Fastdiv::MAX_DIVIDEND));
     }
     return size;
 }
@@ -114,10 +111,8 @@ const cudaDeviceProp& cuda::current_device_prop() {
 }
 
 const cudaDeviceProp* cuda::get_device_prop(int device) {
-    megdnn_assert(device < MAX_NR_DEVICE, "device number too large: %d",
-                  device);
-    megdnn_assert(device >= 0, "device number must not be negative, got %d",
-                  device);
+    megdnn_assert(device < MAX_NR_DEVICE, "device number too large: %d", device);
+    megdnn_assert(device >= 0, "device number must not be negative, got %d", device);
     auto&& rec = device_prop_rec[device];
     if (!rec.init) {
         std::lock_guard<std::mutex> lock(rec.mtx);
@@ -153,8 +148,7 @@ uint32_t cuda::param_buffer_start_address() {
     // volta ~ ampere: 0x160
     else if (cap >= 70)
         return 0x160;
-    megdnn_throw(
-            ssprintf("unsupported cuda compute capability %d", cap).c_str());
+    megdnn_throw(ssprintf("unsupported cuda compute capability %d", cap).c_str());
 }
 
 const char* cuda::current_device_arch_name() {
@@ -170,8 +164,7 @@ const char* cuda::current_device_arch_name() {
         return "turing";
     else if (cap >= 80)
         return "ampere";
-    megdnn_throw(
-            ssprintf("unsupported cuda compute capability %d", cap).c_str());
+    megdnn_throw(ssprintf("unsupported cuda compute capability %d", cap).c_str());
 }
 
 // vim: syntax=cpp.doxygen

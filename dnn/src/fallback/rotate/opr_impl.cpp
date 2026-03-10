@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/fallback/rotate/opr_impl.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include <cstring>
 
 #include "src/fallback/handle.h"
@@ -29,9 +18,9 @@ namespace rotate_intl {
 using namespace megcv;
 
 template <typename T, size_t CH, bool clockwise>
-static void rotate_fallback_tpl(const T* src, T* dst, size_t src_rows,
-                                size_t src_cols, size_t src_step,
-                                size_t dst_step) {
+static void rotate_fallback_tpl(
+        const T* src, T* dst, size_t src_rows, size_t src_cols, size_t src_step,
+        size_t dst_step) {
     size_t sr = 0;
     static const size_t BLOCK = 4;
     auto do_pixel = [&](size_t sr, size_t sc) {
@@ -46,8 +35,7 @@ static void rotate_fallback_tpl(const T* src, T* dst, size_t src_rows,
             dc = sr;
         }
         for (size_t ch = 0; ch < CH; ++ch) {
-            dst[dr * dst_step + dc * CH + ch] =
-                    src[sr * src_step + sc * CH + ch];
+            dst[dr * dst_step + dc * CH + ch] = src[sr * src_step + sc * CH + ch];
         }
     };
 
@@ -76,15 +64,14 @@ static void rotate_fallback_tpl(const T* src, T* dst, size_t src_rows,
 template <typename T>
 static void rotate_fallback(const Mat<T>& src, Mat<T>& dst, bool clockwise) {
     size_t CH = src.channels();
-#define cb(_ch, _clockwise)                                                   \
-    if (CH == _ch && clockwise == _clockwise) {                               \
-        MIDOUT_BEGIN(megdnn_fb_rotate, T, midout_iv(_ch),                     \
-                     midout_iv(_clockwise)) {                                 \
-            return rotate_fallback_tpl<T, _ch, _clockwise>(                   \
-                    src.ptr(), dst.ptr(), src.rows(), src.cols(), src.step(), \
-                    dst.step());                                              \
-        }                                                                     \
-        MIDOUT_END();                                                         \
+#define cb(_ch, _clockwise)                                                        \
+    if (CH == _ch && clockwise == _clockwise) {                                    \
+        MIDOUT_BEGIN(megdnn_fb_rotate, T, midout_iv(_ch), midout_iv(_clockwise)) { \
+            return rotate_fallback_tpl<T, _ch, _clockwise>(                        \
+                    src.ptr(), dst.ptr(), src.rows(), src.cols(), src.step(),      \
+                    dst.step());                                                   \
+        }                                                                          \
+        MIDOUT_END();                                                              \
     }
 
     cb(1, true);
@@ -107,30 +94,35 @@ void rotate(const Mat<T>& src, Mat<T>& dst, bool clockwise) {
 
 }  // namespace rotate_intl
 
-void RotateImpl::exec(_megdnn_tensor_in src, _megdnn_tensor_in dst,
-                      _megdnn_workspace workspace) {
+void RotateImpl::exec(
+        _megdnn_tensor_in src, _megdnn_tensor_in dst, _megdnn_workspace workspace) {
     using namespace megcv;
     check_exec(src.layout, dst.layout, workspace.size);
-
-    MEGDNN_DISPATCH_CPU_KERN_OPR(if (dst.layout.dtype == dtype::Float32()) {
-        for (size_t i = 0; i < src.layout.shape[0]; ++i) {
-            Mat<float> src_mat = TensorND2Mat<float>(src, i);
-            Mat<float> dst_mat = TensorND2Mat<float>(dst, i);
-            rotate_intl::rotate<float>(src_mat, dst_mat, param().clockwise);
+    auto clockwise = param().clockwise;
+    auto run = [src, dst, clockwise]() {
+        if (dst.layout.dtype == dtype::Float32()) {
+            for (size_t i = 0; i < src.layout.shape[0]; ++i) {
+                Mat<float> src_mat = TensorND2Mat<float>(src, i);
+                Mat<float> dst_mat = TensorND2Mat<float>(dst, i);
+                rotate_intl::rotate<float>(src_mat, dst_mat, clockwise);
+            }
+        } else if (dst.layout.dtype == dtype::Int32()) {
+            for (size_t i = 0; i < src.layout.shape[0]; ++i) {
+                Mat<int> src_mat = TensorND2Mat<int>(src, i);
+                Mat<int> dst_mat = TensorND2Mat<int>(dst, i);
+                rotate_intl::rotate<int>(src_mat, dst_mat, clockwise);
+            }
+        } else if (dst.layout.dtype == dtype::Uint8()) {
+            for (size_t i = 0; i < src.layout.shape[0]; ++i) {
+                Mat<uchar> src_mat = TensorND2Mat<uchar>(src, i);
+                Mat<uchar> dst_mat = TensorND2Mat<uchar>(dst, i);
+                rotate_intl::rotate<uchar>(src_mat, dst_mat, clockwise);
+            }
+        } else {
+            megdnn_throw("Unsupported datatype of Rotate optr.");
         }
-    } else if (dst.layout.dtype == dtype::Int32()) {
-        for (size_t i = 0; i < src.layout.shape[0]; ++i) {
-            Mat<int> src_mat = TensorND2Mat<int>(src, i);
-            Mat<int> dst_mat = TensorND2Mat<int>(dst, i);
-            rotate_intl::rotate<int>(src_mat, dst_mat, param().clockwise);
-        }
-    } else if (dst.layout.dtype == dtype::Uint8()) {
-        for (size_t i = 0; i < src.layout.shape[0]; ++i) {
-            Mat<uchar> src_mat = TensorND2Mat<uchar>(src, i);
-            Mat<uchar> dst_mat = TensorND2Mat<uchar>(dst, i);
-            rotate_intl::rotate<uchar>(src_mat, dst_mat, param().clockwise);
-        }
-    } else { megdnn_throw("Unsupported datatype of Rotate optr."); });
+    };
+    MEGDNN_DISPATCH_CPU_KERN_OPR(run());
 }
 
 // vim: syntax=cpp.doxygen

@@ -1,14 +1,3 @@
-/**
- * \file src/jit/include/megbrain/jit/utils.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/utils/metahelper.h"
@@ -89,12 +78,12 @@ public:
      *
      * \return object file name (without dir path)
      */
-    virtual std::string compile_cpp_source_secondary(const char* source,
-                                                     const char* out_name) = 0;
+    virtual std::string compile_cpp_source_secondary(
+            const char* source, const char* out_name) = 0;
 
     //! link object files to shared library
-    virtual void link(const SmallVector<std::string>& inp_names,
-                      const std::string& out_name) = 0;
+    virtual void link(
+            const SmallVector<std::string>& inp_names, const std::string& out_name) = 0;
 
     //! remove a file in the working dir
     virtual void remove(const std::string& name) = 0;
@@ -110,8 +99,8 @@ public:
     }
 
     //! link to library and load
-    void* link_and_load(const SmallVector<std::string>& inp_names,
-                        const std::string& out_name) {
+    void* link_and_load(
+            const SmallVector<std::string>& inp_names, const std::string& out_name) {
         link(inp_names, out_name);
         return load_lib(out_name);
     }

@@ -1,13 +1,3 @@
-/**
- * \file dnn/test/cpu/matrix_mul.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "test/cpu/fixture.h"
 
 #include <chrono>
@@ -20,9 +10,9 @@ using namespace test;
 #if MEGDNN_WITH_BENCHMARK
 namespace {
 
-void sgemm_sgemv_like(const float* __restrict A, const float* __restrict B,
-                      float* __restrict C, size_t M, size_t N, size_t K,
-                      size_t Astride, size_t Bstride, size_t Cstride) {
+void sgemm_sgemv_like(
+        const float* __restrict A, const float* __restrict B, float* __restrict C,
+        size_t M, size_t N, size_t K, size_t Astride, size_t Bstride, size_t Cstride) {
     for (size_t m = 0; m < M; ++m) {
         memset(C + m * Cstride, 0, sizeof(float) * N);
         for (size_t k = 0; k < K; ++k)
@@ -49,8 +39,7 @@ float benchmark_sgemm_sgemv_like(size_t M, size_t N, size_t K) {
     free(A);
     free(B);
     free(C);
-    return std::chrono::duration_cast<std::chrono::milliseconds>(stop - start)
-            .count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
 }
 
 }  // namespace
@@ -74,8 +63,8 @@ TEST_F(CPU, BENCHMARK_MATRIX_MUL) {
 #endif
 
 TEST_F(CPU, MATRIX_MUL) {
-    matrix_mul::check_matrix_mul(dtype::Float32{}, dtype::Float32{},
-                                 dtype::Float32{}, handle());
+    matrix_mul::check_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, dtype::Float32{}, handle());
 }
 
 // vim: syntax=cpp.doxygen

@@ -1,13 +1,3 @@
-/**
- * \file src/opr/include/megbrain/opr/dnn/local.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include "megbrain/opr/internal/megdnn_opr_wrapper.h"
@@ -28,11 +18,10 @@ MGB_DEFINE_MEGDNN_OPR_WRAPPER_BWD3(GroupLocalBackwardData);
 MGB_DEFINE_MEGDNN_OPR_WRAPPER_BWD3(LocalBackwardFilter);
 MGB_DEFINE_MEGDNN_OPR_WRAPPER_BWD3(GroupLocalBackwardFilter);
 
-
 using Local = LocalForward;
 using GroupLocal = GroupLocalForward;
 
-} // namespace opr
-} // namespace mgb
+}  // namespace opr
+}  // namespace mgb
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

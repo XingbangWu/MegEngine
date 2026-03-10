@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/cuda/remap/backward_data.cu
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #include <cuda_runtime.h>
 #include "src/common/rounding_converter.cuh"
 #include "src/cuda/cv/kernel_common.cuh"
@@ -23,8 +12,8 @@ using namespace rounding;
 namespace {
 
 template <const uint32_t format>
-__device__ inline int get_offset(int height, int width, int channel, int h,
-                                 int w, int c);
+__device__ inline int get_offset(
+        int height, int width, int channel, int h, int w, int c);
 
 template <>
 __device__ inline int get_offset<param_enumv::Remap::Format::NCHW>(
@@ -34,8 +23,8 @@ __device__ inline int get_offset<param_enumv::Remap::Format::NCHW>(
 
 template <typename ctype, const uint32_t format, ::BorderMode bmode>
 struct GetSrcData {
-    __device__ static inline int get_index(int height, int width, int channel,
-                                           int h, int w, int c) {
+    __device__ static inline int get_index(
+            int height, int width, int channel, int h, int w, int c) {
         height = megcv::border_interpolate<bmode>(height, h);
         width = megcv::border_interpolate<bmode>(width, w);
         return get_offset<format>(height, width, channel, h, w, c);
@@ -44,18 +33,59 @@ struct GetSrcData {
 
 template <typename ctype, const uint32_t format>
 struct GetSrcData<ctype, format, ::BorderMode::BORDER_CONSTANT> {
-    __device__ static inline int get_index(int height, int width, int channel,
-                                           int h, int w, int c) {
+    __device__ static inline int get_index(
+            int height, int width, int channel, int h, int w, int c) {
         return (height >= 0 && height < h && width >= 0 && width < w)
-                       ? get_offset<format>(height, width, channel, h, w, c)
-                       : -1;
+                     ? get_offset<format>(height, width, channel, h, w, c)
+                     : -1;
     }
 };
 
+__device__ inline float round_half_to_even(float f) {
+    const float round_away_from_zero = round(f);
+    const float diff = round_away_from_zero - f;
+
+    if ((diff != 0.5f) && (diff != -0.5f)) {
+        return round_away_from_zero;
+    }
+
+    if (fmod(round_away_from_zero, 2.0f) == 0.0f) {
+        return round_away_from_zero;
+    }
+
+    return f - diff;
+}
+
 template <typename ctype, const uint32_t format, ::BorderMode bmode>
-__global__ void kern_general(ctype* __restrict grad, const float* map_xy,
-                             const ctype* diff, int C, int IH, int IW, int OH,
-                             int OW) {
+__global__ void kern_general_nearest(
+        ctype* __restrict grad, const float* map_xy, const ctype* diff, int C, int IH,
+        int IW, int OH, int OW) {
+    int ow = blockIdx.x * blockDim.x + threadIdx.x;
+    int oh = blockIdx.y * blockDim.y + threadIdx.y;
+    grad += blockIdx.z * C * IH * IW;
+    diff += blockIdx.z * C * OH * OW;
+    map_xy += blockIdx.z * 2 * OH * OW;
+
+    if (ow < OW && oh < OH) {
+        float index_col = map_xy[oh * OW * 2 + ow * 2 + 0];
+        float index_row = map_xy[oh * OW * 2 + ow * 2 + 1];
+        int col = static_cast<int>(round_half_to_even(index_col));
+        int row = static_cast<int>(round_half_to_even(index_row));
+        for (int c = 0; c < C; ++c) {
+            ctype hidden = diff[get_offset<format>(oh, ow, c, OH, OW, C)];
+            int idx =
+                    GetSrcData<ctype, format, bmode>::get_index(row, col, c, IH, IW, C);
+            if (idx != -1) {
+                atomic_add(grad + idx, hidden);
+            }
+        }
+    }
+}
+
+template <typename ctype, const uint32_t format, ::BorderMode bmode>
+__global__ void kern_general_linear(
+        ctype* __restrict grad, const float* map_xy, const ctype* diff, int C, int IH,
+        int IW, int OH, int OW) {
     int ow = blockIdx.x * blockDim.x + threadIdx.x;
     int oh = blockIdx.y * blockDim.y + threadIdx.y;
     grad += blockIdx.z * C * IH * IW;
@@ -72,14 +102,13 @@ __global__ void kern_general(ctype* __restrict grad, const float* map_xy,
         float u = index_row - row;  // alphaw
         const float one = 1.f;
         for (int c = 0; c < C; ++c) {
-            float hidden = static_cast<float>(
-                    diff[get_offset<format>(oh, ow, c, OH, OW, C)]);
+            float hidden =
+                    static_cast<float>(diff[get_offset<format>(oh, ow, c, OH, OW, C)]);
 
             int a00 = GetSrcData<ctype, format, bmode>::get_index(
                     row + 0, col + 0, c, IH, IW, C);
             if (a00 != -1) {
-                atomic_add(grad + a00,
-                           round_converter((one - u) * (one - v) * hidden));
+                atomic_add(grad + a00, round_converter((one - u) * (one - v) * hidden));
             }
 
             int a01 = GetSrcData<ctype, format, bmode>::get_index(
@@ -94,9 +123,8 @@ __global__ void kern_general(ctype* __restrict grad, const float* map_xy,
                 atomic_add(grad + a10, round_converter(u * (one - v) * hidden));
             }
 
-            int a11 = GetSrcData<ctype, param_enumv::Remap::Format::NCHW,
-                                 bmode>::get_index(row + 1, col + 1, c, IH, IW,
-                                                   C);
+            int a11 = GetSrcData<ctype, format, bmode>::get_index(
+                    row + 1, col + 1, c, IH, IW, C);
             if (a11 != -1) {
                 atomic_add(grad + a11, round_converter(u * v * hidden));
             }
@@ -104,10 +132,12 @@ __global__ void kern_general(ctype* __restrict grad, const float* map_xy,
     }
 }
 
-template <typename ctype, const uint32_t format, ::BorderMode bmode>
-void dispatch_backwarddata(ctype* grad, const float* map_xy, const ctype* diff,
-                           int N, int C, int IH, int IW, int OH, int OW,
-                           cudaStream_t stream) {
+template <
+        typename ctype, const uint32_t format, ::BorderMode bmode,
+        ::InterpolationMode imode>
+void dispatch_backwarddata(
+        ctype* grad, const float* map_xy, const ctype* diff, int N, int C, int IH,
+        int IW, int OH, int OW, cudaStream_t stream) {
     const int BX = 32, BY = 16;
     const int max_batch_size = 65535;
     while (N) {
@@ -116,10 +146,14 @@ void dispatch_backwarddata(ctype* grad, const float* map_xy, const ctype* diff,
         dim3 blocks((OW + BX - 1) / BX, (OH + BY - 1) / BY, curr_batch_size);
 
         cuda_check(cudaMemsetAsync(
-                grad, 0, sizeof(ctype) * curr_batch_size * C * IH * IW,
-                stream));
-        kern_general<ctype, format, bmode><<<blocks, threads, 0, stream>>>(
-                grad, map_xy, diff, C, IH, IW, OH, OW);
+                grad, 0, sizeof(ctype) * curr_batch_size * C * IH * IW, stream));
+        if (imode == ::InterpolationMode::INTER_NEAREST) {
+            kern_general_nearest<ctype, format, bmode><<<blocks, threads, 0, stream>>>(
+                    grad, map_xy, diff, C, IH, IW, OH, OW);
+        } else if (imode == ::InterpolationMode::INTER_LINEAR) {
+            kern_general_linear<ctype, format, bmode><<<blocks, threads, 0, stream>>>(
+                    grad, map_xy, diff, C, IH, IW, OH, OW);
+        }
 
         N -= curr_batch_size;
         grad += curr_batch_size * C * IH * IW;
@@ -134,30 +168,39 @@ namespace megdnn {
 namespace cuda {
 namespace remap {
 
-template <typename ctype, const uint32_t format, ::BorderMode bmode>
-void backwarddata_proxy(ctype* grad, const float* map_xy, const ctype* diff,
-                        int N, int C, int IH, int IW, int OH, int OW,
-                        cudaStream_t stream) {
-    dispatch_backwarddata<ctype, format, bmode>(grad, map_xy, diff, N, C, IH,
-                                                IW, OH, OW, stream);
+template <
+        typename ctype, const uint32_t format, ::BorderMode bmode,
+        ::InterpolationMode imode>
+void backwarddata_proxy(
+        ctype* grad, const float* map_xy, const ctype* diff, int N, int C, int IH,
+        int IW, int OH, int OW, cudaStream_t stream) {
+    dispatch_backwarddata<ctype, format, bmode, imode>(
+            grad, map_xy, diff, N, C, IH, IW, OH, OW, stream);
     after_kernel_launch();
 }
 
-#define INST(ctype, format, bmode)                                            \
+#define INST(ctype, format, bmode, imode)                                     \
     template void backwarddata_proxy<                                         \
-            ctype, param_enumv::Remap::Format::format, ::BorderMode::bmode>(  \
+            ctype, param_enumv::Remap::Format::format, ::BorderMode::bmode,   \
+            ::InterpolationMode::imode>(                                      \
             ctype*, const float*, const ctype*, int, int, int, int, int, int, \
             cudaStream_t);
 
-#define FOR_FORMAT_BMODE(ctype)           \
-    INST(ctype, NCHW, BORDER_CONSTANT)    \
-    INST(ctype, NCHW, BORDER_REPLICATE)   \
-    INST(ctype, NCHW, BORDER_REFLECT)     \
-    INST(ctype, NCHW, BORDER_REFLECT_101) \
-    INST(ctype, NCHW, BORDER_WRAP)
+#define FOR_FORMAT_BMODE(ctype)                          \
+    INST(ctype, NCHW, BORDER_CONSTANT, INTER_NEAREST)    \
+    INST(ctype, NCHW, BORDER_REPLICATE, INTER_NEAREST)   \
+    INST(ctype, NCHW, BORDER_REFLECT, INTER_NEAREST)     \
+    INST(ctype, NCHW, BORDER_REFLECT_101, INTER_NEAREST) \
+    INST(ctype, NCHW, BORDER_WRAP, INTER_NEAREST)        \
+    INST(ctype, NCHW, BORDER_CONSTANT, INTER_LINEAR)     \
+    INST(ctype, NCHW, BORDER_REPLICATE, INTER_LINEAR)    \
+    INST(ctype, NCHW, BORDER_REFLECT, INTER_LINEAR)      \
+    INST(ctype, NCHW, BORDER_REFLECT_101, INTER_LINEAR)  \
+    INST(ctype, NCHW, BORDER_WRAP, INTER_LINEAR)
 
 FOR_FORMAT_BMODE(float)
-MEGDNN_INC_FLOAT16(FOR_FORMAT_BMODE(dt_bfloat16))
+DNN_INC_FLOAT16(FOR_FORMAT_BMODE(dt_bfloat16))
+DNN_INC_FLOAT16(FOR_FORMAT_BMODE(dt_float16))
 
 #undef FOR_FORMAT_BMODE
 #undef INST

@@ -2,7 +2,6 @@
 
 #include "megbrain_build_config.h"
 
-#if MGB_CUDA
 #include <unistd.h>
 #include <cassert>
 #include <iostream>
@@ -19,8 +18,7 @@ namespace ZmqRpc {
 
 class ZmqRpcServerImpl {
 public:
-    virtual void solve_request(zmq::message_t& request,
-                               zmq::message_t& reply) = 0;
+    virtual void solve_request(zmq::message_t& request, zmq::message_t& reply) = 0;
     virtual ~ZmqRpcServerImpl() = default;
 };
 
@@ -47,8 +45,7 @@ private:
 class ZmqRpcServer {
 public:
     ZmqRpcServer() = delete;
-    ZmqRpcServer(std::string address, int port,
-                 std::unique_ptr<ZmqRpcServerImpl> impl);
+    ZmqRpcServer(std::string address, int port, std::unique_ptr<ZmqRpcServerImpl> impl);
     ~ZmqRpcServer() { close(); }
     void run();
     void close();
@@ -101,4 +98,3 @@ private:
     std::vector<std::shared_ptr<zmq::socket_t>> m_own_sockets;
 };
 }  // namespace ZmqRpc
-#endif

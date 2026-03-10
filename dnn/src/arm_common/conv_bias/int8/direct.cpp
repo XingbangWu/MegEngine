@@ -1,16 +1,5 @@
-/**
- * \file dnn/src/arm_common/conv_bias/int8/direct.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "src/arm_common/conv_bias/int8/direct.h"
-#include "src/arm_common/elemwise_op.h"
+#include "src/arm_common/elemwise_helper/elemwise_op.h"
 #include "src/arm_common/simd_macro/marm_neon.h"
 #include "src/common/utils.h"
 #include "src/fallback/conv_bias/common.h"
@@ -31,12 +20,10 @@ using namespace arm_common;
     }
 
 template <bool first_ic, bool last_ic, BiasMode bias_mode, typename Op>
-void conv_bias::conv_direct_stride1_2x2_int8_nchw(const int8_t* src,
-                                             const int8_t* filter,
-                                             const int32_t* bias, int32_t* temp,
-                                             int8_t* dst, const size_t IH,
-                                             const size_t IW, const size_t OH,
-                                             const size_t OW, const Op& op) {
+void conv_bias::conv_direct_stride1_2x2_int8_nchw(
+        const int8_t* src, const int8_t* filter, const int32_t* bias, int32_t* temp,
+        int8_t* dst, const size_t IH, const size_t IW, const size_t OH, const size_t OW,
+        const Op& op) {
     MEGDNN_MARK_USED_VAR(IH);
     int8x8_t k00 = vdup_n_s8(filter[0]);
     int8x8_t k01 = vdup_n_s8(filter[1]);
@@ -315,12 +302,10 @@ void conv_bias::conv_direct_stride1_2x2_int8_nchw(const int8_t* src,
 }
 
 template <bool first_ic, bool last_ic, BiasMode bias_mode, typename Op>
-void conv_bias::conv_direct_stride1_3x3_int8_nchw(const int8_t* src,
-                                             const int8_t* filter,
-                                             const int32_t* bias, int32_t* temp,
-                                             int8_t* dst, const size_t IH,
-                                             const size_t IW, const size_t OH,
-                                             const size_t OW, const Op& op) {
+void conv_bias::conv_direct_stride1_3x3_int8_nchw(
+        const int8_t* src, const int8_t* filter, const int32_t* bias, int32_t* temp,
+        int8_t* dst, const size_t IH, const size_t IW, const size_t OH, const size_t OW,
+        const Op& op) {
     MEGDNN_MARK_USED_VAR(IH);
     int8x8_t k00 = vdup_n_s8(filter[0]);
     int8x8_t k01 = vdup_n_s8(filter[1]);
@@ -404,7 +389,8 @@ void conv_bias::conv_direct_stride1_3x3_int8_nchw(const int8_t* src,
             ACC_S16_S32(sum10, sum11, d1);
 
             int8x8_t _r30 = vld1_s8(sptr + 3 * IW);
-            int8x8_t _r3n = vld1_s8(sptr + 3 * IW + 8);
+            int8x8_t _r3n =
+                    vreinterpret_s8_s16(vld1_dup_s16((int16_t*)(sptr + 3 * IW + 8)));
             int8x8_t _r31 = vext_s8(_r30, _r3n, 1);
             int8x8_t _r32 = vext_s8(_r30, _r3n, 2);
             d1 = vmull_s8(_r30, k20);
@@ -459,7 +445,8 @@ void conv_bias::conv_direct_stride1_3x3_int8_nchw(const int8_t* src,
             ACC_S16_S32(sum00, sum01, d0);
 
             int8x8_t _r20 = vld1_s8(sptr + 2 * IW);
-            int8x8_t _r2n = vld1_s8(sptr + 2 * IW + 8);
+            int8x8_t _r2n =
+                    vreinterpret_s8_s16(vld1_dup_s16((int16_t*)(sptr + 2 * IW + 8)));
             int8x8_t _r21 = vext_s8(_r20, _r2n, 1);
             int8x8_t _r22 = vext_s8(_r20, _r2n, 2);
             d0 = vmull_s8(_r20, k20);
@@ -474,12 +461,10 @@ void conv_bias::conv_direct_stride1_3x3_int8_nchw(const int8_t* src,
 }
 
 template <bool first_ic, bool last_ic, BiasMode bias_mode, typename Op>
-void conv_bias::conv_direct_stride1_5x5_int8_nchw(const int8_t* src,
-                                             const int8_t* filter,
-                                             const int32_t* bias, int32_t* temp,
-                                             int8_t* dst, const size_t IH,
-                                             const size_t IW, const size_t OH,
-                                             const size_t OW, const Op& op) {
+void conv_bias::conv_direct_stride1_5x5_int8_nchw(
+        const int8_t* src, const int8_t* filter, const int32_t* bias, int32_t* temp,
+        int8_t* dst, const size_t IH, const size_t IW, const size_t OH, const size_t OW,
+        const Op& op) {
     MEGDNN_MARK_USED_VAR(IH);
     int8x8_t k00 = vdup_n_s8(filter[0]);
     int8x8_t k01 = vdup_n_s8(filter[1]);
@@ -761,12 +746,10 @@ void conv_bias::conv_direct_stride1_5x5_int8_nchw(const int8_t* src,
 }
 
 template <bool first_ic, bool last_ic, BiasMode bias_mode, typename Op>
-void conv_bias::conv_direct_stride1_7x7_int8_nchw(const int8_t* src,
-                                             const int8_t* filter,
-                                             const int32_t* bias, int32_t* temp,
-                                             int8_t* dst, const size_t IH,
-                                             const size_t IW, const size_t OH,
-                                             const size_t OW, const Op& op) {
+void conv_bias::conv_direct_stride1_7x7_int8_nchw(
+        const int8_t* src, const int8_t* filter, const int32_t* bias, int32_t* temp,
+        int8_t* dst, const size_t IH, const size_t IW, const size_t OH, const size_t OW,
+        const Op& op) {
     MEGDNN_MARK_USED_VAR(IH);
     int8x8_t k00 = vdup_n_s8(filter[0]);
     int8x8_t k01 = vdup_n_s8(filter[1]);
@@ -1244,12 +1227,10 @@ void conv_bias::conv_direct_stride1_7x7_int8_nchw(const int8_t* src,
 }
 
 template <bool first_ic, bool last_ic, BiasMode bias_mode, typename Op>
-void conv_bias::conv_direct_stride2_2x2_int8_nchw(const int8_t* src,
-                                             const int8_t* filter,
-                                             const int32_t* bias, int32_t* temp,
-                                             int8_t* dst, const size_t IH,
-                                             const size_t IW, const size_t OH,
-                                             const size_t OW, const Op& op) {
+void conv_bias::conv_direct_stride2_2x2_int8_nchw(
+        const int8_t* src, const int8_t* filter, const int32_t* bias, int32_t* temp,
+        int8_t* dst, const size_t IH, const size_t IW, const size_t OH, const size_t OW,
+        const Op& op) {
     MEGDNN_MARK_USED_VAR(IH);
 #define GET_R2(sptr)                                                      \
     _r00 = vld1_s8(sptr);                                                 \
@@ -1310,12 +1291,10 @@ void conv_bias::conv_direct_stride2_2x2_int8_nchw(const int8_t* src,
 }
 
 template <bool first_ic, bool last_ic, BiasMode bias_mode, typename Op>
-void conv_bias::conv_direct_stride2_3x3_int8_nchw(const int8_t* src,
-                                             const int8_t* filter,
-                                             const int32_t* bias, int32_t* temp,
-                                             int8_t* dst, const size_t IH,
-                                             const size_t IW, const size_t OH,
-                                             const size_t OW, const Op& op) {
+void conv_bias::conv_direct_stride2_3x3_int8_nchw(
+        const int8_t* src, const int8_t* filter, const int32_t* bias, int32_t* temp,
+        int8_t* dst, const size_t IH, const size_t IW, const size_t OH, const size_t OW,
+        const Op& op) {
     MEGDNN_MARK_USED_VAR(IH);
 #define GET_R3(sptr)                                                      \
     _r00 = vld1_s8(sptr);                                                 \
@@ -1467,12 +1446,10 @@ void conv_bias::conv_direct_stride2_3x3_int8_nchw(const int8_t* src,
 }
 
 template <bool first_ic, bool last_ic, BiasMode bias_mode, typename Op>
-void conv_bias::conv_direct_stride2_5x5_int8_nchw(const int8_t* src,
-                                             const int8_t* filter,
-                                             const int32_t* bias, int32_t* temp,
-                                             int8_t* dst, const size_t IH,
-                                             const size_t IW, const size_t OH,
-                                             const size_t OW, const Op& op) {
+void conv_bias::conv_direct_stride2_5x5_int8_nchw(
+        const int8_t* src, const int8_t* filter, const int32_t* bias, int32_t* temp,
+        int8_t* dst, const size_t IH, const size_t IW, const size_t OH, const size_t OW,
+        const Op& op) {
     MEGDNN_MARK_USED_VAR(IH);
 #define GET_R5(sptr)                                                      \
     _r00 = vld1_s8(sptr);                                                 \
@@ -1725,12 +1702,10 @@ void conv_bias::conv_direct_stride2_5x5_int8_nchw(const int8_t* src,
 }
 
 template <bool first_ic, bool last_ic, BiasMode bias_mode, typename Op>
-void conv_bias::conv_direct_stride2_7x7_int8_nchw(const int8_t* src,
-                                             const int8_t* filter,
-                                             const int32_t* bias, int32_t* temp,
-                                             int8_t* dst, const size_t IH,
-                                             const size_t IW, const size_t OH,
-                                             const size_t OW, const Op& op) {
+void conv_bias::conv_direct_stride2_7x7_int8_nchw(
+        const int8_t* src, const int8_t* filter, const int32_t* bias, int32_t* temp,
+        int8_t* dst, const size_t IH, const size_t IW, const size_t OH, const size_t OW,
+        const Op& op) {
     MEGDNN_MARK_USED_VAR(IH);
 #define GET_R7(sptr)                                                      \
     _r00 = vld1_s8(sptr);                                                 \
@@ -2138,16 +2113,18 @@ void conv_bias::conv_direct_stride2_7x7_int8_nchw(const int8_t* src,
     template void conv_bias::conv_direct_##stride##_##i##x##i##_int8_nchw<   \
             first_ic, last_ic, bias, Op>(                                    \
             const int8_t*, const int8_t*, const int32_t*, int32_t*, int8_t*, \
-            const size_t, const size_t, const size_t, const size_t,          \
-            const Op&);
+            const size_t, const size_t, const size_t, const size_t, const Op&);
 
-#define FOR_OP(stride, i, first_ic, last_ic, bias)            \
-    INSTANTIATION(stride, i, first_ic, last_ic, bias,         \
-                  TypeCvtOp<dt_qint32 MEGDNN_COMMA dt_qint8>) \
-    INSTANTIATION(stride, i, first_ic, last_ic, bias,         \
-                  ReluOp<dt_qint32 MEGDNN_COMMA dt_qint8>)    \
-    INSTANTIATION(stride, i, first_ic, last_ic, bias,         \
-                  HSwishOp<dt_qint32 MEGDNN_COMMA dt_qint8>)
+#define FOR_OP(stride, i, first_ic, last_ic, bias)      \
+    INSTANTIATION(                                      \
+            stride, i, first_ic, last_ic, bias,         \
+            TypeCvtOp<dt_qint32 MEGDNN_COMMA dt_qint8>) \
+    INSTANTIATION(                                      \
+            stride, i, first_ic, last_ic, bias,         \
+            ReluOp<dt_qint32 MEGDNN_COMMA dt_qint8>)    \
+    INSTANTIATION(                                      \
+            stride, i, first_ic, last_ic, bias,         \
+            HSwishOp<dt_qint32 MEGDNN_COMMA dt_qint8>)
 
 #define FOR_BIAS(stride, i, first_ic, last_ic)              \
     FOR_OP(stride, i, first_ic, last_ic, BiasMode::NO_BIAS) \

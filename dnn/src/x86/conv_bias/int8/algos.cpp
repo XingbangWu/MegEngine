@@ -1,15 +1,3 @@
-/**
- * \file dnn/src/x86/conv_bias/int8/algos.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #include "src/x86/conv_bias/int8/algos.h"
 #include "src/common/opr_delegate.h"
 #include "src/common/utils.h"
@@ -60,9 +48,8 @@ WorkspaceBundle ConvBiasImpl::AlgoChanWiseAvx2Stride1Qint8::get_bundle(
     if (dst_need_convert) {
         int32_temp = OH2 * OW2 * sizeof(int32_t) * nr_threads;
     }
-    return dst_need_convert
-                   ? WorkspaceBundle(nullptr, {src_size, dst_size, int32_temp})
-                   : WorkspaceBundle(nullptr, {src_size, dst_size});
+    return dst_need_convert ? WorkspaceBundle(nullptr, {src_size, dst_size, int32_temp})
+                            : WorkspaceBundle(nullptr, {src_size, dst_size});
 }
 
 size_t ConvBiasImpl::AlgoChanWiseAvx2Stride1Qint8::get_workspace(
@@ -70,9 +57,8 @@ size_t ConvBiasImpl::AlgoChanWiseAvx2Stride1Qint8::get_workspace(
     return get_bundle(param).total_size_in_bytes();
 }
 
-SmallVector<fallback::ConvBiasImpl::NCBKern>
-ConvBiasImpl::AlgoChanWiseAvx2Stride1Qint8::get_kimpls(
-        const NCBKernSizeParam& param) const {
+SmallVector<fallback::ConvBiasImpl::NCBKern> ConvBiasImpl::
+        AlgoChanWiseAvx2Stride1Qint8::get_kimpls(const NCBKernSizeParam& param) const {
     auto bundle = get_bundle(param);
     return avx2_chanwise_stride1::get_kimpls(param, bundle);
 }
@@ -107,9 +93,8 @@ WorkspaceBundle ConvBiasImpl::AlgoChanWiseAvx2Stride2Qint8::get_bundle(
     if (dst_need_convert) {
         int32_temp = OH2 * OW2 * sizeof(int32_t) * nr_threads;
     }
-    return dst_need_convert
-                   ? WorkspaceBundle(nullptr, {src_size, dst_size, int32_temp})
-                   : WorkspaceBundle(nullptr, {src_size, dst_size});
+    return dst_need_convert ? WorkspaceBundle(nullptr, {src_size, dst_size, int32_temp})
+                            : WorkspaceBundle(nullptr, {src_size, dst_size});
 }
 
 size_t ConvBiasImpl::AlgoChanWiseAvx2Stride2Qint8::get_workspace(
@@ -117,9 +102,8 @@ size_t ConvBiasImpl::AlgoChanWiseAvx2Stride2Qint8::get_workspace(
     return get_bundle(param).total_size_in_bytes();
 }
 
-SmallVector<fallback::ConvBiasImpl::NCBKern>
-ConvBiasImpl::AlgoChanWiseAvx2Stride2Qint8::get_kimpls(
-        const NCBKernSizeParam& param) const {
+SmallVector<fallback::ConvBiasImpl::NCBKern> ConvBiasImpl::
+        AlgoChanWiseAvx2Stride2Qint8::get_kimpls(const NCBKernSizeParam& param) const {
     auto bundle = get_bundle(param);
     return avx2_chanwise_stride2::get_kimpls(param, bundle);
 }
@@ -155,8 +139,8 @@ WorkspaceBundle ConvBiasImpl::AlgoDirectAvx2Stride1Int8::get_bundle(
     size_t src_size = 0, filter_size = 0;
 
     //! pack filter, pack src
-    filter_size = GROUP * round_up(OC, OC_STEP) * round_up(IC, IC_STEP) * FH *
-                  FW * sizeof(int16_t);
+    filter_size = GROUP * round_up(OC, OC_STEP) * round_up(IC, IC_STEP) * FH * FW *
+                  sizeof(int16_t);
     src_size = N * GROUP * div_ceil(IC, IC_STEP) * (IH + 2 * pad_h) *
                round_up(IW + 2 * pad_w, IW_STEP) * 2 * sizeof(int8_t);
 
@@ -174,9 +158,8 @@ size_t ConvBiasImpl::AlgoDirectAvx2Stride1Int8::get_workspace(
     return get_bundle(param).total_size_in_bytes();
 }
 
-SmallVector<fallback::ConvBiasImpl::NCBKern>
-ConvBiasImpl::AlgoDirectAvx2Stride1Int8::get_kimpls(
-        const NCBKernSizeParam& param) const {
+SmallVector<fallback::ConvBiasImpl::NCBKern> ConvBiasImpl::AlgoDirectAvx2Stride1Int8::
+        get_kimpls(const NCBKernSizeParam& param) const {
     auto bundle = get_bundle(param);
     return direct_conv_avx2_stride1::get_kimpls(param, bundle);
 }
@@ -212,11 +195,11 @@ WorkspaceBundle ConvBiasImpl::AlgoAVX2DirectConvStride2::get_bundle(
     size_t src_size = 0, filter_size = 0;
 
     //! pack filter, pack src
-    filter_size = GROUP * round_up(OC, OC_STEP) * round_up(IC, IC_STEP) * FH *
-                  FW * sizeof(int16_t);
+    filter_size = GROUP * round_up(OC, OC_STEP) * round_up(IC, IC_STEP) * FH * FW *
+                  sizeof(int16_t);
     //! avx256 iw max offset 32, caused by w_remain < 16
-    src_size = N * GROUP * div_ceil(IC, IC_STEP) * (IH + 2 * pad_h) *
-                       (IW + 2 * pad_w) * 2 * sizeof(int8_t) +
+    src_size = N * GROUP * div_ceil(IC, IC_STEP) * (IH + 2 * pad_h) * (IW + 2 * pad_w) *
+                       2 * sizeof(int8_t) +
                32;
     bool need_post_process = param.dst_type.enumv() == DTypeEnum::QuantizedS8;
     if (need_post_process) {
@@ -232,9 +215,8 @@ size_t ConvBiasImpl::AlgoAVX2DirectConvStride2::get_workspace(
     return get_bundle(param).total_size_in_bytes();
 }
 
-SmallVector<fallback::ConvBiasImpl::NCBKern>
-ConvBiasImpl::AlgoAVX2DirectConvStride2::get_kimpls(
-        const NCBKernSizeParam& param) const {
+SmallVector<fallback::ConvBiasImpl::NCBKern> ConvBiasImpl::AlgoAVX2DirectConvStride2::
+        get_kimpls(const NCBKernSizeParam& param) const {
     auto bundle = get_bundle(param);
     return direct_conv_avx2_stride2::get_kimpls(param, bundle);
 }
@@ -245,8 +227,8 @@ bool ConvBiasImpl::AlgoAVX2DirectConvStride2::is_preferred(
 }
 
 #if MEGDNN_X86_WITH_MKL_DNN
-bool ConvBiasImpl::AlgoMkldnnQint8::usable(const NCBKernSizeParam& param,
-                                           AlgoSelectionStrategy) const {
+bool ConvBiasImpl::AlgoMkldnnQint8::usable(
+        const NCBKernSizeParam& param, AlgoSelectionStrategy) const {
     return mkldnn_qint8_usable(param);
 }
 
@@ -291,12 +273,12 @@ void ConvBiasImpl::AlgoMkldnnQint8::kern_mkldnn_s8x8x32(
     memory::dims strides_shape = {SH, SW};
     memory::dims padding_shape = {PH, PW};
 
-    auto megdnn_src_md = memory::desc({src_shape}, memory::data_type::s8,
-                                      memory::format_tag::nchw);
-    auto megdnn_weight_md = memory::desc({weight_shape}, memory::data_type::s8,
-                                         memory::format_tag::oihw);
-    auto megdnn_dst_md = memory::desc({dst_shape}, memory::data_type::s32,
-                                      memory::format_tag::nchw);
+    auto megdnn_src_md =
+            memory::desc({src_shape}, memory::data_type::s8, memory::format_tag::nchw);
+    auto megdnn_weight_md = memory::desc(
+            {weight_shape}, memory::data_type::s8, memory::format_tag::oihw);
+    auto megdnn_dst_md =
+            memory::desc({dst_shape}, memory::data_type::s32, memory::format_tag::nchw);
 
     auto megdnn_weight_memory =
             memory(megdnn_weight_md, eng_mkldnn,
@@ -304,11 +286,9 @@ void ConvBiasImpl::AlgoMkldnnQint8::kern_mkldnn_s8x8x32(
     int8_t* src = const_cast<int8_t*>(param.src<int8_t>(batch_id, group_id));
     int32_t* dst = param.dst<int32_t>(batch_id, group_id);
 
-    auto megdnn_src_memory =
-            memory(megdnn_src_md, eng_mkldnn, static_cast<void*>(src));
+    auto megdnn_src_memory = memory(megdnn_src_md, eng_mkldnn, static_cast<void*>(src));
 
-    auto megdnn_dst_memory =
-            memory(megdnn_dst_md, eng_mkldnn, static_cast<void*>(dst));
+    auto megdnn_dst_memory = memory(megdnn_dst_md, eng_mkldnn, static_cast<void*>(dst));
     // Intel mkldnn compute s8*s8-->s32 convolution in none vnni machine is
     // not crect, this based https://github.com/intel/mkl-dnn/issues/375. In
     // the vnni machine s8*s8--->s32 must use reorder, can't use the megdnn
@@ -316,12 +296,12 @@ void ConvBiasImpl::AlgoMkldnnQint8::kern_mkldnn_s8x8x32(
     // directly, if machine does not support vnni, there is a naive mkl-dnn
     // implement
     if (is_supported(SIMDType::VNNI)) {
-        auto conv_src_md = memory::desc({src_shape}, memory::data_type::s8,
-                                        memory::format_tag::any);
+        auto conv_src_md = memory::desc(
+                {src_shape}, memory::data_type::s8, memory::format_tag::any);
         auto conv_weights_md = memory::desc(
                 {weight_shape}, memory::data_type::s8, memory::format_tag::any);
-        auto conv_dst_md = memory::desc({dst_shape}, memory::data_type::s32,
-                                        memory::format_tag::any);
+        auto conv_dst_md = memory::desc(
+                {dst_shape}, memory::data_type::s32, memory::format_tag::any);
 
         auto conv_desc = convolution_forward::desc(
                 prop_kind::forward, algorithm::convolution_auto, conv_src_md,
@@ -334,8 +314,7 @@ void ConvBiasImpl::AlgoMkldnnQint8::kern_mkldnn_s8x8x32(
         auto conv = convolution_forward(conv_prim_desc);
 
         memory conv_src_memory = memory(conv_prim_desc.src_desc(), eng_mkldnn);
-        memory conv_weight_memory =
-                memory(conv_prim_desc.weights_desc(), eng_mkldnn);
+        memory conv_weight_memory = memory(conv_prim_desc.weights_desc(), eng_mkldnn);
         memory conv_dst_memory;
 
         REORDER_MEMORY(megdnn_src_memory, conv_src_memory);
@@ -347,9 +326,10 @@ void ConvBiasImpl::AlgoMkldnnQint8::kern_mkldnn_s8x8x32(
             conv_dst_memory = megdnn_dst_memory;
         }
 
-        conv.execute(stream_mkldnn, {{DNNL_ARG_SRC, conv_src_memory},
-                                     {DNNL_ARG_WEIGHTS, conv_weight_memory},
-                                     {DNNL_ARG_DST, conv_dst_memory}});
+        conv.execute(
+                stream_mkldnn, {{DNNL_ARG_SRC, conv_src_memory},
+                                {DNNL_ARG_WEIGHTS, conv_weight_memory},
+                                {DNNL_ARG_DST, conv_dst_memory}});
         REORDER_MEMORY(conv_dst_memory, megdnn_dst_memory);
         stream_mkldnn.wait();
     } else {
@@ -359,10 +339,10 @@ void ConvBiasImpl::AlgoMkldnnQint8::kern_mkldnn_s8x8x32(
         uint8_t* const_128 = static_cast<uint8_t*>(param.workspace_ptr);
         std::memset(const_128, 128u, get_bundle(param).total_size_in_bytes());
 
-        auto megdnn_128_md = memory::desc({src_shape}, memory::data_type::u8,
-                                          memory::format_tag::nchw);
-        auto megdnn_128_memory = memory(megdnn_128_md, eng_mkldnn,
-                                        static_cast<void*>(const_128));
+        auto megdnn_128_md = memory::desc(
+                {src_shape}, memory::data_type::u8, memory::format_tag::nchw);
+        auto megdnn_128_memory =
+                memory(megdnn_128_md, eng_mkldnn, static_cast<void*>(const_128));
 
         // 1.compute the conv 128 * weight(s8) -> s32
         auto conv_128_dst_memory = memory(megdnn_dst_md, eng_mkldnn);
@@ -376,9 +356,10 @@ void ConvBiasImpl::AlgoMkldnnQint8::kern_mkldnn_s8x8x32(
                 convolution_forward::primitive_desc(conv_desc1, eng_mkldnn);
 
         net.push_back(convolution_forward(conv_prim_desc1));
-        net_args.push_back({{DNNL_ARG_SRC, megdnn_128_memory},
-                            {DNNL_ARG_WEIGHTS, megdnn_weight_memory},
-                            {DNNL_ARG_DST, conv_128_dst_memory}});
+        net_args.push_back(
+                {{DNNL_ARG_SRC, megdnn_128_memory},
+                 {DNNL_ARG_WEIGHTS, megdnn_weight_memory},
+                 {DNNL_ARG_DST, conv_128_dst_memory}});
 
         // 2.compute the conv (src+128)(u8) *weight(s8) --> s32
         //(1) src+128
@@ -388,9 +369,10 @@ void ConvBiasImpl::AlgoMkldnnQint8::kern_mkldnn_s8x8x32(
                 {megdnn_128_md, megdnn_src_md}, eng_mkldnn);
 
         net.push_back(sum(sum_128_desc));
-        net_args.push_back({{DNNL_ARG_MULTIPLE_SRC, megdnn_128_memory},
-                            {DNNL_ARG_MULTIPLE_SRC + 1, megdnn_src_memory},
-                            {DNNL_ARG_DST, conv_src_add_128_memory}});
+        net_args.push_back(
+                {{DNNL_ARG_MULTIPLE_SRC, megdnn_128_memory},
+                 {DNNL_ARG_MULTIPLE_SRC + 1, megdnn_src_memory},
+                 {DNNL_ARG_DST, conv_src_add_128_memory}});
         //(2) conv (src+128)(u8) * weight(s8) --> s32
         auto conv_desc2 = convolution_forward::desc(
                 prop_kind::forward, algorithm::convolution_auto, megdnn_128_md,
@@ -401,18 +383,20 @@ void ConvBiasImpl::AlgoMkldnnQint8::kern_mkldnn_s8x8x32(
                 convolution_forward::primitive_desc(conv_desc2, eng_mkldnn);
 
         net.push_back(convolution_forward(conv_prim_desc2));
-        net_args.push_back({{DNNL_ARG_SRC, conv_src_add_128_memory},
-                            {DNNL_ARG_WEIGHTS, megdnn_weight_memory},
-                            {DNNL_ARG_DST, megdnn_dst_memory}});
+        net_args.push_back(
+                {{DNNL_ARG_SRC, conv_src_add_128_memory},
+                 {DNNL_ARG_WEIGHTS, megdnn_weight_memory},
+                 {DNNL_ARG_DST, megdnn_dst_memory}});
         // 3.sub the 128*weight
-        auto sub_128_desc =
-                sum::primitive_desc(megdnn_dst_md, {1.0f, -1.0f},
-                                    {megdnn_dst_md, megdnn_dst_md}, eng_mkldnn);
+        auto sub_128_desc = sum::primitive_desc(
+                megdnn_dst_md, {1.0f, -1.0f}, {megdnn_dst_md, megdnn_dst_md},
+                eng_mkldnn);
 
         net.push_back(sum(sub_128_desc));
-        net_args.push_back({{DNNL_ARG_MULTIPLE_SRC, megdnn_dst_memory},
-                            {DNNL_ARG_MULTIPLE_SRC + 1, conv_128_dst_memory},
-                            {DNNL_ARG_DST, megdnn_dst_memory}});
+        net_args.push_back(
+                {{DNNL_ARG_MULTIPLE_SRC, megdnn_dst_memory},
+                 {DNNL_ARG_MULTIPLE_SRC + 1, conv_128_dst_memory},
+                 {DNNL_ARG_DST, megdnn_dst_memory}});
         // 4 excute
         for (size_t i = 0; i < net.size(); ++i) {
             net.at(i).execute(stream_mkldnn, net_args.at(i));
@@ -423,14 +407,13 @@ void ConvBiasImpl::AlgoMkldnnQint8::kern_mkldnn_s8x8x32(
 }
 #undef REORDER_MEMORY
 
-bool ConvBiasImpl::AlgoMkldnnQint8::is_preferred(
-        const NCBKernSizeParam& param) const {
+bool ConvBiasImpl::AlgoMkldnnQint8::is_preferred(const NCBKernSizeParam& param) const {
     return mkldnn_qint8_preferred(param);
 }
 
 /* ===================== mkldnn qint8 matmul algo ===================== */
-bool ConvBiasImpl::AlgoMkldnnMatmulQint8::usable(const NCBKernSizeParam& param,
-                                                 AlgoSelectionStrategy) const {
+bool ConvBiasImpl::AlgoMkldnnMatmulQint8::usable(
+        const NCBKernSizeParam& param, AlgoSelectionStrategy) const {
     return mkldnn_matmul_qint8_usable(param);
 }
 
@@ -524,24 +507,24 @@ void ConvBiasImpl::AlgoMkldnnMatmulQint8::kern_mkldnn_matmul_s8x8x32(
                 }
             } else {
                 if (is_xcorr) {
-                    img2col_stride<true>(src2, B, OC, OH, OW, IC, IH2, IW2, FH,
-                                         FW, SH, SW);
+                    img2col_stride<true>(
+                            src2, B, OC, OH, OW, IC, IH2, IW2, FH, FW, SH, SW);
                 } else {
-                    img2col_stride<false>(src2, B, OC, OH, OW, IC, IH2, IW2, FH,
-                                          FW, SH, SW);
+                    img2col_stride<false>(
+                            src2, B, OC, OH, OW, IC, IH2, IW2, FH, FW, SH, SW);
                 }
             }
         }
         {
             TensorND A_, B_, C_;
             A_.layout = TensorLayout({OC, IC * FH * FW}, dtype::Int8());
-            A_.raw_ptr = const_cast<int8_t*>(param.filter<int8_t>(group_id));
+            A_.reset_ptr(const_cast<int8_t*>(param.filter<int8_t>(group_id)));
             B_.layout = TensorLayout({IC * FH * FW, OH * OW}, dtype::Int8());
-            B_.raw_ptr = B;
+            B_.reset_ptr(B);
             C_.layout = TensorLayout({OC, OH * OW}, dtype::Int32());
-            C_.raw_ptr = dst;
-            Workspace workspace(static_cast<dt_byte*>(bundle.get(2)),
-                                bundle.get_size(2));
+            C_.reset_ptr(dst);
+            Workspace workspace(
+                    static_cast<dt_byte*>(bundle.get(2)), bundle.get_size(2));
             get_matmul_opr()->exec(A_, B_, C_, workspace);
         }
     }

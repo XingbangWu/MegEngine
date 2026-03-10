@@ -3,7 +3,7 @@
  *
  * This file is part of MegBrain, a deep learning framework developed by Megvii.
  *
- * \copyright Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
+ * \copyright Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
  *
  */
 
@@ -12,14 +12,13 @@
 #include "megbrain/comp_node.h"
 #include "megbrain/test/helper.h"
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include <cstdlib>
 
 extern "C" int gtest_main(int argc, char** argv) {
     if (getenv("MGB_TEST_USECPU")) {
-        mgb::CompNode::Locator::set_unspec_device_type(
-                mgb::CompNode::DeviceType::CPU);
+        mgb::CompNode::Locator::set_unspec_device_type(mgb::CompNode::DeviceType::CPU);
     }
     if (getenv("MGB_TEST_NO_LOG")) {
         mgb::set_log_level(mgb::LogLevel::ERROR);
@@ -40,8 +39,9 @@ extern "C" int gtest_main(int argc, char** argv) {
         listeners.Release(&mgb::RNGSeedManager::inst());
         return rst;
     }
-    MGB_CATCH(std::exception & exc,
-              { mgb_log_warn("uncaught exception: %s", exc.what()); });
+    MGB_CATCH(std::exception & exc, {
+        mgb_log_warn("uncaught exception: %s", exc.what());
+    });
     listeners.Release(&mgb::RNGSeedManager::inst());
     return 0;
 }

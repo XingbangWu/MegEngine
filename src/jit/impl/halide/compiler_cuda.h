@@ -1,14 +1,3 @@
-/**
- * \file src/jit/impl/halide/compiler_cuda.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "./halide_header.h"
@@ -26,8 +15,9 @@ namespace jit {
 class HalideCudaTargetTrait final : public HalideExecutable::TargetTrait {
 public:
     FeatureSet features(CompNode comp_node) const override;
-    FunctionHandle compile_and_load(CompNode comp_node, Halide::Target target,
-                                    const HalideExecutable& hl_exec) override;
+    FunctionHandle compile_and_load(
+            CompNode comp_node, Halide::Target target,
+            const HalideExecutable& hl_exec) override;
     void* get_user_context(CompNode comp_node) override;
 
 private:
@@ -47,8 +37,7 @@ private:
     DeviceProp& get_dev_prop(CompNode comp_node);
 
     Halide::Pipeline gen_halide_pipeline_schedule(
-            const ast_hl::AstNodePtr& dst_output,
-            const DeviceProp& device_prop);
+            const ast_hl::AstNodePtr& dst_output, const DeviceProp& device_prop);
 };
 
 /*!
@@ -64,8 +53,9 @@ class HalideCudaCompiler final : public Compiler {
 public:
     Property property() const override {
         using F = Property::Flag;
-        return Property{F::BIND_NDIM | F::BIND_SHAPE | F::NEED_INPUT_CONTIG,
-                        JITFeatureBits::REDUCE, 64};
+        return Property{
+                F::BIND_NDIM | F::BIND_SHAPE | F::NEED_INPUT_CONTIG,
+                JITFeatureBits::REDUCE, 64};
     }
 
     size_t get_nr_workspace_outputs(JITExecutor*) const override { return 0; }

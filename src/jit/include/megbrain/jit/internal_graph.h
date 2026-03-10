@@ -1,14 +1,3 @@
-/**
- * \file src/jit/include/megbrain/jit/internal_graph.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/gopt/gtrans.h"
@@ -35,8 +24,9 @@ using InternalGraphPtr = std::shared_ptr<InternalGraph>;
  */
 class InternalGraph {
 public:
-    InternalGraph(VarNode* output, VarNode* shape_infer, VarNode* value_infer,
-                  PlaceholderArray placeholders)
+    InternalGraph(
+            VarNode* output, VarNode* shape_infer, VarNode* value_infer,
+            PlaceholderArray placeholders)
             : m_output{output},
               m_shape_infer{shape_infer},
               m_value_infer{value_infer},
@@ -49,8 +39,7 @@ public:
     };
 
     struct PtrEqual {
-        bool operator()(const InternalGraph* lhs,
-                        const InternalGraph* rhs) const {
+        bool operator()(const InternalGraph* lhs, const InternalGraph* rhs) const {
             return lhs->m_output == rhs->m_output;
         }
     };
@@ -93,10 +82,10 @@ class InternalGraphGenerator {
     void find_oprs_depended_by_dimshuffle(cg::OperatorNodeBase* opr);
 
 public:
-    explicit InternalGraphGenerator(cg::OperatorNodeBase* opr);
+    MGE_WIN_DECLSPEC_FUC explicit InternalGraphGenerator(cg::OperatorNodeBase* opr);
 
     //! generate the graph; this method can be called multiple times
-    InternalGraphPtr generate();
+    MGE_WIN_DECLSPEC_FUC InternalGraphPtr generate();
 
     /*!
      * \brief needed input vars in the original (i.e. outer) graph
@@ -125,15 +114,13 @@ public:
     //! input vars (i.e. tree leaves) of currently added operators
     const ThinHashSet<VarNode*>& graph_input_set() { return m_graph_input_set; }
 
-    const megdnn::TensorShape& before_reduce_shape() {
-        return m_before_reduce_shape;
-    }
+    const megdnn::TensorShape& before_reduce_shape() { return m_before_reduce_shape; }
 
     //! get number of inputs of this internal graph after adding a new operator
     size_t get_cnt_input_if_add(cg::OperatorNodeBase* opr) const;
 
     //! add an operator into this graph; its outputs must have been added
-    void add_opr(cg::OperatorNodeBase* opr);
+    MGE_WIN_DECLSPEC_FUC void add_opr(cg::OperatorNodeBase* opr);
 
     //! output var in the outer graph (i.e. the root node)
     VarNode* output() const { return m_output; }
@@ -171,8 +158,7 @@ private:
     ThinHashMap<VarNode*, DepType> m_var_dep_type;
 
     //! oprs that Reduce and JITExecutor(with Reduce) oprs depend on
-    ThinHashMap<VarNode*, ThinHashSet<cg::OperatorNodeBase*>>
-            m_reduce_out_var_deps;
+    ThinHashMap<VarNode*, ThinHashSet<cg::OperatorNodeBase*>> m_reduce_out_var_deps;
 
     //! oprs that depended by Dimshuffle or JITExecutor(with Dimshuffle)
     //! kw: <opr, the latest dimshuffle or JITExecutors(with Dimshuffle)

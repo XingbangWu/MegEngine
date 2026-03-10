@@ -1,28 +1,23 @@
-/**
- * \file dnn/src/arm_common/simd_macro/marm_neon.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #pragma once
 
-#include <arm_neon.h>
 #include "megdnn/arch.h"
 #include "src/common/unroll_macro.h"
+
+#if MGB_ENABLE_DOT
+#if defined(__ARM_FEATURE_DOTPROD)
+#undef __ARM_FEATURE_DOTPROD
+#endif
+#define __ARM_FEATURE_DOTPROD 1
+#endif
+#include <arm_neon.h>
 
 // GCC does not support __nodebug__, it reports:
 // '__nodebug__' attribute directive ignored
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpragmas"
 #pragma GCC diagnostic ignored "-Wattributes"
-#define __ai      \
-    static inline \
-            __attribute__((__gnu_inline__, __always_inline__, __nodebug__))
+#define __ai \
+    static inline __attribute__((__gnu_inline__, __always_inline__, __nodebug__))
 
 #if __ARM_FEATURE_FP16_VECTOR_ARITHMETIC && !MEGDNN_DISABLE_FLOAT16
 #define MEGDNN_INC_ARM_FP16(_x) _x
@@ -34,15 +29,13 @@
 
 //! copy from arm_neon, as in clang7.0 these function not exists
 #ifdef __LITTLE_ENDIAN__
-__ai float16x8_t vmlaq_f16(float16x8_t __p0, float16x8_t __p1,
-                           float16x8_t __p2) {
+__ai float16x8_t vmlaq_f16(float16x8_t __p0, float16x8_t __p1, float16x8_t __p2) {
     float16x8_t __ret;
     __ret = __p0 + __p1 * __p2;
     return __ret;
 }
 #else
-__ai float16x8_t vmlaq_f16(float16x8_t __p0, float16x8_t __p1,
-                           float16x8_t __p2) {
+__ai float16x8_t vmlaq_f16(float16x8_t __p0, float16x8_t __p1, float16x8_t __p2) {
     float16x8_t __rev0;
     __rev0 = __builtin_shufflevector(__p0, __p0, 7, 6, 5, 4, 3, 2, 1, 0);
     float16x8_t __rev1;
@@ -57,35 +50,35 @@ __ai float16x8_t vmlaq_f16(float16x8_t __p0, float16x8_t __p1,
 #endif
 
 #ifdef __LITTLE_ENDIAN__
-#define vmlaq_lane_f16(__p0, __p1, __p2, __p3)                                \
-    __extension__({                                                           \
-        float16x8_t __s0 = __p0;                                              \
-        float16x8_t __s1 = __p1;                                              \
-        float16x4_t __s2 = __p2;                                              \
-        float16x8_t __ret;                                                    \
-        __ret = __s0 + __s1 * __builtin_shufflevector(__s2, __s2, __p3, __p3, \
-                                                      __p3, __p3, __p3, __p3, \
-                                                      __p3, __p3);            \
-        __ret;                                                                \
+#define vmlaq_lane_f16(__p0, __p1, __p2, __p3)                                        \
+    __extension__({                                                                   \
+        float16x8_t __s0 = __p0;                                                      \
+        float16x8_t __s1 = __p1;                                                      \
+        float16x4_t __s2 = __p2;                                                      \
+        float16x8_t __ret;                                                            \
+        __ret = __s0 + __s1 * __builtin_shufflevector(                                \
+                                      __s2, __s2, __p3, __p3, __p3, __p3, __p3, __p3, \
+                                      __p3, __p3);                                    \
+        __ret;                                                                        \
     })
 #else
-#define vmlaq_lane_f16(__p0, __p1, __p2, __p3)                                 \
-    __extension__({                                                            \
-        float16x8_t __s0 = __p0;                                               \
-        float16x8_t __s1 = __p1;                                               \
-        float16x4_t __s2 = __p2;                                               \
-        float16x8_t __rev0;                                                    \
-        __rev0 = __builtin_shufflevector(__s0, __s0, 7, 6, 5, 4, 3, 2, 1, 0);  \
-        float16x8_t __rev1;                                                    \
-        __rev1 = __builtin_shufflevector(__s1, __s1, 7, 6, 5, 4, 3, 2, 1, 0);  \
-        float16x4_t __rev2;                                                    \
-        __rev2 = __builtin_shufflevector(__s2, __s2, 3, 2, 1, 0);              \
-        float16x8_t __ret;                                                     \
-        __ret = __rev0 + __rev1 * __builtin_shufflevector(                     \
-                                          __rev2, __rev2, __p3, __p3, __p3,    \
-                                          __p3, __p3, __p3, __p3, __p3);       \
-        __ret = __builtin_shufflevector(__ret, __ret, 7, 6, 5, 4, 3, 2, 1, 0); \
-        __ret;                                                                 \
+#define vmlaq_lane_f16(__p0, __p1, __p2, __p3)                                    \
+    __extension__({                                                               \
+        float16x8_t __s0 = __p0;                                                  \
+        float16x8_t __s1 = __p1;                                                  \
+        float16x4_t __s2 = __p2;                                                  \
+        float16x8_t __rev0;                                                       \
+        __rev0 = __builtin_shufflevector(__s0, __s0, 7, 6, 5, 4, 3, 2, 1, 0);     \
+        float16x8_t __rev1;                                                       \
+        __rev1 = __builtin_shufflevector(__s1, __s1, 7, 6, 5, 4, 3, 2, 1, 0);     \
+        float16x4_t __rev2;                                                       \
+        __rev2 = __builtin_shufflevector(__s2, __s2, 3, 2, 1, 0);                 \
+        float16x8_t __ret;                                                        \
+        __ret = __rev0 + __rev1 * __builtin_shufflevector(                        \
+                                          __rev2, __rev2, __p3, __p3, __p3, __p3, \
+                                          __p3, __p3, __p3, __p3);                \
+        __ret = __builtin_shufflevector(__ret, __ret, 7, 6, 5, 4, 3, 2, 1, 0);    \
+        __ret;                                                                    \
     })
 #endif
 
@@ -112,35 +105,35 @@ __ai float16x8_t vdupq_n_f16(float16_t __p0) {
 #endif
 
 #ifdef __LITTLE_ENDIAN__
-#define vmlaq_laneq_f16(__p0, __p1, __p2, __p3)                               \
-    __extension__({                                                           \
-        float16x8_t __s0 = __p0;                                              \
-        float16x8_t __s1 = __p1;                                              \
-        float16x8_t __s2 = __p2;                                              \
-        float16x8_t __ret;                                                    \
-        __ret = __s0 + __s1 * __builtin_shufflevector(__s2, __s2, __p3, __p3, \
-                                                      __p3, __p3, __p3, __p3, \
-                                                      __p3, __p3);            \
-        __ret;                                                                \
+#define vmlaq_laneq_f16(__p0, __p1, __p2, __p3)                                       \
+    __extension__({                                                                   \
+        float16x8_t __s0 = __p0;                                                      \
+        float16x8_t __s1 = __p1;                                                      \
+        float16x8_t __s2 = __p2;                                                      \
+        float16x8_t __ret;                                                            \
+        __ret = __s0 + __s1 * __builtin_shufflevector(                                \
+                                      __s2, __s2, __p3, __p3, __p3, __p3, __p3, __p3, \
+                                      __p3, __p3);                                    \
+        __ret;                                                                        \
     })
 #else
-#define vmlaq_laneq_f16(__p0, __p1, __p2, __p3)                                \
-    __extension__({                                                            \
-        float16x8_t __s0 = __p0;                                               \
-        float16x8_t __s1 = __p1;                                               \
-        float16x8_t __s2 = __p2;                                               \
-        float16x8_t __rev0;                                                    \
-        __rev0 = __builtin_shufflevector(__s0, __s0, 7, 6, 5, 4, 3, 2, 1, 0);  \
-        float16x8_t __rev1;                                                    \
-        __rev1 = __builtin_shufflevector(__s1, __s1, 7, 6, 5, 4, 3, 2, 1, 0);  \
-        float16x8_t __rev2;                                                    \
-        __rev2 = __builtin_shufflevector(__s2, __s2, 7, 6, 5, 4, 3, 2, 1, 0);  \
-        float16x8_t __ret;                                                     \
-        __ret = __rev0 + __rev1 * __builtin_shufflevector(                     \
-                                          __rev2, __rev2, __p3, __p3, __p3,    \
-                                          __p3, __p3, __p3, __p3, __p3);       \
-        __ret = __builtin_shufflevector(__ret, __ret, 7, 6, 5, 4, 3, 2, 1, 0); \
-        __ret;                                                                 \
+#define vmlaq_laneq_f16(__p0, __p1, __p2, __p3)                                   \
+    __extension__({                                                               \
+        float16x8_t __s0 = __p0;                                                  \
+        float16x8_t __s1 = __p1;                                                  \
+        float16x8_t __s2 = __p2;                                                  \
+        float16x8_t __rev0;                                                       \
+        __rev0 = __builtin_shufflevector(__s0, __s0, 7, 6, 5, 4, 3, 2, 1, 0);     \
+        float16x8_t __rev1;                                                       \
+        __rev1 = __builtin_shufflevector(__s1, __s1, 7, 6, 5, 4, 3, 2, 1, 0);     \
+        float16x8_t __rev2;                                                       \
+        __rev2 = __builtin_shufflevector(__s2, __s2, 7, 6, 5, 4, 3, 2, 1, 0);     \
+        float16x8_t __ret;                                                        \
+        __ret = __rev0 + __rev1 * __builtin_shufflevector(                        \
+                                          __rev2, __rev2, __p3, __p3, __p3, __p3, \
+                                          __p3, __p3, __p3, __p3);                \
+        __ret = __builtin_shufflevector(__ret, __ret, 7, 6, 5, 4, 3, 2, 1, 0);    \
+        __ret;                                                                    \
     })
 #endif
 
@@ -212,8 +205,7 @@ __ai float16x8_t vdupq_n_f16(__fp16 a) {
 ///////////////////////////////////////////////////////////////////////
 
 #elif MEGDNN_AARCH64
-#define vmlaq_low_lane_f16(__a, __b, __v, __lane) \
-    vmlaq_laneq_f16(__a, __b, __v, __lane)
+#define vmlaq_low_lane_f16(__a, __b, __v, __lane) vmlaq_laneq_f16(__a, __b, __v, __lane)
 
 #define vmlaq_high_lane_f16(__a, __b, __v, __lane) \
     vmlaq_laneq_f16(__a, __b, __v, __lane)
@@ -249,13 +241,14 @@ __ai float16x8_t vdupq_n_f16(__fp16 a) {
 
 #endif  // __ARM_FEATURE_FP16_VECTOR_ARITHMETIC
 
-#if __ARM_FEATURE_DOTPROD
-
+#if MGB_ENABLE_DOT
+MEGDNN_ATTRIBUTE_TARGET("dotprod")
 __ai int32x4_t vdotq2_s32(int8x16_t a, int8x16_t b) {
     int32x4_t c = vdupq_n_s32(0);
     return vdotq_s32(c, a, b);
 }
 
+MEGDNN_ATTRIBUTE_TARGET("dotprod")
 __ai uint32x4_t vdotq2_u32(uint8x16_t a, uint8x16_t b) {
     uint32x4_t c = vdupq_n_u32(0);
     return vdotq_u32(c, a, b);
@@ -275,11 +268,13 @@ __ai uint32x4_t vdotq2_u32(uint8x16_t a, uint8x16_t b) {
         c;                                 \
     })
 
+MEGDNN_ATTRIBUTE_TARGET("dotprod")
 __ai int32x2_t vdot2_s32(int8x8_t a, int8x8_t b) {
     int32x2_t c = vdup_n_s32(0);
     return vdot_s32(c, a, b);
 }
 
+MEGDNN_ATTRIBUTE_TARGET("dotprod")
 __ai uint32x2_t vdot2_u8(uint8x8_t a, uint8x8_t b) {
     uint32x2_t c = vdup_n_u32(0);
     return vdot_u32(c, a, b);
@@ -298,8 +293,7 @@ __ai uint32x2_t vdot2_u8(uint8x8_t a, uint8x8_t b) {
         c = vdot_lane_u32(c, a, b, lane); \
         c;                                \
     })
-
-#endif  // __ARM_FEATURE_DOTPROD
+#endif  // MGB_ENABLE_DOT
 
 #if __GNUC__ < 8
 #undef vld1q_f32_x2
@@ -313,6 +307,12 @@ __ai float32x4x2_t vld1q_f32_x2(const float* p) {
 __ai void vst1q_f32_x2(const float* p, float32x4x2_t v) {
     vst1q_f32(const_cast<float*>(p), v.val[0]);
     vst1q_f32(const_cast<float*>(p) + 4, v.val[1]);
+}
+#endif
+
+#if !defined(vld1q_u32_x2) && (__GNUC__ < 8 || (__GNUC__ == 8 && __GNUC_MINOR__ < 3))
+__ai uint32x4x2_t vld1q_u32_x2(const uint32_t* p) {
+    return {{vld1q_u32(p), vld1q_u32(p + 4)}};
 }
 #endif
 
@@ -338,12 +338,7 @@ __ai uint8x16_t vtranslq_u8(uint8x8_t a) {
 
 #ifdef MEGDNN_TEGRA_X1
 #define vset_lane_s16_fix_tx1(__elem, __vec, __index) \
-    {                                                 \
-        asm volatile("ins %0.h[" #__index "], %w1\n"  \
-                     : "+w"(__vec)                    \
-                     : "r"(__elem)                    \
-                     :);                              \
-    }
+    { asm volatile("ins %0.h[" #__index "], %w1\n" : "+w"(__vec) : "r"(__elem) :); }
 #else
 #define vset_lane_s16_fix_tx1(__elem, __vec, __index) \
     __vec = vset_lane_s16(__elem, __vec, __index)
@@ -353,8 +348,9 @@ __ai uint8x16_t vtranslq_u8(uint8x8_t a) {
 __ai int32_t vaddlvq_s16(int16x8_t __p0) {
     int32_t __ret = 0;
     auto sum = vpaddlq_s16(__p0);
-    __ret += (vgetq_lane_s32(sum, 0) + vgetq_lane_s32(sum, 1) +
-              vgetq_lane_s32(sum, 2) + vgetq_lane_s32(sum, 3));
+    __ret +=
+            (vgetq_lane_s32(sum, 0) + vgetq_lane_s32(sum, 1) + vgetq_lane_s32(sum, 2) +
+             vgetq_lane_s32(sum, 3));
     return __ret;
 }
 
@@ -408,13 +404,13 @@ __ai int32_t vaddv_s32(int32x2_t a) {
 }
 
 __ai int32_t vaddvq_s32(int32x4_t a) {
-    return vgetq_lane_s32(a, 0) + vgetq_lane_s32(a, 1) +
-           vgetq_lane_s32(a, 2) + vgetq_lane_s32(a, 3);
+    return vgetq_lane_s32(a, 0) + vgetq_lane_s32(a, 1) + vgetq_lane_s32(a, 2) +
+           vgetq_lane_s32(a, 3);
 }
 
 __ai float32_t vaddvq_f32(float32x4_t a) {
-    return vgetq_lane_f32(a, 0) + vgetq_lane_f32(a, 1) +
-           vgetq_lane_f32(a, 2) + vgetq_lane_f32(a, 3);
+    return vgetq_lane_f32(a, 0) + vgetq_lane_f32(a, 1) + vgetq_lane_f32(a, 2) +
+           vgetq_lane_f32(a, 3);
 }
 
 #endif  // MEGDNN_ARMV7
@@ -461,15 +457,11 @@ __ai uint64x2_t vmovl_low_u32(uint32x4_t __p0) {
 
 #elif MEGDNN_AARCH64
 __ai float64x2_t vbitq_f64(float64x2_t dst, float64x2_t v1, uint64x2_t mask) {
-    asm volatile("bit %0.16b, %1.16b, %2.16b\n"
-                 : "+w"(dst)
-                 : "w"(v1), "w"(mask)
-                 :);
+    asm volatile("bit %0.16b, %1.16b, %2.16b\n" : "+w"(dst) : "w"(v1), "w"(mask) :);
     return dst;
 }
 
-#define vmlaq_low_lane_f32(__a, __b, __v, __lane) \
-    vmlaq_laneq_f32(__a, __b, __v, __lane)
+#define vmlaq_low_lane_f32(__a, __b, __v, __lane) vmlaq_laneq_f32(__a, __b, __v, __lane)
 
 #define vmlaq_high_lane_f32(__a, __b, __v, __lane) \
     vmlaq_laneq_f32(__a, __b, __v, __lane)
@@ -477,13 +469,12 @@ __ai float64x2_t vbitq_f64(float64x2_t dst, float64x2_t v1, uint64x2_t mask) {
 #endif
 
 #if MEGDNN_ARMV7
-__ai int8x16_t vqtbl1q_s8(int8x16_t& a, uint8x16_t& idx) {
+__ai int8x16_t vqtbl1q_s8(int8x16_t a, uint8x16_t idx) {
     int8x8_t src_low = vget_low_s8(a);
     int8x8_t src_high = vget_high_s8(a);
-    return vcombine_s8(vtbl2_s8({src_low, src_high},
-                                vget_low_s8(vreinterpretq_s8_u8(idx))),
-                       vtbl2_s8({src_low, src_high},
-                                vget_high_s8(vreinterpretq_s8_u8(idx))));
+    return vcombine_s8(
+            vtbl2_s8({src_low, src_high}, vget_low_s8(vreinterpretq_s8_u8(idx))),
+            vtbl2_s8({src_low, src_high}, vget_high_s8(vreinterpretq_s8_u8(idx))));
 }
 namespace {
 template <int lane>
@@ -569,13 +560,11 @@ struct Vfmsq_laneq_f32_armv7<3> {
     }
 };
 }  // namespace
-#define vfmaq_laneq_f32(a, b, v, lane) \
-    Vfmaq_laneq_f32_armv7<lane>::impl(a, b, v)
+#define vfmaq_laneq_f32(a, b, v, lane) Vfmaq_laneq_f32_armv7<lane>::impl(a, b, v)
 
-#define vfmsq_laneq_f32(a, b, v, lane) \
-    Vfmsq_laneq_f32_armv7<lane>::impl(a, b, v)
+#define vfmsq_laneq_f32(a, b, v, lane) Vfmsq_laneq_f32_armv7<lane>::impl(a, b, v)
 
-#if __ARM_FEATURE_DOTPROD
+#if MGB_ENABLE_DOT
 namespace {
 template <int lane>
 struct Vdotq_laneq_s32_armv7 {
@@ -583,30 +572,33 @@ struct Vdotq_laneq_s32_armv7 {
 };
 template <>
 struct Vdotq_laneq_s32_armv7<0> {
+    MEGDNN_ATTRIBUTE_TARGET("dotprod")
     __ai int32x4_t impl(int32x4_t a, int8x16_t b, int8x16_t v) {
         return vdotq_lane_s32(a, b, vget_low_s32(v), 0);
     }
 };
 template <>
 struct Vdotq_laneq_s32_armv7<1> {
+    MEGDNN_ATTRIBUTE_TARGET("dotprod")
     __ai int32x4_t impl(int32x4_t a, int8x16_t b, int8x16_t v) {
         return vdotq_lane_s32(a, b, vget_low_s32(v), 1);
     }
 };
 template <>
 struct Vdotq_laneq_s32_armv7<2> {
+    MEGDNN_ATTRIBUTE_TARGET("dotprod")
     __ai int32x4_t impl(int32x4_t a, int8x16_t b, int8x16_t v) {
         return vdotq_lane_s32(a, b, vget_high_s32(v), 0);
     }
 };
 template <>
 struct Vdotq_laneq_s32_armv7<3> {
+    MEGDNN_ATTRIBUTE_TARGET("dotprod")
     __ai int32x4_t impl(int32x4_t a, int8x16_t b, int8x16_t v) {
         return vdotq_lane_s32(a, b, vget_high_f32(v), 1);
     }
 };
-#define vdotq_laneq_s32(a, b, v, lane) \
-    Vdotq_laneq_s32_armv7<lane>::impl(a, b, v)
+#define vdotq_laneq_s32(a, b, v, lane) Vdotq_laneq_s32_armv7<lane>::impl(a, b, v)
 
 }  // namespace
 #endif
@@ -625,40 +617,28 @@ struct Vfmaq_laneq_f32_armv8 {
 template <>
 struct Vfmaq_laneq_f32_armv8<0> {
     __ai float32x4_t impl(float32x4_t a, float32x4_t b, float32x4_t v) {
-        asm volatile("fmla %0.4s, %1.4s, %2.s[0]\n"
-                     : "+w"(a)
-                     : "w"(b), "w"(v)
-                     :);
+        asm volatile("fmla %0.4s, %1.4s, %2.s[0]\n" : "+w"(a) : "w"(b), "w"(v) :);
         return a;
     }
 };
 template <>
 struct Vfmaq_laneq_f32_armv8<1> {
     __ai float32x4_t impl(float32x4_t a, float32x4_t b, float32x4_t v) {
-        asm volatile("fmla %0.4s, %1.4s, %2.s[1]\n"
-                     : "+w"(a)
-                     : "w"(b), "w"(v)
-                     :);
+        asm volatile("fmla %0.4s, %1.4s, %2.s[1]\n" : "+w"(a) : "w"(b), "w"(v) :);
         return a;
     }
 };
 template <>
 struct Vfmaq_laneq_f32_armv8<2> {
     __ai float32x4_t impl(float32x4_t a, float32x4_t b, float32x4_t v) {
-        asm volatile("fmla %0.4s, %1.4s, %2.s[2]\n"
-                     : "+w"(a)
-                     : "w"(b), "w"(v)
-                     :);
+        asm volatile("fmla %0.4s, %1.4s, %2.s[2]\n" : "+w"(a) : "w"(b), "w"(v) :);
         return a;
     }
 };
 template <>
 struct Vfmaq_laneq_f32_armv8<3> {
     __ai float32x4_t impl(float32x4_t a, float32x4_t b, float32x4_t v) {
-        asm volatile("fmla %0.4s, %1.4s, %2.s[3]\n"
-                     : "+w"(a)
-                     : "w"(b), "w"(v)
-                     :);
+        asm volatile("fmla %0.4s, %1.4s, %2.s[3]\n" : "+w"(a) : "w"(b), "w"(v) :);
         return a;
     }
 };
@@ -670,51 +650,37 @@ struct Vfmsq_laneq_f32_armv8 {
 template <>
 struct Vfmsq_laneq_f32_armv8<0> {
     __ai float32x4_t impl(float32x4_t a, float32x4_t b, float32x4_t v) {
-        asm volatile("fmls %0.4s, %1.4s, %2.s[0]\n"
-                     : "+w"(a)
-                     : "w"(b), "w"(v)
-                     :);
+        asm volatile("fmls %0.4s, %1.4s, %2.s[0]\n" : "+w"(a) : "w"(b), "w"(v) :);
         return a;
     }
 };
 template <>
 struct Vfmsq_laneq_f32_armv8<1> {
     __ai float32x4_t impl(float32x4_t a, float32x4_t b, float32x4_t v) {
-        asm volatile("fmls %0.4s, %1.4s, %2.s[1]\n"
-                     : "+w"(a)
-                     : "w"(b), "w"(v)
-                     :);
+        asm volatile("fmls %0.4s, %1.4s, %2.s[1]\n" : "+w"(a) : "w"(b), "w"(v) :);
         return a;
     }
 };
 template <>
 struct Vfmsq_laneq_f32_armv8<2> {
     __ai float32x4_t impl(float32x4_t a, float32x4_t b, float32x4_t v) {
-        asm volatile("fmls %0.4s, %1.4s, %2.s[2]\n"
-                     : "+w"(a)
-                     : "w"(b), "w"(v)
-                     :);
+        asm volatile("fmls %0.4s, %1.4s, %2.s[2]\n" : "+w"(a) : "w"(b), "w"(v) :);
         return a;
     }
 };
 template <>
 struct Vfmsq_laneq_f32_armv8<3> {
     __ai float32x4_t impl(float32x4_t a, float32x4_t b, float32x4_t v) {
-        asm volatile("fmls %0.4s, %1.4s, %2.s[3]\n"
-                     : "+w"(a)
-                     : "w"(b), "w"(v)
-                     :);
+        asm volatile("fmls %0.4s, %1.4s, %2.s[3]\n" : "+w"(a) : "w"(b), "w"(v) :);
         return a;
     }
 };
 }  // namespace
 #undef vfmaq_laneq_f32
-#define vfmaq_laneq_f32(a, b, v, lane) \
-    Vfmaq_laneq_f32_armv8<lane>::impl(a, b, v)
+#define vfmaq_laneq_f32(a, b, v, lane) Vfmaq_laneq_f32_armv8<lane>::impl(a, b, v)
 
 #undef vfmsq_laneq_f32
-#define vfmsq_laneq_f32(a, b, v, lane) \
-    Vfmsq_laneq_f32_armv8<lane>::impl(a, b, v)
+#define vfmsq_laneq_f32(a, b, v, lane) Vfmsq_laneq_f32_armv8<lane>::impl(a, b, v)
 #endif
 
 __ai int8x16_t vld_dup_tbl_s32(const int8_t* ptr, uint8x16_t& idx) {
@@ -727,15 +693,13 @@ __ai int8x16_t vldq_tbl_s8(const int8_t* ptr, uint8x16_t& idx) {
     result = vqtbl1q_s8(result, idx);
     return result;
 }
-__ai int32x4_t vdotq_s32_h(int8x16_t& a, int8x16_t& b, int32x4_t& c,
-                           int16x8_t& temp) {
+__ai int32x4_t vdotq_s32_h(int8x16_t& a, int8x16_t& b, int32x4_t& c, int16x8_t& temp) {
     temp = vmull_s8(vget_low_s8(a), vget_low_s8(b));
     temp = vmlal_high_s8(temp, a, b);
     c = vpadalq_s16(c, temp);
     return c;
 }
-__ai int32x4_t vdot2_s32_h(int8x8_t& a, int8x8_t& b, int32x4_t& c,
-                           int16x8_t& temp) {
+__ai int32x4_t vdot2_s32_h(int8x8_t& a, int8x8_t& b, int32x4_t& c, int16x8_t& temp) {
     temp = vmull_s8(a, b);
     c = vpadalq_s16(c, temp);
     return c;
@@ -746,8 +710,8 @@ __ai int32x4_t vmlal_s16(int32x4_t& a, int16x8_t& b, int16x8_t& c) {
 }
 
 __ai int16x8_t vldq_dup_4s8_8s16(const int8_t* ptr) {
-    return vmovl_s8(vreinterpret_s8_s32(
-            vld1_dup_s32(reinterpret_cast<const int32_t*>(ptr))));
+    return vmovl_s8(
+            vreinterpret_s8_s32(vld1_dup_s32(reinterpret_cast<const int32_t*>(ptr))));
 }
 __ai int8x8_t vldq_tbl_low_s8(const int8_t* ptr, uint8x16_t idx) {
     return vget_low_s8(vldq_tbl_s8(ptr, idx));
@@ -759,13 +723,19 @@ __ai int16x8_t vld1_dup_s8_s16(const int8_t* ptr) {
 //! we add this because we found that cpu=aarch64_android cann't compile fmsq into fmls.
 //! it use dup+fmla instead
 __ai float32x4_t Vfmsq_f32(float32x4_t& a, float32x4_t& b, float32x4_t& v) {
-    asm volatile("fmls %0.4s, %1.4s, %2.4s\n"
-                    : "+w"(a)
-                    : "w"(b), "w"(v)
-                    :);
+    asm volatile("fmls %0.4s, %1.4s, %2.4s\n" : "+w"(a) : "w"(b), "w"(v) :);
     return a;
 }
-
+#if __ARM_ARCH < 8
+__ai int32x4_t vcvtaq_s32_f32(float32x4_t val) {
+    float32x4_t vinc0 = vbslq_f32(
+            vcgeq_f32(val, vdupq_n_f32(0.f)), vdupq_n_f32(0.5f), vdupq_n_f32(-0.5f));
+    return vcvtq_s32_f32(vaddq_f32(val, vinc0));
+}
+#endif
+#if MGB_ENABLE_DOT
+#undef __ARM_FEATURE_DOTPROD
+#endif
 #undef __ai
 #pragma GCC diagnostic pop
 

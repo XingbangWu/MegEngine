@@ -1,15 +1,5 @@
-/**
- * \file dnn/src/cuda/argsort/bitonic_sort.cu
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "./bitonic_sort.cuh"
+#include "megdnn/dtype.h"
 #include "src/cuda/query_blocksize.cuh"
 
 #if __CUDACC_VER_MAJOR__ < 9
@@ -27,16 +17,16 @@ namespace bitonic_sort_impl {
 
 //! load keys and init idx
 template <class CompareLess, typename T>
-__device__ __forceinline__ void safe_load0(T* dst, uint16_t* idx, const T* src,
-                                           uint32_t id, uint32_t size) {
+__device__ __forceinline__ void safe_load0(
+        T* dst, uint16_t* idx, const T* src, uint32_t id, uint32_t size) {
     dst[id] = id < size ? src[id] : CompareLess::template max<T>();
     idx[id] = id;
 }
 
 //! load values
 template <typename T>
-__device__ __forceinline__ void safe_load1(T* dst, const T* src, uint32_t id,
-                                           uint32_t size) {
+__device__ __forceinline__ void safe_load1(
+        T* dst, const T* src, uint32_t id, uint32_t size) {
     // broadcast last value to avoid out-of-bound values (for example, when
     // input contains NaN)
     dst[id] = src[min(id, size - 1)];
@@ -44,8 +34,8 @@ __device__ __forceinline__ void safe_load1(T* dst, const T* src, uint32_t id,
 
 //! write keys
 template <typename T>
-__device__ __forceinline__ void safe_write0(T* dst, const T* src, uint32_t id,
-                                            uint32_t size) {
+__device__ __forceinline__ void safe_write0(
+        T* dst, const T* src, uint32_t id, uint32_t size) {
     if (id < size) {
         dst[id] = src[id];
     }
@@ -53,9 +43,8 @@ __device__ __forceinline__ void safe_write0(T* dst, const T* src, uint32_t id,
 
 //! write values
 template <typename T>
-__device__ __forceinline__ void safe_write1(T* dst, const T* src,
-                                            const uint16_t* remap, uint32_t id,
-                                            uint32_t size) {
+__device__ __forceinline__ void safe_write1(
+        T* dst, const T* src, const uint16_t* remap, uint32_t id, uint32_t size) {
     if (id < size) {
         dst[id] = src[remap[id]];
     }
@@ -82,10 +71,21 @@ struct NumTrait<int32_t> {
     static __device__ __forceinline__ int32_t min() { return INT_MIN; }
 };
 
+#if !MEGDNN_DISABLE_FLOAT16
+template <>
+struct NumTrait<dt_float16> {
+    static __device__ __forceinline__ dt_float16 max() {
+        return std::numeric_limits<dt_float16>::max();
+    }
+    static __device__ __forceinline__ dt_float16 min() {
+        return std::numeric_limits<dt_float16>::lowest();
+    }
+};
+#endif
+
 struct LessThan {
     template <typename Key, typename Value>
-    static __device__ __forceinline__ bool cmp(Key k0, Value v0, Key k1,
-                                               Value v1) {
+    static __device__ __forceinline__ bool cmp(Key k0, Value v0, Key k1, Value v1) {
         return k0 < k1 | ((k0 == k1) & (v0 < v1));
     }
 
@@ -97,8 +97,7 @@ struct LessThan {
 
 struct GreaterThan {
     template <typename Key, typename Value>
-    static __device__ __forceinline__ bool cmp(Key k0, Value v0, Key k1,
-                                               Value v1) {
+    static __device__ __forceinline__ bool cmp(Key k0, Value v0, Key k1, Value v1) {
         return k0 > k1 | ((k0 == k1) & (v0 < v1));
     }
 
@@ -128,11 +127,12 @@ static int get_shmem(int block_size, void* = NULL) {
  *
  *      where N / 4 == 1 << nr_th_log2
  */
-template <class Sync, typename Key, typename Value, class CompareLess,
-          uint32_t nr_th_log2>
-static __global__ void kern(uint32_t batch, uint32_t length, const Key* key_inp,
-                            const Value* value_inp, Key* key_out,
-                            Value* value_out) {
+template <
+        class Sync, typename Key, typename Value, class CompareLess,
+        uint32_t nr_th_log2>
+static __global__ void kern(
+        uint32_t batch, uint32_t length, const Key* key_inp, const Value* value_inp,
+        Key* key_out, Value* value_out) {
     const uint32_t nr_th = 1 << nr_th_log2;
 
     // 24KiB shared memory for 4-byte keys for 1024 threads
@@ -155,10 +155,8 @@ static __global__ void kern(uint32_t batch, uint32_t length, const Key* key_inp,
              cur_length = cur_batch < batch ? length : 0;
     safe_load0<CompareLess>(keys, values, key_inp, tid0, cur_length);
     safe_load0<CompareLess>(keys, values, key_inp, tid0 + nr_th, cur_length);
-    safe_load0<CompareLess>(keys, values, key_inp, tid0 + nr_th * 2,
-                            cur_length);
-    safe_load0<CompareLess>(keys, values, key_inp, tid0 + nr_th * 3,
-                            cur_length);
+    safe_load0<CompareLess>(keys, values, key_inp, tid0 + nr_th * 2, cur_length);
+    safe_load0<CompareLess>(keys, values, key_inp, tid0 + nr_th * 3, cur_length);
 
     Sync::s();
 
@@ -179,12 +177,10 @@ static __global__ void kern(uint32_t batch, uint32_t length, const Key* key_inp,
     for (uint32_t slen_log = 0; slen_log <= (nr_th_log2 + 1); ++slen_log) {
         // log2 of half of current bitonic sequence (i.e. length of its
         // monotonic part)
-        uint32_t asc0 = !((tid0 >> slen_log) & 1),
-                 asc1 = !((tid1 >> slen_log) & 1);
+        uint32_t asc0 = !((tid0 >> slen_log) & 1), asc1 = !((tid1 >> slen_log) & 1);
 #pragma unroll
         for (uint32_t j = 0; j <= slen_log; ++j) {
-            uint32_t step = 1 << (slen_log - j), xmask = step - 1,
-                     ymask = ~xmask;
+            uint32_t step = 1 << (slen_log - j), xmask = step - 1, ymask = ~xmask;
             WORK((tid0 & xmask) + ((tid0 & ymask) << 1), asc0);
             WORK((tid1 & xmask) + ((tid1 & ymask) << 1), asc1);
             Sync::s();
@@ -217,25 +213,25 @@ static __global__ void kern(uint32_t batch, uint32_t length, const Key* key_inp,
 }  // namespace bitonic_sort_impl
 
 template <typename Key, typename Value>
-cudaError_t cuda::bitonic_sort(uint32_t batch, uint32_t length,
-                               const Key* key_inp, const Value* value_inp,
-                               Key* key_out, Value* value_out, bool ascending,
-                               cudaStream_t stream) {
+cudaError_t cuda::bitonic_sort(
+        uint32_t batch, uint32_t length, const Key* key_inp, const Value* value_inp,
+        Key* key_out, Value* value_out, bool ascending, cudaStream_t stream) {
     using namespace bitonic_sort_impl;
     if (length == 1) {
         if (key_inp != key_out) {
-            cudaMemcpyAsync(key_out, key_inp, sizeof(Key) * batch,
-                            cudaMemcpyDeviceToDevice, stream);
+            cudaMemcpyAsync(
+                    key_out, key_inp, sizeof(Key) * batch, cudaMemcpyDeviceToDevice,
+                    stream);
         }
         if (value_inp != value_out) {
-            cudaMemcpyAsync(value_out, value_inp, sizeof(Value) * batch,
-                            cudaMemcpyDeviceToDevice, stream);
+            cudaMemcpyAsync(
+                    value_out, value_inp, sizeof(Value) * batch,
+                    cudaMemcpyDeviceToDevice, stream);
         }
         return cudaGetLastError();
     }
 
-    void (*kptr)(uint32_t, uint32_t, const Key*, const Value*, Key*, Value*) =
-            NULL;
+    void (*kptr)(uint32_t, uint32_t, const Key*, const Value*, Key*, Value*) = NULL;
     uint32_t l4 = (length + 3) / 4;
     dim3 block;
 
@@ -275,8 +271,8 @@ cudaError_t cuda::bitonic_sort(uint32_t batch, uint32_t length,
     }
 
     int suggested_block_size =
-            query_launch_config_for_kernel(reinterpret_cast<void*>(kptr),
-                                           get_shmem<Key, Value>)
+            query_launch_config_for_kernel(
+                    reinterpret_cast<void*>(kptr), get_shmem<Key, Value>)
                     .block_size;
     block.y = std::max<int>(suggested_block_size / block.x, 1);
     int shmem = get_shmem<Key, Value>(block.y * block.x);
@@ -288,17 +284,16 @@ cudaError_t cuda::bitonic_sort(uint32_t batch, uint32_t length,
 namespace megdnn {
 namespace cuda {
 
-#define INST(k, v)                                                        \
-    template cudaError_t bitonic_sort<k, v>(uint32_t, uint32_t, const k*, \
-                                            const v*, k*, v*, bool,       \
-                                            cudaStream_t)
+#define INST(k, v)                           \
+    template cudaError_t bitonic_sort<k, v>( \
+            uint32_t, uint32_t, const k*, const v*, k*, v*, bool, cudaStream_t)
 
 INST(float, int);
 INST(int32_t, int);
+DNN_INC_FLOAT16(INST(dt_float16, int));
 #undef INST
 
-}  // namespace megdnn
+}  // namespace cuda
 }  // namespace megdnn
 
 // vim: ft=cuda syntax=cuda.doxygen
-

@@ -1,14 +1,3 @@
-/**
- * \file src/core/impl/graph/swap/swap_helper.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/comp_node.h"
@@ -76,10 +65,9 @@ private:
 
         bool h2d_wait_copy_in_next_overwrite = false;
 
-        void init(CompNode comp_node, DType dtype, TensorShape shape,
-                  size_t es) {
-            mgb_assert(shape.ndim < TensorShape::MAX_NDIM,
-                       "tensor shape ndim too large");
+        void init(CompNode comp_node, DType dtype, TensorShape shape, size_t es) {
+            mgb_assert(
+                    shape.ndim < TensorShape::MAX_NDIM, "tensor shape ndim too large");
 
             auto cn_copy = comp_node.change_stream(CompNode::Stream::LOOP_SWAP);
 
@@ -105,9 +93,7 @@ private:
             }
         }
 
-        CompNode::Event& ev_comp2copy() {
-            return *ev_grp[ev_grp_cur].comp2copy;
-        }
+        CompNode::Event& ev_comp2copy() { return *ev_grp[ev_grp_cur].comp2copy; }
 
         CompNode::Event& ev_hd() { return *ev_grp[ev_grp_cur].hd; }
 

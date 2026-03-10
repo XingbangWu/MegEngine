@@ -1,15 +1,3 @@
-/**
- * \file src/opr/impl/nvof/denseflownvidia.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #include "megbrain_build_config.h"
 
 #if MGB_CUDA
@@ -25,8 +13,9 @@
 
 class NVFlowExtractor {
 public:
-    NVFlowExtractor(int device_id, std::vector<size_t>& shape,
-                    uint32_t preset, bool use_cuda_stream, bool debug);
+    NVFlowExtractor(
+            int device_id, std::vector<size_t>& shape, uint32_t preset,
+            bool use_cuda_stream, bool debug);
     void create_nvof_instances(int height, int width);
     ~NVFlowExtractor();
     void set_device(int dev_id);
@@ -58,12 +47,9 @@ private:
 
     NV_OF_PERF_LEVEL perf_preset = NV_OF_PERF_LEVEL_MEDIUM;
     NV_OF_BUFFER_FORMAT buffer_format = NV_OF_BUFFER_FORMAT_ABGR8;
-    NV_OF_CUDA_BUFFER_TYPE input_buffer_type =
-            NV_OF_CUDA_BUFFER_TYPE_CUDEVICEPTR;
-    NV_OF_CUDA_BUFFER_TYPE output_buffer_type =
-            NV_OF_CUDA_BUFFER_TYPE_CUDEVICEPTR;
-    NV_OF_OUTPUT_VECTOR_GRID_SIZE m_out_grid_size =
-            NV_OF_OUTPUT_VECTOR_GRID_SIZE_4;
+    NV_OF_CUDA_BUFFER_TYPE input_buffer_type = NV_OF_CUDA_BUFFER_TYPE_CUDEVICEPTR;
+    NV_OF_CUDA_BUFFER_TYPE output_buffer_type = NV_OF_CUDA_BUFFER_TYPE_CUDEVICEPTR;
+    NV_OF_OUTPUT_VECTOR_GRID_SIZE m_out_grid_size = NV_OF_OUTPUT_VECTOR_GRID_SIZE_4;
 
     NvOFObj nv_optical_flow;
     CUdevice cu_device = 0;

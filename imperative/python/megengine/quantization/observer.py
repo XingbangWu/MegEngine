@@ -1,56 +1,51 @@
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import math
 from abc import abstractmethod
+from copy import deepcopy
+from typing import Union
 
 import numpy as np
 
 from .. import functional as F
-from ..core.tensor.dtype import _metadata_dict, get_quantized_dtype
+from ..core.tensor.dtype import QuantDtypeMeta, _builtin_quant_dtypes
 from ..distributed import WORLD, get_rank, is_distributed
 from ..functional.distributed import all_reduce_max, all_reduce_min
+from ..logger import get_logger
 from ..module import Module
 from ..tensor import Tensor
-from .utils import QuantMode, Round, get_qparam_dict
+from .utils import QParams, QParamsModuleMixin, QuantMode, create_qparams
+
+logger = get_logger(__name__)
 
 
-class Observer(Module):
-    r"""
-    A base class for Observer Module.
+class Observer(Module, QParamsModuleMixin):
+    r"""A base class for Observer Module. Used to record input tensor's statistics for
+    quantization.
 
-    :param dtype: a string indicating to collect scale and zero_point of which dtype.
-    :param narrow_range: whether the absolute value of ``qmin`` is the same as ``qmax``,
-        instead of 1 greater. Usually True for weight and False for activation.
+    Args:
+        dtype: a string indicating which dtype to collect scale and zero_point of.
     """
 
-    def __init__(self, dtype: str, narrow_range: bool = False):
+    def __init__(self, dtype: Union[str, QuantDtypeMeta], **kwargs):
         super().__init__()
-        if dtype not in _metadata_dict.keys():
-            raise ValueError(
-                "unknown dtype: {}, only support {}".format(
-                    dtype, _metadata_dict.keys()
+        if isinstance(dtype, str):
+            if not dtype in _builtin_quant_dtypes:
+                raise ValueError(
+                    "unknown dtype: {}, only support {}".format(
+                        dtype, _builtin_quant_dtypes.keys()
+                    )
                 )
+            dtype = _builtin_quant_dtypes[dtype]
+        if "narrow_range" in kwargs:
+            del kwargs["narrow_range"]
+            logger.warning(
+                "FakeQuantize currently has no narrow_range param "
+                "so it is ignored here",
+                exc_info=DeprecationWarning,
             )
         self.dtype = dtype
-        self.narrow_range = narrow_range
-        self.qmin = (
-            -_metadata_dict[dtype].qmax if narrow_range else _metadata_dict[dtype].qmin
-        )
-        self.qmax = _metadata_dict[dtype].qmax
+        self.qmin = dtype.qmin
+        self.qmax = dtype.qmax
         self.enabled = True
-
-    def get_dtype(self):
-        q_dict = self.get_qparams()
-        numpy_scale = None if "scale" not in q_dict else q_dict["scale"].numpy()
-        numpy_zero_point = (
-            None if "zero_point" not in q_dict else q_dict["zero_point"].numpy()
-        )
-        return get_quantized_dtype(self.dtype, numpy_scale, numpy_zero_point)
 
     def enable(self):
         self.enabled = True
@@ -69,20 +64,24 @@ class Observer(Module):
     def forward(self, x):
         pass
 
-    @abstractmethod
-    def get_qparams(self, **kwargs):
-        pass
-
 
 class MinMaxObserver(Observer):
+    r"""A Observer Module records input tensor's running min and max values to calc scale.
+
+    Args:
+        mode: set quantization mode.
+        eps: a initial maximum value to avoid division by zero problem.
+        dtype: a string indicating which dtype to collect scale and zero_point of.
+    """
+
     def __init__(
         self,
-        mode=QuantMode.SYMMERTIC,
-        eps=0.00001,
-        dtype="qint8",
-        narrow_range: bool = False,
+        mode: QuantMode = QuantMode.SYMMERTIC,
+        eps: float = 0.00001,
+        dtype: Union[str, QuantDtypeMeta] = "qint8",
+        **kwargs
     ):
-        super().__init__(dtype, narrow_range)
+        super().__init__(dtype, **kwargs)
         self.mode = mode
         self.min_val = Tensor(np.finfo(np.float32).max, dtype=np.float32)
         self.max_val = Tensor(np.finfo(np.float32).min, dtype=np.float32)
@@ -91,26 +90,22 @@ class MinMaxObserver(Observer):
     def _calculate_qparams(self, inp_min_val, inp_max_val):
         min_val = F.minimum(0.0, inp_min_val)
         max_val = F.maximum(0.0, inp_max_val)
-        q_dict = get_qparam_dict(self.mode)
-        q_dict["min_val"] = inp_min_val
-        q_dict["max_val"] = inp_max_val
-        q_dict["enable_observer"] = self.enable
         if self.mode == QuantMode.SYMMERTIC:
             symmetric_max_vals = F.maximum(-min_val, max_val)
             # use maximun to avoid scale too small at the begin
-            q_dict["scale"] = F.maximum(
+            scale = F.maximum(
                 symmetric_max_vals / ((self.qmax - self.qmin) / 2), self.scale_limit
             )
-            # zero_point = self.zero_point
+            zero_point = None
         else:
             # use maximun to avoid scale too small at the begin
-            q_dict["scale"] = F.maximum(
-                (max_val - min_val) / (self.qmax - self.qmin), self.scale_limit,
+            scale = F.maximum(
+                (max_val - min_val) / (self.qmax - self.qmin), self.scale_limit
             )
             # caculate zero_point
-            q_dict["zero_point"] = self.qmin - Round()((min_val / q_dict["scale"]))
+            zero_point = self.qmin - F.round((min_val / scale))
 
-        return q_dict
+        return create_qparams(self.mode, self.dtype, scale=scale, zero_point=zero_point)
 
     def get_qparams(self):
         return self._calculate_qparams(self.min_val, self.max_val)
@@ -120,12 +115,20 @@ class MinMaxObserver(Observer):
             # stop gradient
             x = x_orig.detach()
             # find max and min
-            self.min_val._reset(F.minimum(self.min_val, x.min()))
-            self.max_val._reset(F.maximum(self.max_val, x.max()))
+            self.min_val[...] = F.minimum(self.min_val, x.min())
+            self.max_val[...] = F.maximum(self.max_val, x.max())
         return x_orig
 
 
 class SyncMinMaxObserver(MinMaxObserver):
+    r"""A distributed version of :class:`~.MinMaxObserver`.
+
+    Args:
+        mode: set quantization mode.
+        eps: a initial maximum value to avoid division by zero problem.
+        dtype: a string indicating which dtype to collect scale and zero_point of.
+    """
+
     def forward(self, x_orig):
         if self.enable:
             x = x_orig.detach()
@@ -135,86 +138,118 @@ class SyncMinMaxObserver(MinMaxObserver):
             else:
                 min_x = x.min()
                 max_x = x.max()
-            self.min_val._reset(F.minimum(self.min_val, min_x))
-            self.max_val._reset(F.maximum(self.max_val, max_x))
+            self.min_val[...] = F.minimum(self.min_val, min_x)
+            self.max_val[...] = F.maximum(self.max_val, max_x)
         return x_orig
 
 
 class ExponentialMovingAverageObserver(MinMaxObserver):
+    r"""A :class:`~.MinMaxObserver` with momentum support for min/max updating.
+
+    Args:
+        momentum: momentum ratio for min/max updating.
+        mode: set quantization mode.
+        eps: a initial maximum value to avoid division by zero problem.
+        dtype: a string indicating which dtype to collect scale and zero_point of.
+    """
+
     def __init__(
         self,
-        momentum=0.9,
-        mode=QuantMode.SYMMERTIC,
-        eps=0.00001,
-        dtype="qint8",
-        narrow_range: bool = False,
+        momentum: float = 0.9,
+        mode: QuantMode = QuantMode.SYMMERTIC,
+        eps: float = 0.00001,
+        dtype: Union[str, QuantDtypeMeta] = "qint8",
+        **kwargs
     ):
-        super().__init__(mode, eps, dtype, narrow_range)
-        self.momentum = Tensor(momentum)
+        super().__init__(mode, eps, dtype, **kwargs)
+        self.momentum = Tensor(momentum, dtype="float32")
+        # used to avoid if-clauses in the first forward which is not supported
+        # in trace mode.
         self.runtime_momentum = Tensor(0.0)
 
     def set_momentum(self, momentum):
-        self.momentum._reset(momentum)
+        self.momentum = Tensor(momentum, dtype="float32")
 
     def forward(self, x_orig):
         if self.enabled:
             # stop gradient
             x = x_orig.detach()
             # Exponential Moving Average
-            self.min_val._reset(
+            self.min_val[...] = (
                 self.min_val * self.runtime_momentum
                 + (1 - self.runtime_momentum) * x.min()
             )
-            self.max_val._reset(
+            self.max_val[...] = (
                 self.max_val * self.runtime_momentum
                 + (1 - self.runtime_momentum) * x.max()
             )
-            self.runtime_momentum = self.momentum
+            self.runtime_momentum[...] = self.momentum
 
         return x_orig
 
 
 class SyncExponentialMovingAverageObserver(ExponentialMovingAverageObserver):
+    r"""A distributed version of :class:`~.ExponentialMovingAverageObserver`.
+
+    Args:
+        momentum: momentum ratio for min/max updating.
+        mode: set quantization mode.
+        eps: a initial maximum value to avoid division by zero problem.
+        dtype: a string indicating which dtype to collect scale and zero_point of.
+    """
+
     def forward(self, x_orig):
         if self.enabled:
             x = x_orig.detach()
-            if is_distributed:
+            if is_distributed():
                 min_x = all_reduce_min(x.min(), WORLD)
                 max_x = all_reduce_max(x.max(), WORLD)
             else:
                 min_x = x.min()
                 max_x = x.max()
-            self.min_val._reset(
+            self.min_val[...] = (
                 self.min_val * self.runtime_momentum
                 + (1 - self.runtime_momentum) * min_x
             )
-            self.max_val._reset(
+            self.max_val[...] = (
                 self.max_val * self.runtime_momentum
                 + (1 - self.runtime_momentum) * max_x
             )
-            self.runtime_momentum = self.momentum
+            self.runtime_momentum[...] = self.momentum
         return x_orig
 
 
 class HistogramObserver(MinMaxObserver):
+    r"""A :class:`~.MinMaxObserver` using running histogram of tensor values
+    for min/max updating. Usually used for calibration quantization.
+
+    Args:
+        bins: number of bins to use for the histogram.
+        upsample_rate: which ratio to interpolate histograms in.
+        mode: set quantization mode.
+        eps: a initial maximum value to avoid division by zero problem.
+        dtype: a string indicating which dtype to collect scale and zero_point of.
+    """
+
     def __init__(
         self,
-        bins=2048,
-        upsample_rate=128,
-        mode=QuantMode.SYMMERTIC,
-        eps=0.00001,
-        dtype="qint8",
-        narrow_range: bool = False,
+        bins: int = 2048,
+        upsample_rate: int = 128,
+        mode: QuantMode = QuantMode.SYMMERTIC,
+        eps: float = 0.00001,
+        dtype: Union[str, QuantDtypeMeta] = "qint8",
+        **kwargs
     ):
-        super().__init__(mode, eps, dtype, narrow_range)
+        super().__init__(mode, eps, dtype, **kwargs)
         self.bins = bins
         self.upsample_rate = upsample_rate
-        self.dst_nbins = _metadata_dict[dtype].qmax - _metadata_dict[dtype].qmin + 1
+        self.dst_nbins = (
+            _builtin_quant_dtypes[dtype].qmax - _builtin_quant_dtypes[dtype].qmin + 1
+        )
         self.histogram = Tensor([-1] + [0.0] * (bins - 1), dtype="float32")
 
     def _non_linear_param_search(self):
-        r"""
-        Non-linear parameter search.
+        r"""Non-linear parameter search.
         An approximation for L2 error minimization for selecting min/max.
         By selecting new min/max, we filter out outliers in input distribution.
         """
@@ -226,8 +261,7 @@ class HistogramObserver(MinMaxObserver):
         bin_width = (np_max_val - np_min_val) / self.bins
 
         def _get_norm(delta_begin, delta_end, density, norm_type):
-            r"""
-            Compute the norm of the values uniformaly distributed between
+            r"""Compute the norm of the values uniformaly distributed between
             delta_begin and delta_end.
             norm = density * (integral_{begin, end} x^2)
                  = density * (end^3 - begin^3) / 3
@@ -242,8 +276,7 @@ class HistogramObserver(MinMaxObserver):
             return density * norm
 
         def _compute_quantization_error(next_start_bin, next_end_bin, norm_type):
-            r"""
-            Compute the quantization error if we use start_bin to end_bin as the
+            r"""Compute the quantization error if we use start_bin to end_bin as the
             min and max to do the quantization.
             """
 
@@ -417,7 +450,7 @@ class HistogramObserver(MinMaxObserver):
             # combine the existing histogram and new histogram into 1 histogram
             # We do this by first upsampling the histogram to a dense grid
             # and then downsampling the histogram efficiently
-            (new_min, new_max, downsample_rate, start_idx,) = self._adjust_min_max(
+            (new_min, new_max, downsample_rate, start_idx) = self._adjust_min_max(
                 new_min, new_max, self.upsample_rate
             )
 
@@ -435,10 +468,54 @@ class HistogramObserver(MinMaxObserver):
                     self.bins,
                 )
 
-        self.histogram._reset(new_histogram)
-        self.min_val._reset(new_min)
-        self.max_val._reset(new_max)
+        self.histogram = Tensor(new_histogram, dtype="float32")
+        self.min_val = Tensor(new_min, dtype="float32")
+        self.max_val = Tensor(new_max, dtype="float32")
 
     def forward(self, x_orig):
         self.sideeffect_forward(x_orig)
         return x_orig
+
+
+class PassiveObserver(Observer):
+    r"""An Observer that supports setting :attr:`scale` directly."""
+
+    def __init__(self, dtype: Union[str, QuantDtypeMeta], **kwargs):
+        super().__init__(dtype, **kwargs)
+        self.qparams = None
+        self.orig_scale = None
+
+    @property
+    def scale(self):
+        return self.qparams.scale
+
+    @scale.setter
+    def scale(self, value: np.ndarray):
+        assert np.all(value > 0)
+        self.qparams.scale[...] = Tensor(value)
+
+    def get_qparams(self):
+        return self.qparams
+
+    def set_qparams(self, qparams: QParams):
+        r"""set the ``qparams``.
+
+        Args:
+          qparams: used to set initial scale.
+        """
+        self.qparams = deepcopy(qparams)
+        if qparams.scale is None:
+            raise AssertionError("Can not get an initialized scale")
+        if qparams.dtype_meta is None:
+            qparams.dtype_meta = self.dtype
+        else:
+            assert (
+                qparams.dtype_meta is self.dtype
+            ), "input qparams' dtype is not equal to self.dtype.\nqparams.dtype_meta={}\nself.dtype={}".format(
+                qparams.dtype_meta, self.dtype
+            )
+        self.orig_scale = qparams.scale.numpy()
+
+    def forward(self, x):
+        r"""Just return input because :attr:`qparams` is set by :func:`~.apply_easy_quant`."""
+        return x

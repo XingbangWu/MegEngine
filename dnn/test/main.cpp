@@ -1,16 +1,19 @@
-/**
- * \file dnn/test/main.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
+#if defined(ONLY_BUILD_GI_API)
+#include <gtest/gtest.h>
 
+int gtest_main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    auto ret = RUN_ALL_TESTS();
+    return ret;
+}
+
+int main(int argc, char** argv) {
+    return gtest_main(argc, argv);
+}
+#else
 extern "C" int gtest_main(int argc, char** argv);
 
 int main(int argc, char** argv) {
     return gtest_main(argc, argv);
 }
+#endif

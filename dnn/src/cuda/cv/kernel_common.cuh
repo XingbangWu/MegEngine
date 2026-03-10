@@ -1,16 +1,7 @@
-/**
- * \file dnn/src/cuda/cv/kernel_common.cuh
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include "src/common/cv/enums.h"
+#include "src/common/resize.cuh"
 
 #include "megdnn/basic_types.h"
 
@@ -47,15 +38,6 @@ __device__ inline short saturate_cast_short(double x) {
 __device__ inline void interpolate_linear_coefs(float x, float* coeffs) {
     coeffs[0] = 1 - x;
     coeffs[1] = x;
-}
-
-__host__ __device__ inline void interpolate_cubic_coefs(float x,
-                                                        float* coeffs) {
-    const float A = -0.75f;
-    coeffs[0] = ((A * (x + 1) - 5 * A) * (x + 1) + 8 * A) * (x + 1) - 4 * A;
-    coeffs[1] = ((A + 2) * x - (A + 3)) * x * x + 1;
-    coeffs[2] = ((A + 2) * (1 - x) - (A + 3)) * (1 - x) * (1 - x) + 1;
-    coeffs[3] = 1.f - coeffs[0] - coeffs[1] - coeffs[2];
 }
 
 __device__ inline void interpolate_lanczos4_coefs(float x, float* coeffs) {
@@ -189,19 +171,17 @@ __device__ inline int border_interpolate<BORDER_CONSTANT>(int p, int len) {
 template <InterpolationMode imode>
 __device__ void interpolate_coefs(float x, float* coeffs);
 template <>
-__device__ inline void interpolate_coefs<INTER_NEAREST>(float x,
-                                                        float* coeffs) {}
+__device__ inline void interpolate_coefs<INTER_NEAREST>(float x, float* coeffs) {}
 template <>
 __device__ inline void interpolate_coefs<INTER_LINEAR>(float x, float* coeffs) {
     interpolate_linear_coefs(x, coeffs);
 }
 template <>
 __device__ inline void interpolate_coefs<INTER_CUBIC>(float x, float* coeffs) {
-    interpolate_cubic_coefs(x, coeffs);
+    megdnn::resize::interpolate_cubic(x, coeffs);
 }
 template <>
-__device__ inline void interpolate_coefs<INTER_LANCZOS4>(float x,
-                                                         float* coeffs) {
+__device__ inline void interpolate_coefs<INTER_LANCZOS4>(float x, float* coeffs) {
     interpolate_lanczos4_coefs(x, coeffs);
 }
 

@@ -2,6 +2,7 @@
 
 READLINK=readlink
 OS=$(uname -s)
+USER=$(whoami)
 
 if [ $OS = "Darwin" ];then
     READLINK=greadlink
@@ -34,11 +35,21 @@ function append_path_env_and_check() {
 append_path_env_and_check
 
 SRC_DIR=$($READLINK -f "`dirname $0`/../../../")
+source ${SRC_DIR}/scripts/whl/utils/utils.sh
+
 ALL_PYTHON=${ALL_PYTHON}
-FULL_PYTHON_VER="3.5.9 3.6.10 3.7.7 3.8.3"
+platform=$(uname -m | awk '{print $0}')
+if [ $platform = 'arm64' ];then
+    FULL_PYTHON_VER="3.8.10 3.9.4 3.10.1"
+else
+    FULL_PYTHON_VER="3.6.10 3.7.7 3.8.3 3.9.4 3.10.1"
+fi
+
 if [[ -z ${ALL_PYTHON} ]]
 then
     ALL_PYTHON=${FULL_PYTHON_VER}
+else
+    check_python_version_is_valid "${ALL_PYTHON}" "${FULL_PYTHON_VER}"
 fi
 
 PYTHON_DIR=
@@ -65,18 +76,21 @@ function config_python_env() {
     fi
     echo ${ver}
 
-    if [ "$1" = "3.5.9" ]; then
-        PYTHON_INCLUDE_DIR=${PYTHON_DIR}include/python3.5m
-        PYTHON_LIBRARY=${PYTHON_DIR}/lib/libpython3.5m.dylib
-    elif [ "$1" = "3.6.10" ]; then
+    if [ "$1" = "3.6.10" ]; then
         PYTHON_INCLUDE_DIR=${PYTHON_DIR}include/python3.6m
         PYTHON_LIBRARY=${PYTHON_DIR}/lib/libpython3.6m.dylib
     elif [ "$1" = "3.7.7" ]; then
         PYTHON_INCLUDE_DIR=${PYTHON_DIR}include/python3.7m
         PYTHON_LIBRARY=${PYTHON_DIR}/lib/libpython3.7m.dylib
-    elif [ "$1" = "3.8.3" ]; then
+    elif [[ "$1" = "3.8.3" || "$1" = "3.8.10" ]]; then
         PYTHON_INCLUDE_DIR=${PYTHON_DIR}include/python3.8
         PYTHON_LIBRARY=${PYTHON_DIR}/lib/libpython3.8.dylib
+    elif [ "$1" = "3.9.4" ]; then
+        PYTHON_INCLUDE_DIR=${PYTHON_DIR}include/python3.9
+        PYTHON_LIBRARY=${PYTHON_DIR}/lib/libpython3.9.dylib
+    elif [ "$1" = "3.10.1" ]; then
+        PYTHON_INCLUDE_DIR=${PYTHON_DIR}include/python3.10
+        PYTHON_LIBRARY=${PYTHON_DIR}/lib/libpython3.10.dylib
     else
         echo "ERR: DO NOT SUPPORT PYTHON VERSION"
         echo "now support list: ${FULL_PYTHON_VER}"
@@ -84,16 +98,31 @@ function config_python_env() {
     fi
 }
 
-MEGENGINE_LIB="${SRC_DIR}/build_dir/host/MGE_WITH_CUDA_OFF/MGE_INFERENCE_ONLY_OFF/Release/build/src/libmegengine_export.dylib"
+MEGENGINE_LIB="${SRC_DIR}/build_dir/host/MGE_WITH_CUDA_OFF/MGE_INFERENCE_ONLY_OFF/Release/build/src/libmegengine_shared.dylib"
 function depend_real_copy() {
     REAL_DST=$1
     echo "real copy lib to $1"
     cp "${MEGENGINE_LIB}" ${REAL_DST}
 }
 
+BUILD_DIR=${SRC_DIR}/build_dir/host/MGE_WITH_CUDA_OFF/MGE_INFERENCE_ONLY_OFF/Release/build/
+
+# here we just treat dnn/src/common/conv_bias.cpp should not in the increment build file list
+INCREMENT_KEY_WORDS="conv_bias.cpp.o is dirty"
+IS_IN_FIRST_LOOP=TRUE
+
+ORG_EXTRA_CMAKE_FLAG=${EXTRA_CMAKE_FLAG}
 function do_build() {
     for ver in ${ALL_PYTHON}
     do
+        # we want run a full clean build at the first loop
+        if [ ${IS_IN_FIRST_LOOP} = "TRUE" ]; then
+            # TODO: may all cmake issue can be resolved after rm CMakeCache?
+            # if YES, remove this to use old cache and speed up CI
+            echo "warning: remove old build_dir for the first loop"
+            rm -rf ${BUILD_DIR}
+        fi
+
         #config
         config_python_env ${ver}
 
@@ -108,31 +137,52 @@ function do_build() {
         fi
         echo "PYTHON_LIBRARY: ${PYTHON_LIBRARY}"
         echo "PYTHON_INCLUDE_DIR: ${PYTHON_INCLUDE_DIR}"
-        #append cmake args for config python
-        export EXTRA_CMAKE_ARGS="-DCMAKE_PREFIX_PATH=${PYTHON_DIR} -DPYTHON_LIBRARY=${PYTHON_LIBRARY} -DPYTHON_INCLUDE_DIR=${PYTHON_INCLUDE_DIR} "
         #config build type to RelWithDebInfo to enable MGB_ENABLE_DEBUG_UTIL etc
-        export EXTRA_CMAKE_ARGS="${EXTRA_CMAKE_ARGS} -DCMAKE_BUILD_TYPE=RelWithDebInfo "
+        export EXTRA_CMAKE_ARGS="${ORG_EXTRA_CMAKE_FLAG} -DCMAKE_BUILD_TYPE=RelWithDebInfo"
+        export EXTRA_CMAKE_ARGS="${EXTRA_CMAKE_ARGS} -DMGE_WITH_CUSTOM_OP=ON"
+        #append cmake args for config python
+        export EXTRA_CMAKE_ARGS="${EXTRA_CMAKE_ARGS} -DPYTHON_EXECUTABLE=${PYTHON_DIR}/bin/python3"
+        export EXTRA_CMAKE_ARGS="${EXTRA_CMAKE_ARGS} -DPYTHON_LIBRARY=${PYTHON_LIBRARY}"
+        export EXTRA_CMAKE_ARGS="${EXTRA_CMAKE_ARGS} -DPYTHON_INCLUDE_DIR=${PYTHON_INCLUDE_DIR}"
+
         #we use std::visit in src, so set osx version minimum to 10.14, but 10.14 have objdump
         #issue, so we now config to 10.15, whl name to 10.14
         #TODO: can set to 10.12 after remove use std::visit
         export EXTRA_CMAKE_ARGS="${EXTRA_CMAKE_ARGS} -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 "
 
-        #call build and install
-        #FIXME: cmake do not triger update python config, after
-        #change PYTHON_LIBRARY and PYTHON_INCLUDE_DIR, so add
-        #-r to remove build cache after a new ver build, which
-        #will be more slow build than without -r
-        echo "build whl with legacy python rt"
-        ${SRC_DIR}/scripts/cmake-build/host_build.sh -t -r
+        if [ -d "${BUILD_DIR}" ]; then
+            # insure rm have args
+            touch ${BUILD_DIR}/empty.so
+            touch ${BUILD_DIR}/CMakeCache.txt
+            find ${BUILD_DIR} -name "*.so" | xargs rm
+            # as we now use increment build mode when switch python
+            # But I do not known any more issue at CMakeLists.txt or not
+            # so Force remove CMakeCache.txt
+            find ${BUILD_DIR} -name CMakeCache.txt | xargs rm
+        fi
 
-        #call setup.py
-        BUILD_DIR=${SRC_DIR}/build_dir/host/MGE_WITH_CUDA_OFF/MGE_INFERENCE_ONLY_OFF/Release/build/
+        HOST_BUILD_ARGS="-t -s"
+
+        # call ninja dry run and check increment is invalid or not
+        if [ ${IS_IN_FIRST_LOOP} = "FALSE" ]; then
+            ninja_dry_run_and_check_increment "${SRC_DIR}/scripts/cmake-build/host_build.sh" "${HOST_BUILD_ARGS}" "${INCREMENT_KEY_WORDS}"
+        fi
+
+        # call real build
+        echo "host_build.sh HOST_BUILD_ARGS: ${HOST_BUILD_ARGS}"
+        ${SRC_DIR}/scripts/cmake-build/host_build.sh ${HOST_BUILD_ARGS}
+        # remove megenginelite py develop soft link create by lite_shared:POST_BUILD @ lite/CMakeLists.txt
+        rm -rf ${SRC_DIR}/lite/pylite/megenginelite/libs
+
+        # check python api call setup.py
         cd ${BUILD_DIR}
+        check_build_ninja_python_api ${ver}
 
         rm -rf staging
         mkdir -p staging
 
         cp -a imperative/python/{megengine,setup.py,requires.txt,requires-style.txt,requires-test.txt} staging/
+        cp -a ${SRC_DIR}/src/custom/include staging/megengine/core/include/
         cd ${BUILD_DIR}/staging/megengine/core
         rt_file=`ls _imperative_rt.*.so`
         echo "rt file is: ${rt_file}"
@@ -154,8 +204,7 @@ function do_build() {
         fi
 
         #handle dlopen path
-        install_name_tool -change @rpath/libmegengine_export.dylib @loader_path/lib/libmegengine_export.dylib _imperative_rt.so
-
+        install_name_tool -change @rpath/libmegengine_shared.dylib @loader_path/lib/libmegengine_shared.dylib _imperative_rt.so
 
         #copy megbrain_export lib
         DEPEND_LIB=${BUILD_DIR}/staging/megengine/core/lib/
@@ -163,30 +212,44 @@ function do_build() {
         mkdir ${DEPEND_LIB}
         depend_real_copy ${DEPEND_LIB}
 
+        # handle megenginelite
+        cd ${BUILD_DIR}
+        mkdir -p staging/megenginelite
+        cp ${SRC_DIR}/lite/pylite/megenginelite/* staging/megenginelite/
+        mkdir -p ${BUILD_DIR}/staging/megenginelite/libs
+        LITE_LIB=${BUILD_DIR}/staging/megenginelite/libs/liblite_shared_whl.so
+        cp ${SRC_DIR}/build_dir/host/MGE_WITH_CUDA_OFF/MGE_INFERENCE_ONLY_OFF/Release/build/lite/liblite_shared_whl.dylib ${LITE_LIB}
+        llvm-strip -s ${LITE_LIB}
+        #handle dlopen path
+        install_name_tool -change @rpath/libmegengine_shared.dylib @loader_path/../../megengine/core/lib/libmegengine_shared.dylib ${LITE_LIB}
+
         cd ${BUILD_DIR}/staging
         ${PYTHON_DIR}/bin/python3 setup.py bdist_wheel
         cd ${BUILD_DIR}/staging/dist/
         org_whl_name=`ls Meg*.whl`
         index=`awk -v a="${org_whl_name}" -v b="-macosx" 'BEGIN{print index(a,b)}'`
-        compat_whl_name=`echo ${org_whl_name} |cut -b -$index`macosx_10_14_x86_64.whl
+        if [ $platform = 'arm64' ];then
+            compat_whl_name=`echo ${org_whl_name} |cut -b -$index`macosx_10_14_universal2.whl
+        else
+            compat_whl_name=`echo ${org_whl_name} |cut -b -$index`macosx_10_14_x86_64.whl
+        fi
         echo "org whl name: ${org_whl_name}"
         echo "comapt whl name: ${compat_whl_name}"
         cp ${BUILD_DIR}/staging/dist/Meg*.whl ${MACOS_WHL_HOME}/${compat_whl_name}
-        cd ${SRC_DIR}
 
+        cd ${SRC_DIR}
         echo ""
         echo "##############################################################################################"
         echo "macos whl package location: ${MACOS_WHL_HOME}"
         ls ${MACOS_WHL_HOME}
         echo "##############################################################################################"
+        IS_IN_FIRST_LOOP=FALSE
     done
 }
-
 
 function third_party_prepare() {
     echo "init third_party..."
     ${SRC_DIR}/third_party/prepare.sh
-
 
     if [[ -z ${ALREADY_INSTALL_MKL} ]]
     then

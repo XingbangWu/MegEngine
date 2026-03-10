@@ -1,13 +1,3 @@
-/**
- * \file dnn/test/common/index.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 #include "megdnn/basic_types.h"
 #include "test/common/rng.h"
@@ -36,9 +26,7 @@ public:
      * Add a universal offset to all return values to make the minimal
      * offset zero.
      */
-    size_t positive_offset() const {
-        return m_offset - m_layout.span().low_elem;
-    }
+    size_t positive_offset() const { return m_offset - m_layout.span().low_elem; }
 
 private:
     TensorLayout m_layout;
@@ -59,8 +47,7 @@ public:
     IndexRNG(size_t& sz, size_t seed) : m_size{sz}, m_rng(seed) {}
 
     void gen(const TensorND& tensor) override {
-        std::uniform_int_distribution<int> dist(-static_cast<int>(m_size),
-                                                m_size - 1);
+        std::uniform_int_distribution<int> dist(-static_cast<int>(m_size), m_size - 1);
         auto ptr = tensor.ptr<int>() + tensor.layout.span().low_elem;
         for (size_t i = 0; i < tensor.layout.span().dist_elem(); ++i)
             ptr[i] = dist(m_rng);

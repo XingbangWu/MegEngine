@@ -1,14 +1,3 @@
-/**
- * \file dnn/test/cuda/remap.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #include "test/common/remap.h"
 #include "test/common/benchmarker.h"
 #include "test/common/checker.h"
@@ -180,6 +169,7 @@ TEST_F(CUDA, REMAP_BACKWARD_DATA) {
                 .execs({arg.map_xy, arg.dst, arg.src});                      \
     }
     cb(dtype::BFloat16(), float_rng);
+    cb(dtype::Float16(), float_rng);
 #undef cb
 }
 
@@ -222,6 +212,7 @@ TEST_F(CUDA, REMAP_BACKWARD_MAT) {
                 .execs({arg.src, arg.map_xy, arg.dst, arg.map_xy});          \
     }
     cb(dtype::BFloat16(), float_rng);
+    cb(dtype::Float16(), float_rng);
 #undef cb
 }
 
@@ -253,8 +244,7 @@ TEST_F(CUDA, BENCHMARK_REMAP) {
                           .set_times(RUN)
                           .set_param(param)
                           .execs(shapes);
-        auto t2 = benchmarker_cuda.set_display(false).set_param(param).execs(
-                shapes);
+        auto t2 = benchmarker_cuda.set_display(false).set_param(param).execs(shapes);
 
         int size = 0;
         if (dtype == dtype::Float32{}) {
@@ -278,8 +268,7 @@ TEST_F(CUDA, BENCHMARK_REMAP) {
                             (1024 * 1024 * 1024);
         printf("naive={%.3fms, %.3fGBPS}, "
                "cuda={%.3fms, %.3fGBPS}\n",
-               t1 / RUN, calc_amount / (t1 / RUN) * 1e3, t2,
-               calc_amount / t2 * 1e3);
+               t1 / RUN, calc_amount / (t1 / RUN) * 1e3, t2, calc_amount / t2 * 1e3);
     };
     Param param;
     param.imode = param::Remap::InterpolationMode::LINEAR;
@@ -291,8 +280,7 @@ TEST_F(CUDA, BENCHMARK_REMAP) {
         dtype::Float16{});
     run({{4, 200, 300, 10}, {4, 200, 300, 2}, {4, 200, 300, 10}}, param,
         dtype::Uint8{});
-    run({{4, 200, 300, 10}, {4, 200, 300, 2}, {4, 200, 300, 10}}, param,
-        dtype::Int8{});
+    run({{4, 200, 300, 10}, {4, 200, 300, 2}, {4, 200, 300, 10}}, param, dtype::Int8{});
     param.border_type = param::Remap::BorderMode::REPLICATE;
     run({{4, 200, 300, 10}, {4, 200, 300, 2}, {4, 200, 300, 10}}, param,
         dtype::Float32{});
@@ -300,8 +288,7 @@ TEST_F(CUDA, BENCHMARK_REMAP) {
         dtype::Float16{});
     run({{4, 200, 300, 10}, {4, 200, 300, 2}, {4, 200, 300, 10}}, param,
         dtype::Uint8{});
-    run({{4, 200, 300, 10}, {4, 200, 300, 2}, {4, 200, 300, 10}}, param,
-        dtype::Int8{});
+    run({{4, 200, 300, 10}, {4, 200, 300, 2}, {4, 200, 300, 10}}, param, dtype::Int8{});
     param.format = param::Remap::Format::NCHW;
     param.border_type = param::Remap::BorderMode::CONSTANT;
     run({{4, 10, 200, 300}, {4, 200, 300, 2}, {4, 10, 200, 300}}, param,
@@ -310,8 +297,7 @@ TEST_F(CUDA, BENCHMARK_REMAP) {
         dtype::Float16{});
     run({{4, 10, 200, 300}, {4, 200, 300, 2}, {4, 10, 200, 300}}, param,
         dtype::Uint8{});
-    run({{4, 10, 200, 300}, {4, 200, 300, 2}, {4, 10, 200, 300}}, param,
-        dtype::Int8{});
+    run({{4, 10, 200, 300}, {4, 200, 300, 2}, {4, 10, 200, 300}}, param, dtype::Int8{});
     param.border_type = param::Remap::BorderMode::REPLICATE;
     run({{4, 10, 200, 300}, {4, 200, 300, 2}, {4, 10, 200, 300}}, param,
         dtype::Float32{});
@@ -319,8 +305,7 @@ TEST_F(CUDA, BENCHMARK_REMAP) {
         dtype::Float16{});
     run({{4, 10, 200, 300}, {4, 200, 300, 2}, {4, 10, 200, 300}}, param,
         dtype::Uint8{});
-    run({{4, 10, 200, 300}, {4, 200, 300, 2}, {4, 10, 200, 300}}, param,
-        dtype::Int8{});
+    run({{4, 10, 200, 300}, {4, 200, 300, 2}, {4, 10, 200, 300}}, param, dtype::Int8{});
 }
 
 #endif

@@ -1,21 +1,10 @@
-/**
- * \file src/opr/include/megbrain/opr/utility.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/graph.h"
 #include "megbrain/graph/event.h"
 #include "megbrain/opr/internal/identical_fwd.h"
-#include "megbrain/opr/internal/param_tag_defs.h"
 #include "megbrain/opr/internal/megdnn_opr_wrapper.h"
+#include "megbrain/opr/internal/param_tag_defs.h"
 #include "megbrain/opr/param_defs.h"
 
 #include "megdnn/oprs/utils.h"
@@ -27,52 +16,48 @@ namespace opr {
 /*!
  * \brief sleep for specific time on device
  */
-MGB_DEFINE_OPR_CLASS(Sleep, cg::SingleCNIOSameShapeOperatorNodeBase) // {
-    public:
-        /*!
-         * \brief directly sleep without constructing an opr
-         */
-        static void sleep(const CompNode &node, double seconds);
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(Sleep, cg::SingleCNIOSameShapeOperatorNodeBase) // {
+public:
+    /*!
+     * \brief directly sleep without constructing an opr
+     */
+    static void sleep(const CompNode& node, double seconds);
 
-        //! sleep type: device or host or both
-        struct Type {
-            bool device, host;
+    //! sleep type: device or host or both
+    struct Type {
+        bool device, host;
 
-            Type(bool d = true, bool h = false):
-                device(d), host(h)
-            {
-            }
-        };
+        Type(bool d = true, bool h = false) : device(d), host(h) {}
+    };
 
-        Sleep(VarNode *node, double seconds, Type type,
-                const OperatorNodeConfig &config);
+    MGE_WIN_DECLSPEC_FUC Sleep(
+            VarNode* node, double seconds, Type type, const OperatorNodeConfig& config);
 
-        static SymbolVar make(SymbolVar node, double seconds,
-                Type type = {}, const OperatorNodeConfig &config = {});
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar node, double seconds, Type type = {},
+            const OperatorNodeConfig& config = {});
 
-        // for serialization
-        struct Param {
-            static constexpr auto TAG = param_tag::SLEEP;
-            double seconds;
-            Type type;
-        };
+    // for serialization
+    struct Param {
+        static constexpr auto TAG = param_tag::SLEEP;
+        double seconds;
+        Type type;
+    };
 
-        Param param() const {
-            return {m_seconds, m_type};
-        }
+    Param param() const { return {m_seconds, m_type}; }
 
-        static SymbolVar make(SymbolVar node, const Param &param,
-                const OperatorNodeConfig &config) {
-            return make(node, param.seconds, param.type, config);
-        }
-    private:
-        double m_seconds;
-        Type m_type;
-        intl::UniqPtrWithCN<megdnn::Sleep> m_opr;
+    static SymbolVar make(
+            SymbolVar node, const Param& param, const OperatorNodeConfig& config) {
+        return make(node, param.seconds, param.type, config);
+    }
 
-        void scn_do_execute() override;
-        void record_execute_deps(ExecDependencyArray& deps) override;
+private:
+    double m_seconds;
+    Type m_type;
+    intl::UniqPtrWithCN<megdnn::Sleep> m_opr;
 
+    void scn_do_execute() override;
+    void record_execute_deps(ExecDependencyArray& deps) override;
 };
 
 /*!
@@ -87,44 +72,45 @@ MGB_DEFINE_OPR_CLASS(Sleep, cg::SingleCNIOSameShapeOperatorNodeBase) // {
  * \param dest_off the offset on which \p dest should be modified; this helps
  *      multiple Timestamp operator instances
  */
-MGB_DEFINE_OPR_CLASS(Timestamp, intl::ForwardInputToOutput) // {
-    public:
-        Timestamp(VarNode* node, std::shared_ptr<HostTensorND> dest,
-                  size_t dest_off, const OperatorNodeConfig& config);
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(Timestamp, intl::ForwardInputToOutput) // {
+public:
+    MGE_WIN_DECLSPEC_FUC Timestamp(
+            VarNode* node, std::shared_ptr<HostTensorND> dest, size_t dest_off,
+            const OperatorNodeConfig& config);
 
-        static SymbolVar make(SymbolVar node,
-                              std::shared_ptr<HostTensorND> dest,
-                              size_t dest_off,
-                              const OperatorNodeConfig& config = {});
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar node, std::shared_ptr<HostTensorND> dest, size_t dest_off,
+            const OperatorNodeConfig& config = {});
 
-    private:
-        class GraphStorage;
-        std::shared_ptr<HostTensorND> m_dest;
-        size_t m_dest_off;
-        CompNode::Event* m_first_event = nullptr;
-        std::unique_ptr<CompNode::Event> m_event;
+private:
+    class GraphStorage;
+    std::shared_ptr<HostTensorND> m_dest;
+    size_t m_dest_off;
+    CompNode::Event* m_first_event = nullptr;
+    std::unique_ptr<CompNode::Event> m_event;
 
-        void scn_do_execute_finish(const DeviceTensorND&) override;
-        void on_output_comp_node_stream_changed() override;
-        void add_input_layout_constraint() override;
+    void scn_do_execute_finish(const DeviceTensorND&) override;
+    void on_output_comp_node_stream_changed() override;
+    void add_input_layout_constraint() override;
 
-        //! called from wait event handler to update timestamp values
-        void update();
+    //! called from wait event handler to update timestamp values
+    void update();
 };
 
 /*!
  * \brief To make sure inputs' owner oprs finished when executing this operator,
  *      and forwarding input(0) to output.
  */
-MGB_DEFINE_OPR_CLASS(VirtualDep, intl::ForwardInputToOutput) // {
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(VirtualDep, intl::ForwardInputToOutput) // {
 public:
-    VirtualDep(const VarNodeArray& inputs, const OperatorNodeConfig& config);
+    MGE_WIN_DECLSPEC_FUC VirtualDep(
+            const VarNodeArray& inputs, const OperatorNodeConfig& config);
 
-    static SymbolVar make(const SymbolVarArray& inputs,
-            const OperatorNodeConfig& config = {});
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            const SymbolVarArray& inputs, const OperatorNodeConfig& config = {});
 
-    NodeProp* do_make_node_prop() const override;
-//    void add_input(std::initializer_list<VarNode*> list);
+    MGE_WIN_DECLSPEC_FUC NodeProp* do_make_node_prop() const override;
+    //    void add_input(std::initializer_list<VarNode*> list);
 };
 
 #endif  // MGB_BUILD_SLIM_SERVING
@@ -133,115 +119,115 @@ public:
  * \brief do not provide any static infer on a var to mark it dynamic; used for
  *      debug purposes
  */
-MGB_DEFINE_OPR_CLASS(MarkDynamicVar, cg::SingleCNOperatorNodeBase) // {
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(MarkDynamicVar, cg::SingleCNOperatorNodeBase) // {
     void scn_do_execute() override;
     void init_output_static_infer_desc() override {}
     NodeProp* do_make_node_prop() const override;
 
-    public:
-        using Param = megdnn::param::Empty;
+public:
+    using Param = megdnn::param::Empty;
 
-        MarkDynamicVar(VarNode *node, const OperatorNodeConfig &config);
+    MGE_WIN_DECLSPEC_FUC MarkDynamicVar(
+            VarNode* node, const OperatorNodeConfig& config);
 
-        static SymbolVar make(
-                SymbolVar node, const OperatorNodeConfig &config = {});
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar node, const OperatorNodeConfig& config = {});
 
-        // for serialization
-        Param param() const {
-            return {};
-        }
-        static SymbolVar make(SymbolVar node,
-                const Param &, const OperatorNodeConfig &config) {
-            return make(node, config);
-        }
+    // for serialization
+    Param param() const { return {}; }
+    static SymbolVar make(
+            SymbolVar node, const Param&, const OperatorNodeConfig& config) {
+        return make(node, config);
+    }
 };
 
 /*!
  * \brief inject a callback to be called whenever this operator is executed
  */
-MGB_DEFINE_OPR_CLASS(CallbackInjector, intl::ForwardInputToOutput) // {
-
-    void scn_do_execute_finish(const DeviceTensorND &val) override;
-    cg::static_infer::ValueInferDesc mixin_get_static_infer_desc(OperatorNodeBase &opr) override;
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(CallbackInjector, intl::ForwardInputToOutput) // {
+    void scn_do_execute_finish(const DeviceTensorND& val) override;
+    cg::static_infer::ValueInferDesc mixin_get_static_infer_desc(
+            OperatorNodeBase& opr) override;
     NodeProp* do_make_node_prop() const override;
 
-    public:
-        using Callback = thin_function<void(DeviceTensorND&)>;
-        using MultiCallback = thin_function<void(SmallVector<DeviceTensorND>&)>;
-        struct Param {
-            //! whether to allow auto duplication (to be used with sublinear
-            //! memory)
-            bool allow_auto_dup = false;
+public:
+    using Callback = thin_function<void(DeviceTensorND&)>;
+    using MultiCallback = thin_function<void(SmallVector<DeviceTensorND>&)>;
+    struct Param {
+        //! whether to allow auto duplication (to be used with sublinear
+        //! memory)
+        bool allow_auto_dup = false;
 
-            //! whether to ignore side effect (so this opr can be optimized out
-            //! if input is constant)
-            bool ignore_side_effect = false;
+        //! whether to ignore side effect (so this opr can be optimized out
+        //! if input is constant)
+        bool ignore_side_effect = false;
 
-            //! whether to invoke the callback during static value inference
-            bool invoke_for_static_infer = true;
+        //! whether to invoke the callback during static value inference
+        bool invoke_for_static_infer = true;
 
-            MultiCallback callback;
+        MultiCallback callback;
 
-            explicit Param(Callback cb) :  callback{[cb](SmallVector<DeviceTensorND>& a){cb(a.at(0));}} {}
+        explicit Param(Callback cb)
+                : callback{[cb](SmallVector<DeviceTensorND>& a) { cb(a.at(0)); }} {}
 
-            Param(bool allow_auto_dup_, Callback cb)
-                    : allow_auto_dup{allow_auto_dup_},
-                      callback{[cb](SmallVector<DeviceTensorND>& a){cb(a.at(0));}} {}
+        Param(bool allow_auto_dup_, Callback cb)
+                : allow_auto_dup{allow_auto_dup_},
+                  callback{[cb](SmallVector<DeviceTensorND>& a) { cb(a.at(0)); }} {}
 
-            Param(bool allow_auto_dup_, bool ignore_side_effect_, Callback cb)
-                    : allow_auto_dup{allow_auto_dup_},
-                      ignore_side_effect{ignore_side_effect_},
-                      callback{[cb](SmallVector<DeviceTensorND>& a){cb(a.at(0));}} {}
+        Param(bool allow_auto_dup_, bool ignore_side_effect_, Callback cb)
+                : allow_auto_dup{allow_auto_dup_},
+                  ignore_side_effect{ignore_side_effect_},
+                  callback{[cb](SmallVector<DeviceTensorND>& a) { cb(a.at(0)); }} {}
 
-            explicit Param(MultiCallback cb) : callback{std::move(cb)} {}
+        explicit Param(MultiCallback cb) : callback{std::move(cb)} {}
 
-            Param(bool allow_auto_dup_, MultiCallback cb)
-                    : allow_auto_dup{allow_auto_dup_},
-                      callback{std::move(cb)} {}
+        Param(bool allow_auto_dup_, MultiCallback cb)
+                : allow_auto_dup{allow_auto_dup_}, callback{std::move(cb)} {}
 
-            Param(bool allow_auto_dup_, bool ignore_side_effect_, MultiCallback cb)
-                    : allow_auto_dup{allow_auto_dup_},
-                      ignore_side_effect{ignore_side_effect_},
-                      callback{std::move(cb)} {}
-        };
+        Param(bool allow_auto_dup_, bool ignore_side_effect_, MultiCallback cb)
+                : allow_auto_dup{allow_auto_dup_},
+                  ignore_side_effect{ignore_side_effect_},
+                  callback{std::move(cb)} {}
+    };
 
-        CallbackInjector(VarNode *inp, const Param &param,
-                const OperatorNodeConfig &config);
+    MGE_WIN_DECLSPEC_FUC CallbackInjector(
+            VarNode* inp, const Param& param, const OperatorNodeConfig& config);
 
-        CallbackInjector(VarNodeArray& inp, const Param &param,
-                const OperatorNodeConfig &config);
+    MGE_WIN_DECLSPEC_FUC CallbackInjector(
+            VarNodeArray& inp, const Param& param, const OperatorNodeConfig& config);
 
-        //! create the operator disallowing auto dup
-        static SymbolVar make(SymbolVar inp, const Callback &cb,
-                              const OperatorNodeConfig &config = {}) {
-            return make((SymbolVarArray){inp}, Param{cb}, config);
-        }
+    //! create the operator disallowing auto dup
+    static SymbolVar make(
+            SymbolVar inp, const Callback& cb, const OperatorNodeConfig& config = {}) {
+        return make((SymbolVarArray){inp}, Param{cb}, config);
+    }
 
-        static SymbolVar make(SymbolVar inp, const Param &param,
-                      const OperatorNodeConfig &config = {}) {
-            return make((SymbolVarArray){inp}, param, config);
-        }
+    static SymbolVar make(
+            SymbolVar inp, const Param& param, const OperatorNodeConfig& config = {}) {
+        return make((SymbolVarArray){inp}, param, config);
+    }
 
-        static SymbolVar make(SymbolVar inp, const MultiCallback &cb,
-                              const OperatorNodeConfig &config = {}) {
-            return make((SymbolVarArray){inp}, Param{cb}, config);
-        }
+    static SymbolVar make(
+            SymbolVar inp, const MultiCallback& cb,
+            const OperatorNodeConfig& config = {}) {
+        return make((SymbolVarArray){inp}, Param{cb}, config);
+    }
 
-        static SymbolVar make(SymbolVarArray inp, const MultiCallback &cb,
-                      const OperatorNodeConfig &config = {}) {
-            return make(inp, Param{cb}, config);
-        }
+    static SymbolVar make(
+            SymbolVarArray inp, const MultiCallback& cb,
+            const OperatorNodeConfig& config = {}) {
+        return make(inp, Param{cb}, config);
+    }
 
-        static SymbolVar make(SymbolVarArray inp, const Param &param,
-                      const OperatorNodeConfig &config = {});
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVarArray inp, const Param& param,
+            const OperatorNodeConfig& config = {});
 
-        const Param& param() const {
-            return m_param;
-        }
+    const Param& param() const { return m_param; }
 
-    private:
-        int m_warn_printed = 0;
-        Param m_param;
+private:
+    int m_warn_printed = 0;
+    Param m_param;
 };
 
 /*!
@@ -251,23 +237,22 @@ MGB_DEFINE_OPR_CLASS(CallbackInjector, intl::ForwardInputToOutput) // {
  * Useful for removing the reduce when computing grad, so graph optimizer can
  * work well.
  */
-MGB_DEFINE_OPR_CLASS(MarkNoBroadcastElemwise, intl::ForwardInputToOutput) // {
-    public:
-        using Param = megdnn::param::Empty;
-        MarkNoBroadcastElemwise(
-                VarNode* input, const OperatorNodeConfig &config);
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(
+        MarkNoBroadcastElemwise, intl::ForwardInputToOutput) // {
+public:
+    using Param = megdnn::param::Empty;
+    MGE_WIN_DECLSPEC_FUC MarkNoBroadcastElemwise(
+            VarNode* input, const OperatorNodeConfig& config);
 
-        static SymbolVar make(SymbolVar input,
-                const OperatorNodeConfig &config = {});
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar input, const OperatorNodeConfig& config = {});
 
-        // for serialization
-        Param param() const {
-            return {};
-        }
-        static SymbolVar make(SymbolVar node,
-                const Param &, const OperatorNodeConfig &config) {
-            return make(node, config);
-        }
+    // for serialization
+    Param param() const { return {}; }
+    static SymbolVar make(
+            SymbolVar node, const Param&, const OperatorNodeConfig& config) {
+        return make(node, config);
+    }
 };
 
 /*!
@@ -276,22 +261,22 @@ MGB_DEFINE_OPR_CLASS(MarkNoBroadcastElemwise, intl::ForwardInputToOutput) // {
  * Currently only used for preventing graph optimizer from removing some var so
  * its gradient can be correctly computed.
  */
-MGB_DEFINE_OPR_CLASS(Identity, intl::ForwardInputToOutput) // {
-    public:
-        using Param = megdnn::param::Empty;
-        Identity(VarNode* input, const OperatorNodeConfig &config);
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(Identity, intl::ForwardInputToOutput) // {
+    NodeProp* do_make_node_prop() const override;
 
-        static SymbolVar make(SymbolVar input,
-                const OperatorNodeConfig &config = {});
+public:
+    using Param = megdnn::param::Empty;
+    Identity(VarNode* input, const OperatorNodeConfig& config);
 
-        // for serialization
-        Param param() const {
-            return {};
-        }
-        static SymbolVar make(SymbolVar node,
-                const Param &, const OperatorNodeConfig &config) {
-            return make(node, config);
-        }
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar input, const OperatorNodeConfig& config = {});
+
+    // for serialization
+    Param param() const { return {}; }
+    static SymbolVar make(
+            SymbolVar node, const Param&, const OperatorNodeConfig& config) {
+        return make(node, config);
+    }
 };
 
 /*!
@@ -300,45 +285,41 @@ MGB_DEFINE_OPR_CLASS(Identity, intl::ForwardInputToOutput) // {
  *
  * raise UnequalError during exec if tensor not equal
  */
-MGB_DEFINE_OPR_CLASS(AssertEqual, intl::ForwardInputToOutput) // {
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(AssertEqual, intl::ForwardInputToOutput) // {
     bool m_throw_on_error = true;
     HostTensorND m_hv;
 
-    void scn_do_execute_finish(const DeviceTensorND &) override;
+    void scn_do_execute_finish(const DeviceTensorND&) override;
 
+public:
+    using Param = megdnn::param::AssertEqual;
+
+    //! \p expect and \p get are only used for error message
+    MGE_WIN_DECLSPEC_FUC AssertEqual(
+            VarNode* expect, VarNode* get, VarNode* err, const Param& param,
+            const OperatorNodeConfig& config);
+
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar expect, SymbolVar get, const Param& param = {},
+            const OperatorNodeConfig& config = {});
+
+    //! do not throw exception on check error
+    void disable_throw_on_error() { m_throw_on_error = false; }
+
+    //! for serialization and shallow copy
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar expect, SymbolVar get, SymbolVar err, const Param& param,
+            const OperatorNodeConfig& config);
+
+    const Param& param() const { return m_param; }
+
+    class UnequalError final : public MegBrainError {
     public:
-        using Param = megdnn::param::AssertEqual;
+        using MegBrainError::MegBrainError;
+    };
 
-        //! \p expect and \p get are only used for error message
-        AssertEqual(VarNode *expect, VarNode *get, VarNode *err,
-                const Param &param,
-                const OperatorNodeConfig &config);
-
-        static SymbolVar make(
-                SymbolVar expect, SymbolVar get, const Param &param = {},
-                const OperatorNodeConfig &config = {});
-
-        //! do not throw exception on check error
-        void disable_throw_on_error() {
-            m_throw_on_error = false;
-        }
-
-        //! for serialization and shallow copy
-        static SymbolVar make(
-                SymbolVar expect, SymbolVar get, SymbolVar err,
-                const Param &param, const OperatorNodeConfig &config);
-
-        const Param& param() const {
-            return m_param;
-        }
-
-        class UnequalError final: public MegBrainError {
-            public:
-                using MegBrainError::MegBrainError;
-        };
-
-    private:
-        Param m_param;
+private:
+    Param m_param;
 };
 
 #if MGB_ENABLE_GRAD
@@ -347,34 +328,32 @@ MGB_DEFINE_OPR_CLASS(AssertEqual, intl::ForwardInputToOutput) // {
  * \brief output equals to input, but grad(input) would be replaced by return
  *      value of given callback at runtime
  */
-MGB_DEFINE_OPR_CLASS(SetGrad, intl::ForwardInputToOutput) // {
-    public:
-        using GradGetter = thin_function<SymbolVar(const SetGrad &)>;
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(SetGrad, intl::ForwardInputToOutput) // {
+public:
+    using GradGetter = thin_function<SymbolVar(const SetGrad&)>;
 
-        SetGrad(VarNode* input, const GradGetter& grad_getter,
-                const OperatorNodeConfig &config);
+    MGE_WIN_DECLSPEC_FUC SetGrad(
+            VarNode* input, const GradGetter& grad_getter,
+            const OperatorNodeConfig& config);
 
-        static SymbolVar make(SymbolVar input, const GradGetter& grad_getter,
-                const OperatorNodeConfig &config = {});
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar input, const GradGetter& grad_getter,
+            const OperatorNodeConfig& config = {});
 
-        const GradGetter& grad_getter() const {
-            return m_grad_getter;
-        }
+    const GradGetter& grad_getter() const { return m_grad_getter; }
 
-        //! GradGetter for zero grad
-        static SymbolVar zero_grad(const SetGrad &) {
-            return {};
-        }
+    //! GradGetter for zero grad
+    static SymbolVar zero_grad(const SetGrad&) { return {}; }
 
-    private:
-        GradGetter m_grad_getter;
-
+private:
+    GradGetter m_grad_getter;
 };
 
 /*!
  * \brief get a special marker for a grad being invalid
  */
-MGB_DEFINE_OPR_CLASS(InvalidGrad, cg::SingleCNIOSameShapeOperatorNodeBase) // {
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(
+        InvalidGrad, cg::SingleCNIOSameShapeOperatorNodeBase) // {
     const OperatorNodeBase* m_grad_opr;
     size_t m_inp_idx;
 
@@ -382,20 +361,17 @@ MGB_DEFINE_OPR_CLASS(InvalidGrad, cg::SingleCNIOSameShapeOperatorNodeBase) // {
 
     void scn_do_execute() override;
 
-    public:
-        //! \p vinp should be grad_opr.input(inp_idx), unless in shallow copy
-        InvalidGrad(VarNode* vinp, const OperatorNodeBase* grad_opr,
-                    size_t inp_idx);
+public:
+    //! \p vinp should be grad_opr.input(inp_idx), unless in shallow copy
+    MGE_WIN_DECLSPEC_FUC InvalidGrad(
+            VarNode* vinp, const OperatorNodeBase* grad_opr, size_t inp_idx);
 
-        static VarNode* make(const OperatorNodeBase& grad_opr, size_t inp_idx);
+    MGE_WIN_DECLSPEC_FUC static VarNode* make(
+            const OperatorNodeBase& grad_opr, size_t inp_idx);
 
-        size_t inp_idx() const {
-            return m_inp_idx;
-        }
+    size_t inp_idx() const { return m_inp_idx; }
 
-        const OperatorNodeBase* grad_opr() const {
-            return m_grad_opr;
-        }
+    const OperatorNodeBase* grad_opr() const { return m_grad_opr; }
 };
 
 /*!
@@ -405,25 +381,23 @@ MGB_DEFINE_OPR_CLASS(InvalidGrad, cg::SingleCNIOSameShapeOperatorNodeBase) // {
  * This operator exists so graph optimization can be performed without actual
  * grad oprs. This operator must be expanded before graph execution.
  */
-MGB_DEFINE_OPR_CLASS(VirtualGrad, cg::OperatorNodeBase) // {
-    void do_execute(ExecEnv &) override;
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(VirtualGrad, cg::OperatorNodeBase) // {
+    void do_execute(ExecEnv&) override;
     void init_output_comp_node() override;
     void init_output_static_infer_desc() override;
     void on_output_comp_node_stream_changed() override;
     NodeProp* do_make_node_prop() const override;
 
-    public:
-        using Param = megdnn::param::Empty;
+public:
+    using Param = megdnn::param::Empty;
 
-        VirtualGrad(VarNode *target, VarNode *wrt,
-                const OperatorNodeConfig &config);
+    MGE_WIN_DECLSPEC_FUC VirtualGrad(
+            VarNode* target, VarNode* wrt, const OperatorNodeConfig& config);
 
-
-        Param param() const {
-            return {};
-        }
-        static SymbolVar make(SymbolVar target, SymbolVar wrt,
-                Param param = {}, const OperatorNodeConfig &config = {});
+    Param param() const { return {}; }
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar target, SymbolVar wrt, Param param = {},
+            const OperatorNodeConfig& config = {});
 };
 
 /*!
@@ -431,7 +405,7 @@ MGB_DEFINE_OPR_CLASS(VirtualGrad, cg::OperatorNodeBase) // {
  *
  * The gradient w.r.t. \p ys[i] would be \p y_grads[i]
  */
-MGB_DEFINE_OPR_CLASS(VirtualLoss, cg::OperatorNodeBase) // {
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(VirtualLoss, cg::OperatorNodeBase) // {
     void do_execute(ExecEnv&) override;
     void init_output_comp_node() override;
     void init_output_static_infer_desc() override;
@@ -442,12 +416,12 @@ public:
     using Param = megdnn::param::Empty;
 
     //! the first half of \p inputs contain ys, and the remaining are y_grads
-    VirtualLoss(const VarNodeArray& inputs, const OperatorNodeConfig& config);
+    MGE_WIN_DECLSPEC_FUC VirtualLoss(
+            const VarNodeArray& inputs, const OperatorNodeConfig& config);
 
-    static SymbolVar make(const SymbolVarArray& ys,
-                          const SymbolVarArray& y_grads,
-                          Param param = {},
-                          const OperatorNodeConfig& config = {});
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            const SymbolVarArray& ys, const SymbolVarArray& y_grads, Param param = {},
+            const OperatorNodeConfig& config = {});
 
     Param param() const { return {}; }
 };
@@ -456,10 +430,10 @@ public:
 class InvalidGrad {
 public:
     using OperatorNodeBase = cg::OperatorNodeBase;
-    [[noreturn]] static VarNode* make(const OperatorNodeBase& grad_opr,
-                                      size_t inp_idx);
+    [[noreturn]] MGE_WIN_DECLSPEC_FUC static VarNode* make(
+            const OperatorNodeBase& grad_opr, size_t inp_idx);
 };
-#endif // MGB_ENABLE_GRAD
+#endif  // MGB_ENABLE_GRAD
 
 /*!
  * \brief allocate output storage as a persistent storage
@@ -477,16 +451,17 @@ public:
  * \see VarNode::Flag::NO_MEM_RECLAIM for eliminating only dynamic memory
  *      deallocation
  */
-MGB_DEFINE_OPR_CLASS(PersistentOutputStorage,
-                     cg::SingleCNIOSameShapeOperatorNodeBase) // {
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(
+        PersistentOutputStorage, cg::SingleCNIOSameShapeOperatorNodeBase) // {
 public:
     using Param = megdnn::param::PersistentOutputStorage;
 
-    PersistentOutputStorage(VarNode* inp, const Param& param,
-                            const OperatorNodeConfig& config);
+    MGE_WIN_DECLSPEC_FUC PersistentOutputStorage(
+            VarNode* inp, const Param& param, const OperatorNodeConfig& config);
 
-    static SymbolVar make(SymbolVar inp, const Param& param = {},
-                          const OperatorNodeConfig& config = {});
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar inp, const Param& param = {},
+            const OperatorNodeConfig& config = {});
 
     const Param& param() const { return m_param; }
 
@@ -500,19 +475,84 @@ private:
     void init_output_mem_plan(bool dynamic) override final;
     void scn_do_execute() override final;
     void record_execute_deps(ExecDependencyArray& deps) override;
-
 };
 
-MGB_DEFINE_OPR_CLASS(RequireInputDynamicStorage,
-                     intl::ForwardInputToOutput)  // {
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(
+        RequireInputDynamicStorage, intl::ForwardInputToOutput) // {
 public:
-    RequireInputDynamicStorage(VarNode* input,
-                               const OperatorNodeConfig& config);
-    static SymbolVar make(SymbolVar input,
-                          const OperatorNodeConfig& config = {});
+    MGE_WIN_DECLSPEC_FUC RequireInputDynamicStorage(
+            VarNode* input, const OperatorNodeConfig& config);
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar input, const OperatorNodeConfig& config = {});
 };
 
-} // namespace opr
-} // namespace mgb
+/*
+ * \brief a special op providing shape hint only used in graph compilation (gopt)
+ */
+MGB_DEFINE_OPR_CLASS_WITH_EXPORT(ShapeHint, cg::SingleCNOperatorNodeBase) // {
+    TensorShape m_shape;
+    bool m_is_const;
+
+    void scn_do_execute() override;
+    void init_output_static_infer_desc() override;
+
+public:
+    MGE_WIN_DECLSPEC_FUC ShapeHint(
+            VarNode* inp, const TensorShape shape, bool is_const,
+            const OperatorNodeConfig& config);
+
+    MGE_WIN_DECLSPEC_FUC static SymbolVar make(
+            SymbolVar inp, const TensorShape shape, bool is_const = false,
+            const OperatorNodeConfig& config = {});
+
+    TensorShape shape() const { return m_shape; }
+    bool is_const() const { return m_is_const; }
+};
+
+//! global operator instance for static inference
+template <class Opr>
+class StaticInferOpr {
+    intl::UniqPtrWithCN<Opr> m_opr;
+    MGB_MUTEX m_mtx;
+
+public:
+    class Lock {
+        friend class StaticInferOpr;
+        StaticInferOpr* m_owner;
+
+        explicit Lock(StaticInferOpr* owner) : m_owner{owner} {
+#if !__DEPLOY_ON_XP_SP2__
+            m_owner->m_mtx.lock();
+#endif
+        }
+
+    public:
+        Lock(Lock&& rhs) : m_owner{rhs.m_owner} { rhs.m_owner = nullptr; }
+
+        ~Lock() {
+#if !__DEPLOY_ON_XP_SP2__
+            if (m_owner)
+                m_owner->m_mtx.unlock();
+#endif
+        }
+
+        Lock& operator=(const Lock&) = delete;
+        Lock& operator=(Lock&&) = delete;
+
+        intl::UniqPtrWithCN<Opr>& operator()() { return m_owner->m_opr; }
+    };
+
+    //! lock and acquire the operator
+    Lock lock() {
+        Lock ret{this};
+        if (!m_opr) {
+            m_opr = intl::create_megdnn_opr<Opr>(CompNode::default_cpu());
+        }
+        return ret;
+    }
+};
+
+}  // namespace opr
+}  // namespace mgb
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

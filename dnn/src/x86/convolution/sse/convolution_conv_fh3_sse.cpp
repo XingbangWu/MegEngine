@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/x86/convolution/sse/convolution_conv_fh3_sse.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #define SIMD_H1                                                               \
     do {                                                                      \
         const size_t sh = dh;                                                 \
@@ -919,10 +909,10 @@ namespace megdnn {
 namespace x86 {
 namespace detail {
 
-void convolution_conv_fh3_sse(const float *src, const float *filter, float *dst,
-        const size_t src_h, const size_t src_w, const size_t dst_h, const size_t dst_w,
-        const size_t flt_w)
-{
+void convolution_conv_fh3_sse(
+        const float* src, const float* filter, float* dst, const size_t src_h,
+        const size_t src_w, const size_t dst_h, const size_t dst_w,
+        const size_t flt_w) {
     (void)src_h;
     const size_t dst_h_beg = 0;
     const size_t dst_h_end = dst_h;
@@ -967,9 +957,9 @@ void convolution_conv_fh3_sse(const float *src, const float *filter, float *dst,
     }
 }
 
-} // namespace detail
-} // namespace x86
-} // namespace megdnn
+}  // namespace detail
+}  // namespace x86
+}  // namespace megdnn
 #undef SIMD_H1
 #undef SIMD_H2
 #undef SIMD_H3

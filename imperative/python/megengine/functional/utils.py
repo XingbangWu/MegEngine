@@ -1,99 +1,59 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-import collections
-from typing import Iterable, Union
+from ..core._imperative_rt.core2 import apply
+from ..core._imperative_rt.core2 import sync as _sync
+from ..core.ops.builtin import AssertEqual
+from ..tensor import Tensor
+from ..utils.deprecation import deprecated_func
+from .elemwise import abs, maximum, minimum
+from .tensor import ones, zeros
 
-import numpy as np
-
-from ..core._wrap import device as as_device
-from ..core.ops.builtin import Copy, Identity
-from ..core.tensor import Tensor
-from ..core.tensor.core import apply
-from .math import topk as _topk
-from .tensor import broadcast_to, transpose
-
-__all__ = [
-    "topk_accuracy",
-    "copy",
-]
+__all__ = ["topk_accuracy"]
 
 
-def topk_accuracy(
-    logits: Tensor, target: Tensor, topk: Union[int, Iterable[int]] = 1
-) -> Union[Tensor, Iterable[Tensor]]:
-    r"""
-    Calculates the classification accuracy given predicted logits and ground-truth labels.
+def _assert_equal(
+    expect: Tensor, actual: Tensor, *, maxerr: float = 0.0001, verbose: bool = False
+):
+    r"""Asserts two tensors equal and returns expected value (first input).
+    It is a variant of python assert which is symbolically traceable (similar to ``numpy.testing.assert_equal``).
+    If we want to verify the correctness of model, just ``assert`` its states and outputs.
+    While sometimes we need to verify the correctness at different backends for *dumped* model
+    (or in :class:`~jit.trace` context), and no python code could be executed in that case.
+    Thus we have to use :func:`~functional.utils._assert_equal` instead.
 
-    :param logits: model predictions of shape `[batch_size, num_classes]`,
-        representing the probability (likelyhood) of each class.
-    :param target: ground-truth labels, 1d tensor of int32.
-    :param topk: specifies the topk values, could be an int or tuple of ints. Default: 1
-    :return: tensor(s) of classification accuracy between 0.0 and 1.0.
+    Args:
+        expect: expected tensor value
+        actual: tensor to check value
+        maxerr: max allowed error; error is defined as the minimal of absolute and relative error
+        verbose: whether to print maxerr to stdout during opr exec
 
     Examples:
 
-    .. testcode::
+        >>> x = Tensor([1, 2, 3], dtype="float32")
+        >>> y = Tensor([1, 2, 3], dtype="float32")
+        >>> F.utils._assert_equal(x, y, maxerr=0)
+        Tensor([1. 2. 3.], device=xpux:0)
 
-        import numpy as np
-        from megengine import tensor
-        import megengine.functional as F
-
-        logits = tensor(np.arange(80, dtype=np.int32).reshape(8,10))
-        target = tensor(np.arange(8, dtype=np.int32))
-        top1, top5 = F.topk_accuracy(logits, target, (1, 5))
-        print(top1.numpy(), top5.numpy())
-
-    Outputs:
-
-    .. testoutput::
-
-        0.0 0.375
     """
-    if isinstance(topk, int):
-        topk = (topk,)
-    _, pred = _topk(logits, k=max(topk), descending=True)
-    accs = []
-    for k in topk:
-        correct = pred[:, :k].detach() == broadcast_to(
-            transpose(target, (0, "x")), (target.shape[0], k)
+    err = (
+        abs(expect - actual)
+        / maximum(
+            minimum(abs(expect), abs(actual)),
+            Tensor(1.0, dtype="float32", device=expect.device),
         )
-        accs.append(correct.astype(np.float32).sum() / target.shape[0])
-    if len(topk) == 1:  # type: ignore[arg-type]
-        accs = accs[0]
-    return accs
+    ).max()
+    result = apply(AssertEqual(maxerr=maxerr, verbose=verbose), expect, actual, err)[0]
+    _sync()  # sync interpreter to get exception
+    return result
 
 
-def copy(inp, device=None):
-    r"""
-    Copies tensor to another device.
+def _simulate_error():
+    x1 = zeros(100)
+    x2 = ones(100)
+    (ret,) = apply(AssertEqual(maxerr=0, verbose=False), x1, x2, x2)
+    return ret
 
-    :param inp: input tensor.
-    :param device: destination device.
 
-    Examples:
-
-    .. testcode::
-
-        import numpy as np
-        from megengine import tensor
-        import megengine.functional as F
-
-        x = tensor([1, 2, 3], np.int32)
-        y = F.copy(x, "xpu1")
-        print(y.numpy())
-
-    Outputs:
-
-    .. testoutput::
-
-        [1 2 3]
-    """
-    if device is None:
-        return apply(Identity(), inp)[0]
-    return apply(Copy(comp_node=as_device(device).to_c()), inp)[0]
+topk_accuracy = deprecated_func(
+    "1.3", "megengine.functional.metric", "topk_accuracy", True
+)
+copy = deprecated_func("1.3", "megengine.functional.tensor", "copy", True)

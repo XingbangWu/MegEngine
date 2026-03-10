@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/rocm/type_cvt/opr_impl.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "hcc_detail/hcc_defs_prologue.h"
 
 #include "./opr_impl.h"
@@ -20,10 +10,10 @@ using namespace rocm;
 
 namespace {
 template <typename T>
-void exec_src_quantized(const TensorND& dst, const TensorND& src,
-                        const DTypeParam<T>& src_param, hipStream_t stream) {
-    bool is_dst_quantized =
-            dst.layout.dtype.category() == DTypeCategory::QUANTIZED;
+void exec_src_quantized(
+        const TensorND& dst, const TensorND& src, const DTypeParam<T>& src_param,
+        hipStream_t stream) {
+    bool is_dst_quantized = dst.layout.dtype.category() == DTypeCategory::QUANTIZED;
     using ctype_src = typename DTypeTrait<T>::ctype;
     if (!is_dst_quantized) {
         switch (dst.layout.dtype.enumv()) {
@@ -40,13 +30,13 @@ void exec_src_quantized(const TensorND& dst, const TensorND& src,
         }
     } else {
         switch (dst.layout.dtype.enumv()) {
-#define cb(_dt)                                                      \
-    case DTypeTrait<_dt>::enumv: {                                   \
-        auto dst_param = dst.layout.dtype.param<_dt>();              \
-        using ctype_dest = typename DTypeTrait<_dt>::ctype;          \
-        typecvt_kern_q2q<ctype_src, ctype_dest>(dst, src, src_param, \
-                                                dst_param, stream);  \
-        return;                                                      \
+#define cb(_dt)                                             \
+    case DTypeTrait<_dt>::enumv: {                          \
+        auto dst_param = dst.layout.dtype.param<_dt>();     \
+        using ctype_dest = typename DTypeTrait<_dt>::ctype; \
+        typecvt_kern_q2q<ctype_src, ctype_dest>(            \
+                dst, src, src_param, dst_param, stream);    \
+        return;                                             \
     }
             MEGDNN_FOREACH_QUANTIZED_DTYPE(cb);
             default:
@@ -57,10 +47,8 @@ void exec_src_quantized(const TensorND& dst, const TensorND& src,
 }
 
 template <typename T>
-void exec_src_normal(const TensorND& dst, const TensorND& src,
-                     hipStream_t stream) {
-    bool is_dst_quantized =
-            dst.layout.dtype.category() == DTypeCategory::QUANTIZED;
+void exec_src_normal(const TensorND& dst, const TensorND& src, hipStream_t stream) {
+    bool is_dst_quantized = dst.layout.dtype.category() == DTypeCategory::QUANTIZED;
     using ctype_src = typename DTypeTrait<T>::ctype;
     if (!is_dst_quantized) {
         switch (dst.layout.dtype.enumv()) {
@@ -71,6 +59,7 @@ void exec_src_normal(const TensorND& dst, const TensorND& src,
         return;                                                    \
     }
             MEGDNN_FOREACH_COMPUTING_DTYPE(cb);
+            cb(::megdnn::dtype::Bool);
 #undef cb
             default:
                 megdnn_assert_internal(0);
@@ -95,8 +84,7 @@ void exec_src_normal(const TensorND& dst, const TensorND& src,
 
 void TypeCvtImpl::exec(_megdnn_tensor_in src, _megdnn_tensor_out dst) {
     check_exec(src.layout, dst.layout);
-    bool is_src_quantized =
-            src.layout.dtype.category() == DTypeCategory::QUANTIZED;
+    bool is_src_quantized = src.layout.dtype.category() == DTypeCategory::QUANTIZED;
     auto stream = hip_stream(handle());
     if (!is_src_quantized)
         switch (src.layout.dtype.enumv()) {
@@ -106,6 +94,7 @@ void TypeCvtImpl::exec(_megdnn_tensor_in src, _megdnn_tensor_out dst) {
         return;                                 \
     }
             MEGDNN_FOREACH_COMPUTING_DTYPE(cb)
+            cb(::megdnn::dtype::Bool);
 #undef cb
             default:
                 megdnn_assert_internal(0);

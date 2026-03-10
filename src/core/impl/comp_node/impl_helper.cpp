@@ -1,14 +1,3 @@
-/**
- * \file src/core/impl/comp_node/impl_helper.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "./impl_helper.h"
 
 using namespace mgb;
@@ -32,7 +21,7 @@ bool CompNodeImplHelper::EventImplHelper::finished() {
     mgb_assert(m_recorded);
     if (do_finished()) {
         m_finished = true;
-        m_recorded = false;
+        // m_recorded = false;
         return true;
     }
     return false;
@@ -45,21 +34,36 @@ void CompNodeImplHelper::EventImplHelper::host_wait() {
         return;
     }
     if (sm_cpu_sync_level >= 1) {
+#if __DEPLOY_ON_XP_SP2__
+#if MGB_HAVE_THREAD
+        __builtin_trap();
+#else
+        return;
+#endif
+#else
         while (!finished()) {
             std::this_thread::yield();
         }
+#endif
         return;
     }
-    mgb_assert(!sm_cpu_sync_level, "invalid cpu sync level: %d",
-               sm_cpu_sync_level);
+    mgb_assert(!sm_cpu_sync_level, "invalid cpu sync level: %d", sm_cpu_sync_level);
 
     host_wait_cv();
 }
 
 void CompNodeImplHelper::EventImplHelper::host_wait_cv() {
+#if __DEPLOY_ON_XP_SP2__
+#if MGB_HAVE_THREAD
+    __builtin_trap();
+#else
+    return;
+#endif
+#else
     while (!finished()) {
         std::this_thread::yield();
     }
+#endif
 }
 
 double CompNodeImplHelper::EventImplHelper::elapsed_time_until(Event& end_) {

@@ -1,24 +1,14 @@
-/**
- * \file dnn/src/x86/simd_macro/immintrin.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include <immintrin.h>
-#ifdef __GNUC__ 
+#ifdef __GNUC__
 #if __GNUC__ < 8
-#define _mm256_set_m128i(xmm1, xmm2)                        \
-    _mm256_permute2f128_si256(_mm256_castsi128_si256(xmm1), \
-                              _mm256_castsi128_si256(xmm2), 2)
-#define _mm256_set_m128f(xmm1, xmm2)                     \
-    _mm256_permute2f128_ps(_mm256_castps128_ps256(xmm1), \
-                           _mm256_castps128_ps256(xmm2), 2)
+#define _mm256_set_m128i(xmm1, xmm2) \
+    _mm256_permute2f128_si256(       \
+            _mm256_castsi128_si256(xmm1), _mm256_castsi128_si256(xmm2), 2)
+#define _mm256_set_m128f(xmm1, xmm2) \
+    _mm256_permute2f128_ps(          \
+            _mm256_castps128_ps256(xmm1), _mm256_castps128_ps256(xmm2), 2)
 #endif
 #endif
 

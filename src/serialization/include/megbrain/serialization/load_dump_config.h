@@ -5,7 +5,7 @@
  *
  * \brief graph loader and dumper config
  *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
+ * \copyright Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
  *
  */
 #pragma once
@@ -29,9 +29,9 @@ struct GraphDumpConfig {
 
     //! a fallback to implement custom tensor value dumper; it just writes
     //! the raw tensor value to output file. Implemented in serializer.cpp
-    static void default_tensor_value_dumper(OutputFile& fout,
-                                            const cg::OperatorNodeBase& opr,
-                                            const HostTensorND& tensor);
+    MGE_WIN_DECLSPEC_FUC static void default_tensor_value_dumper(
+            OutputFile& fout, const cg::OperatorNodeBase& opr,
+            const HostTensorND& tensor);
 
     //! specify the vars whose names should be kept: 0 for none; 1 for
     //! output vars; 2 for all vars (internal + output vars)
@@ -42,6 +42,9 @@ struct GraphDumpConfig {
 
     //! whether to keep operator priorities
     bool keep_opr_priority;
+
+    //! whether to keep operator names
+    bool keep_op_name;
 
     //! extra user data to be passed by dump caller into opr dump
     //! implementations; useful for implementing nested opr dump
@@ -55,16 +58,29 @@ struct GraphDumpConfig {
     //! names. this list record the mapping between output node and it's name
     std::vector<std::pair<std::string, SymbolVar>> alias_name_map;
 
-    GraphDumpConfig(int keep_var_name_ = 1, bool keep_param_name_ = false,
-                    bool keep_opr_priority_ = false,
-                    const std::shared_ptr<UserDataContainer>& user_data_ =
-                            std::make_shared<UserDataContainer>(),
-                    const TensorValueDumper& tensor_value_dumper_ = {})
+    //! whether just to dump all the op with no change the graph, sometimes the
+    //! opr maybe not compatible, if false, some opr will converter to the compatibility
+    //! format and then dump
+    bool no_change_graph;
+
+    //! whether dump to compat older megbrain version
+    std::string compat_older_version;
+
+    GraphDumpConfig(
+            int keep_var_name_ = 1, bool keep_param_name_ = false,
+            bool keep_opr_priority_ = false, bool keep_op_name_ = true,
+            const std::shared_ptr<UserDataContainer>& user_data_ =
+                    std::make_shared<UserDataContainer>(),
+            const TensorValueDumper& tensor_value_dumper_ = {},
+            bool no_change_graph_ = false, std::string compat_older_version_ = "")
             : keep_var_name{keep_var_name_},
               keep_param_name{keep_param_name_},
               keep_opr_priority{keep_opr_priority_},
+              keep_op_name{keep_op_name_},
               user_data{user_data_},
-              tensor_value_dumper{tensor_value_dumper_} {}
+              tensor_value_dumper{tensor_value_dumper_},
+              no_change_graph{no_change_graph_},
+              compat_older_version{compat_older_version_} {}
 };
 
 //! config for loading a whole graph; setup in GraphLoader
@@ -78,8 +94,8 @@ struct GraphLoadConfig {
      *      tensor
      * \param layout tensor layout, guaranteed to be contiguous
      */
-    using TensorValueLoader = thin_function<void(
-            void* ptr, const TensorLayout& layout, InputFile& fin)>;
+    using TensorValueLoader =
+            thin_function<void(void* ptr, const TensorLayout& layout, InputFile& fin)>;
 
     /*!
      * \brief callback to modify loaded tensors
@@ -95,9 +111,8 @@ struct GraphLoadConfig {
 
     //! a fallback to implement custom tensor value reader; it just reads
     //! the raw tensor value from input file. Implemented in serializer.cpp
-    static void default_tensor_value_loader(void* ptr,
-                                            const TensorLayout& layout,
-                                            InputFile& fin);
+    MGE_WIN_DECLSPEC_FUC static void default_tensor_value_loader(
+            void* ptr, const TensorLayout& layout, InputFile& fin);
 
     //! whether to make all SharedDeviceTensor and Host2DeviceCopy shapes
     //! immutable so static inference can be eagerly performed; this can be
@@ -128,13 +143,13 @@ struct GraphLoadConfig {
     //! GraphDumpConfig
     TensorValueLoader tensor_value_loader;
 
-    GraphLoadConfig(const CompNodeMapper& comp_node_mapper_ = {},
-                    const OprLoaderMaker& opr_loader_maker_ = {},
-                    const std::shared_ptr<UserDataContainer>& user_data_ = {},
-                    const std::shared_ptr<ComputingGraph>& comp_graph_ = {},
-                    const TensorValueLoader tensor_value_loader_ = {})
-            : comp_node_mapper{comp_node_mapper_ ? comp_node_mapper_
-                                                 : [](CompNode::Locator&) {}},
+    GraphLoadConfig(
+            const CompNodeMapper& comp_node_mapper_ = {},
+            const OprLoaderMaker& opr_loader_maker_ = {},
+            const std::shared_ptr<UserDataContainer>& user_data_ = {},
+            const std::shared_ptr<ComputingGraph>& comp_graph_ = {},
+            const TensorValueLoader tensor_value_loader_ = {})
+            : comp_node_mapper{comp_node_mapper_ ? comp_node_mapper_ : [](CompNode::Locator&) {}},
               opr_loader_maker{opr_loader_maker_},
               user_data{user_data_},
               comp_graph{comp_graph_},

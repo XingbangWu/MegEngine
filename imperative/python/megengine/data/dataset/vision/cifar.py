@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import os
 import pickle
 import tarfile
@@ -21,8 +14,7 @@ logger = get_logger(__name__)
 
 
 class CIFAR10(VisionDataset):
-    r""" ``Dataset`` for CIFAR10 meta data.
-    """
+    r""":class:`~.Dataset` for CIFAR10 meta data."""
 
     url_path = "http://www.cs.utoronto.ca/~kriz/"
     raw_file_name = "cifar-10-python.tar.gz"
@@ -107,9 +99,7 @@ class CIFAR10(VisionDataset):
 
     def download(self):
         url = self.url_path + self.raw_file_name
-        load_raw_data_from_url(
-            url, self.raw_file_name, self.raw_file_md5, self.root, self.timeout
-        )
+        load_raw_data_from_url(url, self.raw_file_name, self.raw_file_md5, self.root)
         self.process()
 
     def untar(self, file_path, dirs):
@@ -138,6 +128,8 @@ class CIFAR10(VisionDataset):
 
 
 class CIFAR100(CIFAR10):
+    r""":class:`~.Dataset` for CIFAR100 meta data."""
+
     url_path = "http://www.cs.utoronto.ca/~kriz/"
     raw_file_name = "cifar-100-python.tar.gz"
     raw_file_md5 = "eb9058c3a382ffc7106e4002c42a8d85"

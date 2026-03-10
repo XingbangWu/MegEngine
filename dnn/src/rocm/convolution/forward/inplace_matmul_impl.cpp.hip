@@ -1,11 +1,3 @@
-/**
- * \file src/rocm/convolution/forward/inplace_matmul_impl.cpp.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
 #include "./inplace_matmul_impl.h.hip"
 #include "src/rocm/utils.h.hip"
 
@@ -314,7 +306,7 @@ void convolution::exec_inplace_matmul_fwd(
             } else {                                                          \
                 kptr = conv_kernel<BY, BX, false, BufferFetcherTexture>;      \
             }                                                                 \
-            kptr<<<blocks, threads, 0, stream>>>(                             \
+            hipLaunchKernelGGL(kptr, blocks, threads, 0, stream,                    \
                     src_tex.val, filter_tex.val, dst, INP_BS, OUT_BS, IC, IH, \
                     IW, OC, OH, OW, FH, FW, SH, SW, PH, PW);                  \
         } else {                                                              \
@@ -324,7 +316,7 @@ void convolution::exec_inplace_matmul_fwd(
             } else {                                                          \
                 kptr = conv_kernel<BY, BX, false, BufferFetcherRaw>;          \
             }                                                                 \
-            kptr<<<blocks, threads, 0, stream>>>(                             \
+            hipLaunchKernelGGL(kptr, blocks, threads, 0, stream,              \
                     src_buf, filter_buf, dst, INP_BS, OUT_BS, IC, IH, IW, OC, \
                     OH, OW, FH, FW, SH, SW, PH, PW);                          \
         }                                                                     \

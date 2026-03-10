@@ -1,14 +1,3 @@
-/**
- * \file src/serialization/impl/flatbuffers_helper.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #if MGB_ENABLE_FBS_SERIALIZATION
 
 #include "megbrain/serialization/internal/flatbuffers_helper.h"
@@ -55,6 +44,8 @@ megdnn::DType load_dtype(const fbs::DType* dtype) {
         return dtype::_dt{};
         MEGDNN_FOREACH_DTYPE_NAME(cb)
 #undef cb
+        case DTypeEnum_QuantizedS1:
+            return dtype::QuantizedS1{param->scale()};
         case DTypeEnum_QuantizedS4:
             return dtype::QuantizedS4{param->scale()};
         case DTypeEnum_QuantizedS8:
@@ -67,6 +58,9 @@ megdnn::DType load_dtype(const fbs::DType* dtype) {
             return dtype::Quantized4Asymm{param->scale(), param->zero_point()};
         case DTypeEnum::DTypeEnum_Quantized8Asymm:
             return dtype::Quantized8Asymm{param->scale(), param->zero_point()};
+        default:
+            // Float16 may be disabled
+            megdnn_trap();
     }
     return {};
 }
@@ -94,23 +88,23 @@ flatbuffers::Offset<fbs::DType> build_dtype(
         mgb_trap();  // unreachable
             MEGDNN_FOREACH_DTYPE_NAME(cb)
 #undef cb
-#define CASE_ASYMMETRIC(_dt)                                                  \
-    case megdnn::DTypeEnum::_dt: {                                            \
-        auto&& p = dtype.param<dtype::_dt>();                                 \
-        param_type = DTypeParam_LinearQuantizationParam;                      \
-        param = CreateLinearQuantizationParam(builder, p.scale, p.zero_point) \
-                        .Union();                                             \
-        break;                                                                \
+#define CASE_ASYMMETRIC(_dt)                                                           \
+    case megdnn::DTypeEnum::_dt: {                                                     \
+        auto&& p = dtype.param<dtype::_dt>();                                          \
+        param_type = DTypeParam_LinearQuantizationParam;                               \
+        param = CreateLinearQuantizationParam(builder, p.scale, p.zero_point).Union(); \
+        break;                                                                         \
     }
-#define CASE_SYMMETRIC(_dt)                                                    \
-    case megdnn::DTypeEnum::_dt:                                               \
-        param_type = DTypeParam_LinearQuantizationParam;                       \
-        param = CreateLinearQuantizationParam(builder,                         \
-                                              dtype.param<dtype::_dt>().scale) \
-                        .Union();                                              \
+#define CASE_SYMMETRIC(_dt)                                       \
+    case megdnn::DTypeEnum::_dt:                                  \
+        param_type = DTypeParam_LinearQuantizationParam;          \
+        param = CreateLinearQuantizationParam(                    \
+                        builder, dtype.param<dtype::_dt>().scale) \
+                        .Union();                                 \
         break;
             CASE_ASYMMETRIC(Quantized4Asymm)
             CASE_ASYMMETRIC(Quantized8Asymm)
+            CASE_SYMMETRIC(QuantizedS1)
             CASE_SYMMETRIC(QuantizedS4)
             CASE_SYMMETRIC(QuantizedS8)
             CASE_SYMMETRIC(QuantizedS16)

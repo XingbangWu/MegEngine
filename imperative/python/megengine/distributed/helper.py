@@ -1,107 +1,94 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import functools
 import multiprocessing as mp
 from collections import defaultdict
+from contextlib import contextmanager
 from typing import Callable
 from weakref import WeakSet
 
 import numpy as np
 
 from megengine.autodiff.grad_manager import GradManager, get_backwarding_grad_manager
-from megengine.device import get_default_device, get_device_count
 
+from .. import tensor
+from ..core._imperative_rt.core2 import (
+    apply,
+    get_bypass_format_transoformation,
+    set_bypass_format_transoformation,
+)
+from ..core._trace_option import use_xla_backend
 from ..core.ops.builtin import ParamPackConcat, ParamPackSplit
-from ..core.tensor.core import apply
-from ..functional.utils import copy
+from ..functional.tensor import copy
 from ..tensor import Tensor
+from ..utils.deprecation import deprecated_func
 from ..utils.future import Future
-from .functional import all_reduce_sum, broadcast
-from .group import WORLD, Group, group_barrier, is_distributed
+from . import group as _group
+from .functional import _bcast_param, all_reduce_sum, broadcast
+from .group import WORLD, Group, group_barrier, is_distributed, override_backend
+
+
+@contextmanager
+def _bypass_format_transformation(enable=True):
+    origin_flag = get_bypass_format_transoformation()
+    set_bypass_format_transoformation(enable)
+    try:
+        yield
+    finally:
+        set_bypass_format_transoformation(origin_flag)
 
 
 def param_pack_split(inp: Tensor, offsets: list, shapes: list):
-    r"""
-    Returns split tensor to tensor list as offsets and shapes described,
-            only used for ``parampack``.
+    r"""Returns split tensor to list of tensors as offsets and shapes described,
+    only used for ``parampack``.
 
-    :param inp: input tensor.
-    :param offsets: offsets of outputs, length of `2 * n`,
-            while n is tensor nums you want to split,
-            format `[begin0, end0, begin1, end1]`.
-    :param shapes: tensor shapes of outputs.
-    :return: splitted tensors.
+    Args:
+        inp: input tensor.
+        offsets: offsets of outputs, length of ``2 * n``,
+            where ``n`` is the number of tensor you want to split,
+            format ``[begin0, end0, begin1, end1]``.
+        shapes: tensor shapes of outputs.
+
+    Returns:
+        splitted tensors.
 
     Examples:
 
-    .. testcode::
-
-        import numpy as np
-        from megengine import tensor
-        from megengine.distributed.helper import param_pack_split
-
-        a = tensor(np.ones((10,), np.int32))
-        b, c = param_pack_split(a, [0, 1, 1, 10], [(1,), (3, 3)])
-        print(b.numpy())
-        print(c.numpy())
-
-    Outputs:
-
-    .. testoutput::
-
-        [1]
-        [[1 1 1]
-         [1 1 1]
-         [1 1 1]]
-
+        >>> a = F.ones(10)
+        >>> b, c = dist.helper.param_pack_split(a, [0, 1, 1, 10], [(1,), (3, 3)])
+        >>> b
+        Tensor([1.], device=xpux:0)
+        >>> c
+        Tensor([[1. 1. 1.]
+         [1. 1. 1.]
+         [1. 1. 1.]], device=xpux:0)
     """
     op = ParamPackSplit()
     op.offsets = offsets
     op.shapes = [s or (1,) for s in shapes]
     outputs = apply(op, inp)
-    for s, x in zip(shapes, outputs):
-        if not s:
-            x._isscalar = True
     return outputs
 
 
 def param_pack_concat(inps: list, offsets: Tensor, offsets_val: list):
-    r"""
-    Returns concated tensor, only used for ``parampack``.
+    r"""Returns concated tensor, only used for ``parampack``.
 
-    :param inps: input tensors.
-    :param offsets: device value of offsets.
-    :param offsets_val: offsets of inputs, length of `2 * n`,
-            format `[begin0, end0, begin1, end1]`.
-    :return: concated tensor.
+    Args:
+         inps: list of input tensors.
+         offsets: device value of offsets.
+         offsets_val: offsets of inputs, length of ``2 * n``,
+            format ``[begin0, end0, begin1, end1]``.
+
+    Returns:
+         concated tensor.
 
     Examples:
 
-    .. testcode::
-
-        import numpy as np
-        from megengine import tensor
-        from megengine.distributed.helper import param_pack_concat
-
-        a = tensor(np.ones((1,), np.int32))
-        b = tensor(np.ones((3, 3), np.int32))
-        offsets_val = [0, 1, 1, 10]
-        offsets = tensor(offsets_val, np.int32)
-        c = param_pack_concat([a, b], offsets, offsets_val)
-        print(c.numpy())
-
-    Outputs:
-
-    .. testoutput::
-
-        [1 1 1 1 1 1 1 1 1 1]
-
+         >>> a = F.ones(1)
+         >>> b = F.ones((3, 3))
+         >>> offsets_val = [0, 1, 1, 10]
+         >>> offsets = Tensor(offsets_val)
+         >>> c = dist.helper.param_pack_concat([a, b], offsets, offsets_val)  # doctest: +SKIP
+         Tensor([1. 1. 1. 1. 1. 1. 1. 1. 1. 1.], device=xpux:0)
     """
     op = ParamPackConcat()
     op.offsets = offsets_val
@@ -118,11 +105,33 @@ def get_offsets(shapes):
     return offsets
 
 
+_enable_p2p_cache = None
+
+
+def _check_enable_p2p():
+    global _enable_p2p_cache
+    if _enable_p2p_cache is not None:
+        return _enable_p2p_cache
+    cmd = ["nvidia-smi", "topo", "-p2p", "w"]
+    import subprocess
+
+    output = subprocess.run(cmd, stdout=subprocess.PIPE).stdout
+    if output.count(b"OK") > 1:
+        _enable_p2p_cache = True
+        return True
+    else:
+        _enable_p2p_cache = False
+        return False
+
+
 def pack_allreduce_split(pack_list, shapes, group, reduce_method):
     offsets_val = get_offsets(shapes)
     offsets = Tensor(offsets_val)
     packed_grads = param_pack_concat(pack_list, offsets, offsets_val)
-    packed_grads = all_reduce_sum(packed_grads, group, group.comp_node)
+    group_cn = group.comp_node
+    if group_cn.startswith("atlas"):
+        group_cn = str(packed_grads.device)
+    packed_grads = all_reduce_sum(packed_grads, group, group_cn)
     if reduce_method == "mean":
         packed_grads /= group.size
     grads = param_pack_split(packed_grads, offsets_val, shapes)
@@ -144,9 +153,9 @@ class TensorFuture(Future):
 
 
 def synchronized(func: Callable):
+    r"""Decorator. Decorated function will synchronize when finished.
+    Specifically, we use this to prevent data race during hub.load
     """
-    Decorator. Decorated function will synchronize when finished.
-    Specifically, we use this to prevent data race during hub.load"""
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -160,44 +169,63 @@ def synchronized(func: Callable):
     return wrapper
 
 
-def _get_device_count_worker(queue, device_type):
-    num = get_device_count(device_type)
-    queue.put(num)
+def _check_device_initialized(device_type: str, rank: int):
+    try:
+        test = Tensor(1, device=(device_type + str(rank)))
+        del test
+    except Exception as e:
+        errmsg = (
+            "Device initialization check failed, which may be caused "
+            "by using CUDA before forking the thread. Please review "
+            "the code to ensure that no CUDA functions or variables "
+            "are used before forking."
+        )
+        raise RuntimeError(errmsg) from e
 
 
-def get_device_count_by_fork(device_type: str):
-    """
-    Get device count in fork thread.
-    See https://stackoverflow.com/questions/22950047/cuda-initialization-error-after-fork
-    for more information.
-    """
-    q = mp.Queue()
-    p = mp.Process(target=_get_device_count_worker, args=(q, device_type))
-    p.start()
-    p.join()
-    return q.get()
+def _check_interpreter_status():
+    from ..core._imperative_rt.core2 import get_option
+
+    _ = get_option("async_level")
+
+
+get_device_count_by_fork = deprecated_func(
+    "1.5", "megengine.device", "get_device_count", False
+)
 
 
 def bcast_list_(inps: list, group: Group = WORLD):
-    """
-    Broadcast tensors between given group.
+    r"""Broadcast tensors between given group.
 
-    :param inps: input tensors.
-    :param group: communication group.
+    Args:
+        inps(List[Tensor]): input tensors.
+        group(:attr:`.distributed.group.Group, optional): communication group. Default: WORLD.
     """
     for inp in inps:
-        inp._reset(broadcast(inp, group))
+        inp._reset(_bcast_param(inp, group))
 
 
 class AllreduceCallback:
-    """
-    Allreduce Callback with tensor fusion optimization.
+    r"""Allreduce Callback with tensor fusion optimization.
 
-    :param reduce_method: the method to reduce gradiants.
-    :param group: communication group.
+    Args:
+        reduce_method(str): the method to reduce gradiants. ``reduce_method`` should be "sum" or "mean".
+        group(:attr:`.distributed.group.Group, optional): communication group. Default: WORLD.
+        backend(str, optional): override distributed backend in allreduce. If ``backend`` is None, will use the backend set in ``dist.launcher``. Default: None.
+
+    Examples:
+
+        .. code-block:: python
+
+            import megengine as mge
+            import megengine.autodiff as ad
+            import megengine.distributed as dist
+
+            gm = ad.GradManager()
+            gm.attach(linear_cls.parameters(), callbacks=[dist.make_allreduce_cb("sum")])
     """
 
-    def __init__(self, reduce_method: str, group: Group = WORLD):
+    def __init__(self, reduce_method: str, group: Group = WORLD, backend: str = None):
         reduce_method = reduce_method.lower()
         assert reduce_method in ["sum", "mean"], "reduce_method should be sum or mean"
         self._reduce_method = reduce_method
@@ -205,6 +233,12 @@ class AllreduceCallback:
         self._marked_gm = WeakSet()
         self._param_pack_thd = 10 * 1024 * 1024
         self._reset()
+        if backend is None:
+            assert _group._sd, "please call init_process_group first"
+            backend = _group._sd.backend
+        if backend == "auto":
+            backend = "nccl"
+        self._backend = backend
 
     def _reset(self):
         self._params = []
@@ -218,17 +252,23 @@ class AllreduceCallback:
         if len(self._packing_list[dtype]) == 0:
             return
         grad_list = [self._gradients_dict[p] for p in self._packing_list[dtype]]
-        shapes = [p.shape for p in self._packing_list[dtype]]
-        reduced_grads = pack_allreduce_split(
-            grad_list, shapes, self._group, self._reduce_method
-        )
+        shapes = [p._tuple_shape for p in self._packing_list[dtype]]
+
+        with override_backend(self._backend):
+            reduced_grads = pack_allreduce_split(
+                grad_list, shapes, self._group, self._reduce_method
+            )
         for param, grad in zip(self._packing_list[dtype], reduced_grads):
             self._gradients_dict[param] = grad
         self._packing_list[dtype] = []
         self._packing_size[dtype] = 0
 
     def __call__(self, param, grad):
-        param = param.__wrapped__
+        if use_xla_backend() or grad._is_external_value():
+            grad = all_reduce_sum(grad, self._group)
+            if self._reduce_method == "mean":
+                grad /= self._group.size
+            return grad
         gm = get_backwarding_grad_manager()
         assert isinstance(gm, GradManager)
         if gm not in self._marked_gm:
@@ -242,14 +282,15 @@ class AllreduceCallback:
         dtype_str = str(np.dtype(param.dtype))
         dtype_size = np.dtype(param.dtype).itemsize
         self._packing_list[dtype_str].append(param)
-        self._packing_size[dtype_str] += int(np.prod(param.shape)) * dtype_size
+        self._packing_size[dtype_str] += int(np.prod(param._tuple_shape)) * dtype_size
         if self._packing_size[dtype_str] > self._param_pack_thd:
             self._pack(dtype_str)
         return self._futures_dict[param]
 
     def _flush(self):
-        for dtype in sorted(self._packing_list.keys()):
-            self._pack(dtype)
+        with _bypass_format_transformation():
+            for dtype in sorted(self._packing_list.keys()):
+                self._pack(dtype)
         for param in self._params:
             grad = self._gradients_dict[param]
             grad = copy(grad, self._grad_origin_device[param])

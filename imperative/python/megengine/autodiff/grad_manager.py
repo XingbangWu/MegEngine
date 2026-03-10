@@ -1,9 +1,15 @@
 import weakref
-from collections import defaultdict
-from contextlib import contextmanager
-from typing import Callable
+from typing import Callable, Iterable, List, Union
 
+from ..core._imperative_rt.core2 import (
+    get_auto_format_convert,
+    pop_scope,
+    push_scope,
+    set_auto_format_convert,
+    set_option,
+)
 from ..core.autodiff.grad import Grad
+from ..core.tensor.dtype import is_differentible_dtype
 from ..logger import get_logger
 from ..tensor import Tensor
 from ..utils.future import Future
@@ -22,8 +28,7 @@ class AttachSpec:
 
 
 class GradManager:
-    r"""
-    GradManager computes gradients or more generally, vector-Jacobian product, by reverse mode
+    r"""GradManager computes gradients or more generally, vector-Jacobian product, by reverse mode
     automatic differentiation (a.k.a. back propagation).
 
     Reverse mode autodiff normally reuses many intermediate tensors for best computation efficiency.
@@ -110,7 +115,6 @@ class GradManager:
 
         gm = GradManager()
         gm.attach(model.parameters(), callback=dist.make_allreduce_cb("MEAN"))
-
     """
 
     def __init__(self):
@@ -120,9 +124,12 @@ class GradManager:
         self._after_backward_callback = []
         self._gradients = {}
 
-    def attach(self, tensors: list, callbacks=None):
-        r"""
-        Instruct GradManager to track operations on tensors, so that gradients with respect
+    def attached_tensors(self):
+        r"""Return attached tensor list from :meth:`attach`."""
+        return [spec.tensor() for spec in self._attach_specs.values()]
+
+    def attach(self, tensors: Iterable[Tensor], callbacks=None):
+        r"""Instruct GradManager to track operations on tensors, so that gradients with respect
         to those tensors could be evaluated later.
 
         :meth:`attach` also accepts a list of callbacks, which will be called with the tensor and
@@ -173,8 +180,9 @@ class GradManager:
             multiple uses of a GradManager, which is unrelated to whether resources is timely
             released within a single use.
 
-        :param tensors: tensor or list of tensors to track
-        :param callbacks: callback or list of callbacks
+        Args:
+            tensors: tensor or list of tensors to track
+            callbacks: callback or list of callbacks
         """
         if callbacks is None:
             callbacks = []
@@ -198,6 +206,11 @@ class GradManager:
             return spec
 
         for x in tensors:
+            assert isinstance(x, Tensor), "Object to be attached should be Tensor"
+            assert is_differentible_dtype(x.dtype), (
+                "Only tensors of floating point dtype can be attached to get gradients, "
+                "get tensor dtype: {} and shape: {}".format(x.dtype, x.shape)
+            )
             spec = self._attach_specs.get(id(x))
             new_attach = spec is None
             if spec is None:
@@ -206,15 +219,19 @@ class GradManager:
             spec.callbacks.extend(callbacks)
             if new_attach and self._recording:
                 self._do_record(spec)
+
         return self
 
     def _register_after_backward_callback(self, callback):
         self._after_backward_callback.append(callback)
         return self
 
-    def backward(self, y=None, dy=None):
-        r"""
-        Compute gradients (or vector-Jacobian product) for all attached tensors, accumulate to
+    def backward(
+        self,
+        y: Union[Tensor, List[Tensor]] = None,
+        dy: Union[Tensor, List[Tensor]] = None,
+    ):
+        r"""Compute gradients (or vector-Jacobian product) for all attached tensors, accumulate to
         corresponding .grad attribute, and release resources along the way.
 
         :meth:`backward` computes the vector-Jacobian product :math:`dx_j = \sum_{i} dy_i J_{ij}`
@@ -236,9 +253,13 @@ class GradManager:
         process of this call. When the call successfully finishes, the GradManager will be put back
         to an inactive state.
 
-        :param y: tensor or list of tensors
-        :param dy: tensor or list of tensors. Defaults to 1 if y is scalar
+        Args:
+            y: tensor or list of tensors
+            dy: tensor or list of tensors. Defaults to 1 if y is scalar
         """
+        push_scope("backward")
+        set_option("record_computing_path", 0)
+        _origin_auto_format = get_auto_format_convert()
         from ..functional import ones_like
 
         global backwarding_grad_manager
@@ -251,6 +272,7 @@ class GradManager:
                 "call a method that clears the history?"
             )
         assert self._grad is not None
+        # These checks should be consistent with GradScaler's
         if y is None:
             ys = []
         elif isinstance(y, (tuple, list)):
@@ -260,7 +282,7 @@ class GradManager:
         if dy is None:
             dys = [ones_like(y) for y in ys]
         elif isinstance(dy, (tuple, list)):
-            dys = ys
+            dys = dy
         else:
             dys = [dy]
         try:
@@ -272,6 +294,8 @@ class GradManager:
                     grad = grad.get()
                 spec = self._attach_specs.get(id_)
                 tensor = spec and spec.tensor()
+                if grad is not None:
+                    grad._as_format(tensor.format)
                 if tensor is not None:
                     if tensor.grad is None:
                         tensor.grad = grad
@@ -280,10 +304,11 @@ class GradManager:
         finally:
             self.release()
             backwarding_grad_manager = cache
+            set_option("record_computing_path", 1)
+            pop_scope("backward")
 
     def record(self):
-        r"""
-        Start recording operations
+        r"""Start recording operations
 
         After this call, you will be able to call :meth:`backward`.
         """
@@ -292,16 +317,16 @@ class GradManager:
         grad = Grad()
         self._recording = True
         self._grad = grad
+        grad.__enter__()
         for spec in self._attach_specs.values():
             self._do_record(spec)
-        grad.__enter__()
 
     def _do_record(self, spec):
         tensor = spec.tensor()
         if tensor is None:
             return
 
-        def callback(_, grad, callbacks=spec.callbacks):
+        def callback(grad, callbacks=spec.callbacks):
             for cb in callbacks:
                 grad = cb(tensor, grad)
             self._gradients[id(tensor)] = grad
@@ -310,8 +335,7 @@ class GradManager:
         self._grad.wrt(tensor, callback=callback)
 
     def release(self):
-        r"""
-        Stop recording operations and release resources kept for gradient computation
+        r"""Stop recording operations and release resources kept for gradient computation
 
         After this call, you will not be able to call :meth:`backward`.
         """
@@ -327,3 +351,38 @@ class GradManager:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.release()
+
+    def __or__(self, other):
+        if isinstance(other, GradManager):
+            return GradManagerGroup([self, other])
+        return NotImplemented
+
+    __ror__ = __or__
+
+
+class GradManagerGroup:
+    def __init__(self, gms) -> None:
+        self._gms = list(gms)
+
+    def merge_with(self, other):
+        if isinstance(other, GradManager):
+            other = GradManagerGroup([other])
+        elif not isinstance(other, GradManagerGroup):
+            return NotImplemented
+        return GradManagerGroup([*self._gms, *other._gms])
+
+    __or__ = merge_with
+    __ror__ = merge_with
+
+    def __enter__(self):
+        Grad.stack.append([])
+        Grad.begin_group()
+        for gm in self._gms:
+            gm.record()
+            assert gm._grad is not None
+        Grad.end_group()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        for gm in reversed(self._gms):
+            gm.release()
+            assert gm._grad is None

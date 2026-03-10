@@ -1,18 +1,7 @@
-/**
- * \file dnn/test/cuda/mesh_indexing.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
+#include "test/common/mesh_indexing.h"
 #include "megdnn/basic_types.h"
 #include "test/common/checker.h"
 #include "test/common/index.h"
-#include "test/common/mesh_indexing.h"
 #include "test/cuda/fixture.h"
 
 using namespace megdnn;
@@ -83,8 +72,7 @@ TEST_F(CUDA, BATCHED_MESH_INDEXING) {
     index_layout = index_layout.broadcast({2, 3});
     checker.set_proxy({init_axes})
             .execl({TensorLayout{TensorShape{2, idx_size0}, dtype::Float32()},
-                    TensorLayout{TensorShape{2, 3}, dtype::Float32()},
-                    index_layout});
+                    TensorLayout{TensorShape{2, 3}, dtype::Float32()}, index_layout});
 }
 
 namespace {
@@ -157,6 +145,6 @@ TEST_F(CUDA, BATCHED_MESH_MODIFY_INCREMENT) {
 }
 
 TEST_F(CUDA, BATCHED_MESH_MODIFY_SETTING) {
-    run_batch_modify_test<BatchedSetMeshIndexing,
-                          mesh_indexing::NoReplacementIndexRNG>(handle_cuda());
+    run_batch_modify_test<BatchedSetMeshIndexing, mesh_indexing::NoReplacementIndexRNG>(
+            handle_cuda());
 }

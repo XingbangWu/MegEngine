@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/rocm/add_update/opr_impl.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "hcc_detail/hcc_defs_prologue.h"
 
 #include "./opr_impl.h"
@@ -18,8 +8,7 @@
 using namespace megdnn;
 using namespace rocm;
 
-void AddUpdateForwardImpl::exec(_megdnn_tensor_inout dest,
-                                _megdnn_tensor_in delta) {
+void AddUpdateForwardImpl::exec(_megdnn_tensor_inout dest, _megdnn_tensor_in delta) {
     check_exec(dest.layout, delta.layout);
     if (!dest.layout.is_contiguous()) {
         return exec_noncontig(dest, delta);
@@ -40,12 +29,12 @@ void AddUpdateForwardImpl::exec(_megdnn_tensor_inout dest,
 #undef cb
 
         default:
-            megdnn_throw(megdnn_mangle("unsupported dtype for AddUpdate"));
+            megdnn_throw("unsupported dtype for AddUpdate");
     }
 }
 
-void AddUpdateForwardImpl::exec_noncontig(_megdnn_tensor_inout dest,
-                                          _megdnn_tensor_in delta) {
+void AddUpdateForwardImpl::exec_noncontig(
+        _megdnn_tensor_inout dest, _megdnn_tensor_in delta) {
     ElemwiseOpParamN<2> param = make_param(dest, delta);
     auto stream = hip_stream(handle());
     switch (dest.layout.dtype.enumv()) {
@@ -59,9 +48,8 @@ void AddUpdateForwardImpl::exec_noncontig(_megdnn_tensor_inout dest,
 #undef cb
 
         default:
-            megdnn_throw(megdnn_mangle("unsupported dtype for AddUpdate"));
+            megdnn_throw("unsupported dtype for AddUpdate");
     }
 }
 
 // vim: syntax=cpp.doxygen
-

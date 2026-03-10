@@ -1,15 +1,3 @@
-/**
- * \file dnn/src/armv7/matrix_mul/int8x8x16/kernel_4x2x16.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #include "src/arm_common/simd_macro/marm_neon.h"
 #include "src/armv7/matrix_mul/asm/common.h"
 
@@ -46,9 +34,9 @@ namespace matmul_4x2x16 {
  *                               Accumulator
  */
 
-static void kern_4x2(const int8_t* packA, const int8_t* packB, int K,
-                     int16_t* output, int LDC, bool is_first_k, int m_remain,
-                     int n_remain) {
+static void kern_4x2(
+        const int8_t* packA, const int8_t* packB, int K, int16_t* output, int LDC,
+        bool is_first_k, int m_remain, int n_remain) {
     MEGDNN_MARK_USED_VAR(m_remain);
     MEGDNN_MARK_USED_VAR(n_remain);
     K /= 16;

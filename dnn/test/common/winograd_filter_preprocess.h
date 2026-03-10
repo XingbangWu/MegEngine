@@ -1,13 +1,3 @@
-/**
- * \file dnn/test/common/winograd_filter_preprocess.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 #include <cstddef>
 #include "megdnn/basic_types.h"
@@ -23,8 +13,7 @@ struct TestArg {
     TestArg(param::Winograd param, TensorShape src) : param(param), src(src) {}
 };
 
-static inline std::vector<TestArg> get_args(size_t output_block_size,
-                                            size_t filter) {
+static inline std::vector<TestArg> get_args(size_t output_block_size, size_t filter) {
     param::Winograd param;
     std::vector<TestArg> args;
 
@@ -40,8 +29,7 @@ static inline std::vector<TestArg> get_args(size_t output_block_size,
 }
 
 static inline std::vector<TestArg> get_mk_packed_args(
-        size_t output_block_size, param::Winograd::Format format,
-        size_t pack_size) {
+        size_t output_block_size, param::Winograd::Format format, size_t pack_size) {
     param::Winograd param;
     std::vector<TestArg> args;
 

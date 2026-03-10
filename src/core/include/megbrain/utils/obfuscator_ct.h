@@ -1,14 +1,3 @@
-/**
- * \file src/core/include/megbrain/utils/obfuscator_ct.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include <cstdint>
@@ -65,11 +54,9 @@ private:
 
 }  // namespace mgb
 
-#define MGB_OBFUSCATE_STR(data) \
-    MGB_OBFUSCATE_STR_KEY(data, mgb::XORObfuscator<'.'>)
+#define MGB_OBFUSCATE_STR(data) MGB_OBFUSCATE_STR_KEY(data, mgb::XORObfuscator<'.'>)
 
-#define MGB_OBFUSCATE_STR_KEY(data, ob)                                    \
-    mgb::ObfucatorCT<std::make_index_sequence<sizeof(data) - 1>, ob>(data) \
-            .decrypt()
+#define MGB_OBFUSCATE_STR_KEY(data, ob) \
+    mgb::ObfucatorCT<std::make_index_sequence<sizeof(data) - 1>, ob>(data).decrypt()
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

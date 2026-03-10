@@ -75,8 +75,8 @@ def main():
     for step, minibatch in enumerate(train_dataset):
         if step > 1000:
             break
-        data = minibatch["data"]
-        label = minibatch["label"]
+        data = mge.tensor(minibatch["data"])
+        label = mge.tensor(minibatch["label"])
         net.train()
         _, loss = train_fun(data, label)
         train_loss.append((step, loss.numpy()))
@@ -84,7 +84,7 @@ def main():
             minibatch = next(val_dataset)
             net.eval()
             _, loss = val_fun(data, label)
-            loss = loss.numpy()[0]
+            loss = loss.numpy()
             val_loss.append((step, loss))
             print("Step: {} loss={}".format(step, loss))
         opt.step()
@@ -127,6 +127,11 @@ def main():
 
     print("Dump model as {}".format(model_name))
     pred_fun.dump(model_name, arg_names=["data"])
+
+    model_with_testcase_name = "xornet_with_testcase.mge"
+
+    print("Dump model with testcase as {}".format(model_with_testcase_name))
+    pred_fun.dump(model_with_testcase_name, arg_names=["data"], input_data=["#rand(0.1, 0.8, 4, 2)"])
 
 
 if __name__ == "__main__":

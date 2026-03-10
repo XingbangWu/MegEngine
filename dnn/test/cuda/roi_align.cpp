@@ -1,13 +1,3 @@
-/**
- * \file dnn/test/cuda/roi_align.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "test/cuda/fixture.h"
 
 #include "test/common/checker.h"
@@ -77,10 +67,7 @@ TEST_F(CUDA, ROI_ALIGN_BACKWARD) {
                     .set_rng(1, &rng)
                     .set_rng(2, &index_rng)
                     .set_rng(3, &const_0)
-                    .execs({{M, C, OH, OW},
-                            {M, 5},
-                            {M, C, OH, OW},
-                            {N, C, IH, IW}});
+                    .execs({{M, C, OH, OW}, {M, 5}, {M, C, OH, OW}, {N, C, IH, IW}});
         }
     };
     run(dtype::Float32());
@@ -93,4 +80,3 @@ TEST_F(CUDA, ROI_ALIGN_BACKWARD) {
 }  // namespace megdnn
 
 // vim: syntax=cpp.doxygen
-

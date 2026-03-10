@@ -1,14 +1,3 @@
-/**
- * \file src/plugin/include/megbrain/plugin/opr_io_dump.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include <cstdio>
@@ -60,21 +49,21 @@ class TextOprIODump final : public OprIODumpBase {
     bool m_print_addr = true;
     std::shared_ptr<FILE> m_fout;
     size_t m_max_size = 5;
-    std::mutex m_mtx;
+    MGB_MUTEX m_mtx;
     std::unique_ptr<LazyValueRecorder> m_lazy_value;
 
     void dump_var(VarNode* var, bool lazy_sync) override;
 
 public:
-    TextOprIODump(cg::ComputingGraph* graph,
-                  const std::shared_ptr<FILE>& fout =
-                          std::shared_ptr<FILE>(stderr, [](FILE*) {}));
+    MGE_WIN_DECLSPEC_FUC TextOprIODump(
+            cg::ComputingGraph* graph,
+            const std::shared_ptr<FILE>& fout =
+                    std::shared_ptr<FILE>(stderr, [](FILE*) {}));
 
     TextOprIODump(cg::ComputingGraph* graph, const char* fpath)
-            : TextOprIODump(graph,
-                            std::shared_ptr<FILE>(fopen(fpath, "w"), fclose)) {}
+            : TextOprIODump(graph, std::shared_ptr<FILE>(fopen(fpath, "w"), fclose)) {}
 
-    ~TextOprIODump();
+    MGE_WIN_DECLSPEC_FUC ~TextOprIODump();
 
     void flush_lazy() override;
 
@@ -109,12 +98,12 @@ class BinaryOprIODump final : public OprIODumpBase {
     void dump_var(VarNode* var, bool lazy_sync) override;
 
 public:
-    BinaryOprIODump(cg::ComputingGraph* graph, std::string output_dir);
-    ~BinaryOprIODump();
+    MGE_WIN_DECLSPEC_FUC BinaryOprIODump(
+            cg::ComputingGraph* graph, std::string output_dir);
+    MGE_WIN_DECLSPEC_FUC ~BinaryOprIODump();
     void flush_lazy() override;
 };
 
 }  // namespace mgb
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}
-

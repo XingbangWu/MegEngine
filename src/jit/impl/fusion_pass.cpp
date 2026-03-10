@@ -1,22 +1,13 @@
-/**
- * \file src/jit/impl/fusion_pass.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megbrain/jit/fusion_pass.h"
 #include "megbrain/common.h"
+#include "megbrain/comp_node_env.h"
 #include "megbrain/gopt/gtrans.h"
 #include "megbrain/jit/ast_c.h"
 #include "megbrain/jit/compiler.h"
 #include "megbrain/jit/internal_graph.h"
 #include "megbrain/opr/tensor_manip.h"
 #include "megbrain/serialization/serializer.h"
+#include "megdnn/tensor_format.h"
 
 #if MGB_JIT
 
@@ -27,6 +18,9 @@
 using namespace mgb;
 using namespace gopt;
 using namespace jit;
+
+//! default is null string
+std::string JITFusionPass::jit_backend_str = "";
 
 class JITFusionPass::Impl final {
     using Mode = opr::Elemwise::Mode;
@@ -54,8 +48,7 @@ class JITFusionPass::Impl final {
     size_t max_nr_input(CompNode cn);
 
     //! check whether all oprs which depend on the var are in i_graph
-    bool test_all_readers_in_the_graph(VarNode* var,
-                                       InternalGraphGenerator* i_graph);
+    bool test_all_readers_in_the_graph(VarNode* var, InternalGraphGenerator* i_graph);
 
     //! check shape to determine whether the opr should be added to the internal
     //! graph
@@ -78,6 +71,9 @@ class JITFusionPass::Impl final {
         return num;
     }
 
+    //! config jit backends
+    void config_jit_backends(CompNode comp_node) const;
+
 public:
     Impl(bool after_grad, JITFeatureBits feature_bits, OptState& opt_state)
             : m_after_grad{after_grad},
@@ -89,6 +85,57 @@ public:
     }
 };
 
+void JITFusionPass::Impl::config_jit_backends(CompNode comp_node) const {
+#define ENV_CB(VALUE)                                                 \
+    if (!backend || !strcmp(backend, VALUE)) {                        \
+        if (!backend) {                                               \
+            mgb_log_debug("config jit default backend to %s", VALUE); \
+            JITFusionPass::set_jit_backend_str(VALUE);                \
+        }                                                             \
+        break;                                                        \
+    }
+
+    auto backend = ::std::getenv(ssprintf("%c%cB_JIT_BACKEND", 'M', 'G').c_str());
+    if (backend) {
+        mgb_log_debug("use user config jit backend with: %s", backend);
+    }
+    switch (comp_node.device_type()) {
+#if MGB_CUDA
+        // CUDA jit default property: HALIDE > MLIR > NVRTC
+        case CompNode::DeviceType::CUDA:
+#if MGB_JIT_HALIDE
+            ENV_CB("HALIDE");
+#endif
+#if MGB_JIT_MLIR
+            ENV_CB("MLIR");
+#endif
+            ENV_CB("NVRTC");
+            mgb_throw(
+                    InternalError,
+                    "No compiler support for cuda, may caused by build not enable "
+                    "MLIR/HALIDE module or error config jit backend env");
+            break;
+#endif
+        // CPU jit only support MLIR now
+        case CompNode::DeviceType::CPU:
+#if MGB_JIT_MLIR
+            ENV_CB("MLIR");
+#endif
+            mgb_throw(
+                    InternalError,
+                    "No compiler support for cpu, may caused by build not enable "
+                    "MLIR module or error config jit backend env");
+            break;
+        default:
+            mgb_throw(
+                    InternalError,
+                    "unsupported JIT config: "
+                    "comp_node=%s backend_setting=%s",
+                    comp_node.to_string().c_str(), backend);
+    }
+#undef ENV_CB
+}
+
 void JITFusionPass::Impl::detect_fusion() {
     std::vector<OperatorNodeBase*> topo_order;
     m_opt_state.graph().iter([this, &topo_order](OperatorNodeBase* opr) {
@@ -98,8 +145,19 @@ void JITFusionPass::Impl::detect_fusion() {
         }
     });
 
+    //! call config_jit_backends as soon as possible
+    for (auto opr : reverse_adaptor(topo_order)) {
+        auto&& cn = opr->output(0)->comp_node();
+        if (cn == CompNode::default_cpu()) {
+            continue;
+        }
+        config_jit_backends(cn);
+        break;
+    }
+
     for (auto opr : reverse_adaptor(topo_order)) {
         if (can_be_fused(opr)) {
+            mgb_log_debug("%s: try process : %s", __FUNCTION__, opr->cname());
             process_opr(opr);
         }
     }
@@ -107,8 +165,7 @@ void JITFusionPass::Impl::detect_fusion() {
 
 void JITFusionPass::Impl::update_graph() {
     auto process = [this](OperatorNodeBase* opr) {
-        if (!Compiler::is_supported_device(
-                    opr->output(0)->comp_node().device_type()))
+        if (!Compiler::is_supported_device(opr->output(0)->comp_node().device_type()))
             return;
 
         auto fuse_varnode = [this](VarNode* var) {
@@ -117,8 +174,7 @@ void JITFusionPass::Impl::update_graph() {
                 return;
             }
             auto ig_gen = ig_gen_iter->second;
-            if (m_endpoint_set.count(var) != 0 &&
-                ig_gen->opr_set().size() >= 2) {
+            if (m_endpoint_set.count(var) != 0 && ig_gen->opr_set().size() >= 2) {
                 auto igraph = ig_gen->generate();
                 auto&& inputs = ig_gen->orig_inps();
                 if (m_after_grad || nr_non_const_vars(inputs) == 1) {
@@ -129,12 +185,11 @@ void JITFusionPass::Impl::update_graph() {
                         auto new_input = m_rewriter.get_var(input);
                         rewritten_inputs.push_back(new_input);
                     }
-                    auto fusion_op =
-                            JITExecutor::make(igraph, rewritten_inputs);
+                    auto fusion_op = JITExecutor::make(igraph, rewritten_inputs);
                     m_rewriter.replace_var(
                             var, fusion_op.node(),
-                            mgb_ssprintf_log("fuse endpoint: %s",
-                                             var->owner_opr()->cname())
+                            mgb_ssprintf_log(
+                                    "fuse endpoint: %s", var->owner_opr()->cname())
                                     .c_str());
                 }
             }
@@ -144,8 +199,7 @@ void JITFusionPass::Impl::update_graph() {
             if (!m_rewriter.has_manual_replace(i)) {
                 // if input i is a endpoint, and number of oprs in this subgraph
                 // is greater than 2
-                m_opt_state.call_with_opr(i->owner_opr(),
-                                          [&] { fuse_varnode(i); });
+                m_opt_state.call_with_opr(i->owner_opr(), [&] { fuse_varnode(i); });
             }
         }
         m_rewriter.auto_replace_outputs(opr);
@@ -170,8 +224,8 @@ bool JITFusionPass::Impl::test_all_readers_in_the_graph(
     return true;
 }
 
-bool JITFusionPass::Impl::check_shape(cg::OperatorNodeBase* opr,
-                                      InternalGraphGenerator* ig_gen) {
+bool JITFusionPass::Impl::check_shape(
+        cg::OperatorNodeBase* opr, InternalGraphGenerator* ig_gen) {
     if (!cg::is_static_var_shape(opr->output(0))) {
         // currently we do not handle dynamic shape in JIT
         return false;
@@ -180,14 +234,10 @@ bool JITFusionPass::Impl::check_shape(cg::OperatorNodeBase* opr,
         // By requiring opr output shape to be the same as final output shape,
         // we permit only one broadcast. If multiple broadcasts are fused,
         // together, execution would be actually slower.
-        if ((m_feature_bits & JITFeatureBits::DIMSHUFFLE) &&
-            ig_gen->has_dimshuffle() &&
+        if ((m_feature_bits & JITFeatureBits::DIMSHUFFLE) && ig_gen->has_dimshuffle() &&
             ig_gen->oprs_depended_by_dimshuffe().count(opr)) {
             return opr->output(0)->shape().eq_shape(
-                    ig_gen->oprs_depended_by_dimshuffe()
-                            .at(opr)
-                            ->input(0)
-                            ->shape());
+                    ig_gen->oprs_depended_by_dimshuffe().at(opr)->input(0)->shape());
         } else {
             return opr->output(0)->shape().eq_shape(ig_gen->output()->shape());
         }
@@ -214,8 +264,7 @@ bool JITFusionPass::Impl::check_shape(cg::OperatorNodeBase* opr,
                 if (ig_gen->has_reduce()) {
                     ret &= jit_inp_shp.eq_shape(ig_gen->before_reduce_shape());
                 }
-                ret &= jit->output(0)->shape().eq_shape(
-                        ig_gen->output()->shape());
+                ret &= jit->output(0)->shape().eq_shape(ig_gen->output()->shape());
                 return ret;
             }
         }
@@ -230,18 +279,15 @@ bool JITFusionPass::Impl::check_shape(cg::OperatorNodeBase* opr,
         // mgb cg
         auto reduce = &opr->cast_final<opr::Reduce>();
         if (before_reduce) {
-            return reduce->input(0)->shape().eq_shape(
-                           ig_gen->before_reduce_shape()) &&
-                   reduce->output(0)->shape().eq_shape(
-                           ig_gen->before_reduce_shape());
+            return reduce->input(0)->shape().eq_shape(ig_gen->before_reduce_shape()) &&
+                   reduce->output(0)->shape().eq_shape(ig_gen->before_reduce_shape());
         } else {
             bool ret = true;
             if (ig_gen->has_reduce()) {
                 ret &= reduce->input(0)->shape().eq_shape(
                         ig_gen->before_reduce_shape());
             }
-            ret &= reduce->output(0)->shape().eq_shape(
-                    ig_gen->output()->shape());
+            ret &= reduce->output(0)->shape().eq_shape(ig_gen->output()->shape());
             return ret;
         }
     }
@@ -286,16 +332,13 @@ void JITFusionPass::Impl::process_opr(OperatorNodeBase* opr) {
         // in the subgraph and the opr's comp_node is same with the subgraph's,
         // then this opr can be fused to this graph as an internal node rather
         // than a leaf.
-        bool cond_readers =
-                     test_all_readers_in_the_graph(opr->output(0), ig_gen),
-             cond_cn = opr->output(0)->comp_node() ==
-                       ig_gen->output()->comp_node(),
+        bool cond_readers = test_all_readers_in_the_graph(opr->output(0), ig_gen),
+             cond_cn = opr->output(0)->comp_node() == ig_gen->output()->comp_node(),
              cond_shp = check_shape(opr, ig_gen),
              cond_nr_inp = ig_gen->get_cnt_input_if_add(opr) <= max_nr_input,
              cond_mlir_specific = true;
 
-        if (cond_readers && cond_cn && cond_shp && cond_nr_inp &&
-            cond_mlir_specific) {
+        if (cond_readers && cond_cn && cond_shp && cond_nr_inp && cond_mlir_specific) {
             ig_gen->add_opr(opr);
         } else {
             if (opr->same_type<opr::Dimshuffle>()) {
@@ -305,8 +348,8 @@ void JITFusionPass::Impl::process_opr(OperatorNodeBase* opr) {
             mgb_log_debug(
                     "JIT graph stopped at opr %s{%s}: cond: readers=%d cn=%d "
                     "shp=%d nr_inp=%d",
-                    opr->cname(), opr->dyn_typeinfo()->name, cond_readers,
-                    cond_cn, cond_shp, cond_nr_inp);
+                    opr->cname(), opr->dyn_typeinfo()->name, cond_readers, cond_cn,
+                    cond_shp, cond_nr_inp);
             ig_gen = create_new_igraph_gen(opr);
         }
     }
@@ -314,13 +357,12 @@ void JITFusionPass::Impl::process_opr(OperatorNodeBase* opr) {
     // handle const inputs
     for (auto&& i : opr->node_prop().dep_map()) {
         if (i.second & cg::OperatorNodeBase::NodeProp::DepType::DEV_VALUE) {
-            if (SymbolVar{i.first}
-                        .as_immutable_scalar_require_shape()
-                        .valid()) {
+            if (SymbolVar{i.first}.as_immutable_scalar_require_shape().valid()) {
                 auto opr = i.first->owner_opr();
-                mgb_assert(opr->same_type<opr::ImmutableTensor>(),
-                           "got imm scalar from non ImmutableTensor: %s{%s}",
-                           opr->cname(), opr->dyn_typeinfo()->name);
+                mgb_assert(
+                        opr->same_type<opr::ImmutableTensor>(),
+                        "got imm scalar from non ImmutableTensor: %s{%s}", opr->cname(),
+                        opr->dyn_typeinfo()->name);
                 ig_gen->add_opr(opr);
                 continue;
             }
@@ -341,21 +383,20 @@ size_t JITFusionPass::Impl::max_nr_input(CompNode cn) {
 }
 
 bool JITFusionPass::Impl::can_be_fused(cg::OperatorNodeBase* opr) const {
-    if (!Compiler::is_supported_device(
-                opr->output(0)->comp_node().device_type())) {
+    if (!Compiler::is_supported_device(opr->output(0)->comp_node().device_type())) {
         return false;
     }
 
-    //! As MLIR backend has some contraints
-    const char* backend = MGB_GETENV("MGB_JIT_BACKEND");
-    if (!backend) {
-        backend = "DEFAULT";
-    }
+    std::string backend = JITFusionPass::get_jit_backend_str();
+    mgb_assert(
+            !backend.empty(),
+            "code issue happened, need call config_jit_backends before check opr can "
+            "be fused");
     // float elemwise
     if (auto elem = gopt::try_cast_as_op<opr::Elemwise>(opr)) {
         bool ret = true;
 #if MGB_JIT_MLIR
-        if (!strcmp(backend, "MLIR")) {
+        if (!strcmp(backend.c_str(), "MLIR")) {
             switch (elem->param().mode) {
 #define cb(_, _mode)                 \
     case opr::Elemwise::Mode::_mode: \
@@ -390,11 +431,15 @@ bool JITFusionPass::Impl::can_be_fused(cg::OperatorNodeBase* opr) const {
 #undef FOREACH_ELEMWISE_SKIP_MODE
         }
 #endif  // MGB_JIT_MLIR
-        return ret && ast_c::check_elem_mode(elem->param().mode) &&
+
+        return ret &&
+               ast_c::check_elem_mode(
+                       elem->param().mode, opr->output(0)->comp_node().device_type()) &&
                elem->output(0)->dtype().category() == DTypeCategory::FLOAT;
     }
 
-    if (strcmp(backend, "MLIR")) {
+    //! TINYOPENCL and MLIR only support elemwise now
+    if (strcmp(backend.c_str(), "MLIR") && strcmp(backend.c_str(), "TINYOPENCL")) {
         if (opr->same_type<opr::PowC>()) {
             return true;
         }
@@ -428,13 +473,32 @@ bool JITFusionPass::Impl::can_be_fused(cg::OperatorNodeBase* opr) const {
     return false;
 }
 
-JITFusionPass::JITFusionPass(bool after_grad, int8_t jit_opt_level)
+JITFusionPass::JITFusionPass(
+        bool after_grad, int jit_opt_level, const JITConfig& jit_config)
         : m_after_grad{after_grad}, m_feature_bits{JITFeatureBits::NONE} {
-    // TODO reduce and dimshuffle can not coexsit now.
-    if (jit_opt_level >= 2) {
-        m_feature_bits |= JITFeatureBits::REDUCE;
-    } else {
+    // get default config from jit_opt_level
+    JITConfig config;
+    if (jit_opt_level == 1) {
+        config.fuse_dimshuffle = JITConfig::ON;
+        config.fuse_reduce = JITConfig::OFF;
+    } else if (jit_opt_level >= 2) {
+        config.fuse_dimshuffle = JITConfig::OFF;
+        config.fuse_reduce = JITConfig::ON;
+    }
+
+    // overwrite default config with custom settings
+    config.update(jit_config);
+    bool fuse_dimshuffle = config.fuse_dimshuffle == JITConfig::ON;
+    bool fuse_reduce = config.fuse_reduce == JITConfig::ON;
+
+    if (fuse_dimshuffle && fuse_reduce) {
+        mgb_assert(false, "reduce and dimshuffle can not coexist now");
+    }
+    if (fuse_dimshuffle) {
         m_feature_bits |= JITFeatureBits::DIMSHUFFLE;
+    }
+    if (fuse_reduce) {
+        m_feature_bits |= JITFeatureBits::REDUCE;
     }
 }
 

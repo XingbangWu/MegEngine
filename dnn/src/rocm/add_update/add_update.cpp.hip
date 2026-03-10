@@ -1,11 +1,3 @@
-/**
- * \file src/rocm/add_update/add_update.cpp.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
 #include "hcc_detail/hcc_defs_prologue.h"
 #include "./add_update.h.hip"
 

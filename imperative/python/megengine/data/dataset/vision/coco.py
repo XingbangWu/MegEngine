@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # ---------------------------------------------------------------------
 # Part of the following code in this file refs to maskrcnn-benchmark
 # MIT License
@@ -46,9 +39,7 @@ def has_valid_annotation(anno, order):
 
 
 class COCO(VisionDataset):
-    r"""
-    `MS COCO <http://cocodataset.org/#home>`_ Dataset.
-    """
+    r"""`MS COCO <http://cocodataset.org/#home>`_ Dataset."""
 
     supported_order = (
         "image",

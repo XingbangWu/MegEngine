@@ -1,14 +1,3 @@
-/**
- * \file src/jit/include/megbrain/jit/placeholder_opr.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/graph.h"
@@ -47,8 +36,8 @@ public:
      * \param id id of this placeholder in the sub graph
      * \param inp_type input type of this placeholder as described in InpType
      */
-    static SymbolVar make(VarNode* src_var, size_t id,
-                          InpType inp_type = InpType::DEV_VALUE);
+    static SymbolVar make(
+            VarNode* src_var, size_t id, InpType inp_type = InpType::DEV_VALUE);
 
     //! index of this var in the inputs of the JIT opr
     size_t input_id() const { return m_id; }

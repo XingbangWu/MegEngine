@@ -1,27 +1,11 @@
-/**
- * \file dnn/src/cambricon/checksum/checksum.mlu.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "src/cambricon/utils.mlu.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-void checksum_kernel_union1(uint32_t* dst, const uint32_t* src, int num_elems);
-void checksum_kernel_union4(uint32_t* dst, const uint32_t* src, int num_elems);
-#ifdef __cplusplus
-}
-#endif
+void checksum_kernel_union1_wrapper(
+        uint32_t* dst, const uint32_t* src, int num_elems, cnrtQueue_t queue);
+// not support 590
+// void checksum_kernel_union4_wrapper(
+//         uint32_t* dst, const uint32_t* src, int num_elems, cnrtQueue_t queue);
 
 // vim: ft=cpp syntax=cpp.doxygen
-
-

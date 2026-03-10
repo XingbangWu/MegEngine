@@ -1,21 +1,11 @@
-/**
- * \file src/core/test/utils/thread_pool.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "megbrain/utils/thread_pool.h"
-#include "megbrain/comp_node.h"
-#include "megbrain/system.h"
-#include "megbrain/test/helper.h"
-#include "megbrain/opr/io.h"
-#include "megbrain/opr/utility.h"
 #include <atomic>
 #include <random>
+#include "megbrain/comp_node.h"
+#include "megbrain/opr/io.h"
+#include "megbrain/opr/utility.h"
+#include "megbrain/system.h"
+#include "megbrain/test/helper.h"
 
 #if MGB_HAVE_THREAD
 using namespace mgb;

@@ -1,15 +1,22 @@
-file (GLOB_RECURSE SOURCES src/*.cpp)
+file(GLOB_RECURSE CUDA_STUB src/libcuda.cpp)
+file(GLOB_RECURSE NVRTC_STUB src/libnvrtc.cpp)
 
-if(MSVC OR WIN32)
-    add_library (cuda-stub STATIC ${SOURCES})
-else()
-    add_library (cuda-stub SHARED ${SOURCES})
+if(MGE_WITH_CUDA_STUB)
+  list(APPEND STUB_SRC ${CUDA_STUB})
 endif()
-set_target_properties(cuda-stub PROPERTIES OUTPUT_NAME cuda)
+
+if(MGE_WITH_NVRTC_STUB)
+  list(APPEND STUB_SRC ${NVRTC_STUB})
+endif()
+
+add_library(cuda-stub OBJECT ${STUB_SRC})
+
+set_target_properties(cuda-stub PROPERTIES OUTPUT_NAME cuda_stub)
 target_compile_definitions(cuda-stub PRIVATE __CUDA_API_VERSION_INTERNAL)
-if (MSVC OR WIN32)
-    target_link_libraries(cuda-stub PRIVATE -Wl,--no-undefined)
+if(MSVC OR WIN32)
+  target_link_libraries(cuda-stub PRIVATE -Wl,--no-undefined)
 else()
-    target_link_libraries(cuda-stub PRIVATE dl -Wl,--no-undefined)
+  target_link_libraries(cuda-stub PRIVATE dl -Wl,--no-undefined)
 endif()
-install (TARGETS cuda-stub EXPORT ${MGE_EXPORT_TARGETS})
+target_include_directories(cuda-stub
+                           PRIVATE $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/genfiles>)

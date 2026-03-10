@@ -1,13 +1,3 @@
-/**
- * \file dnn/include/megdnn/oprs/linalg.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 #include "megdnn/internal/opr_header_prologue.h"
 
@@ -33,18 +23,23 @@ public:
      * op(A) = A if transposeA is false, otherwise op(A) = A^t.
      * op(B) = B if transposeB is false, otherwise op(B) = B^t.
      */
-    virtual void exec(_megdnn_tensor_in A, _megdnn_tensor_in B,
-                      _megdnn_tensor_out C, _megdnn_workspace workspace) = 0;
-    void deduce_dtype(DType A, DType B, DType &C);
-    void deduce_layout(const TensorLayout& A, const TensorLayout& B,
-                       TensorLayout& C);
-    virtual size_t get_workspace_in_bytes(const TensorLayout& A,
-                                          const TensorLayout& B,
-                                          const TensorLayout& C) = 0;
+    virtual void exec(
+            _megdnn_tensor_in A, _megdnn_tensor_in B, _megdnn_tensor_out C,
+            _megdnn_workspace workspace) = 0;
+    MGE_WIN_DECLSPEC_FUC void deduce_dtype(DType A, DType B, DType& C);
+    MGE_WIN_DECLSPEC_FUC void deduce_layout(
+            const TensorLayout& A, const TensorLayout& B, TensorLayout& C);
+    virtual size_t get_workspace_in_bytes(
+            const TensorLayout& A, const TensorLayout& B, const TensorLayout& C) = 0;
+
+    static Algorithm::OprType get_opr_type() {
+        return Algorithm::OprType::BATCHED_MATRIX_MUL_FORWARD;
+    }
 
 protected:
-    void check_exec(const TensorLayout& A, const TensorLayout& B,
-                    const TensorLayout& C, size_t workspace_in_bytes);
+    void check_exec(
+            const TensorLayout& A, const TensorLayout& B, const TensorLayout& C,
+            size_t workspace_in_bytes);
 };
 using BatchedMatrixMul = BatchedMatrixMulForward;
 
@@ -66,19 +61,25 @@ public:
      * op(A) = A if transposeA is false, otherwise op(A) = A^t.
      * op(B) = B if transposeB is false, otherwise op(B) = B^t.
      */
-    virtual void exec(_megdnn_tensor_in A, _megdnn_tensor_in B,
-                      _megdnn_tensor_out C, _megdnn_workspace workspace) = 0;
-    void deduce_dtype(DType A, DType B, DType& C);
-    void deduce_layout(const TensorLayout& A, const TensorLayout& B,
-                       TensorLayout& C);
-    virtual size_t get_workspace_in_bytes(const TensorLayout& A,
-                                          const TensorLayout& B,
-                                          const TensorLayout& C) = 0;
+    virtual void exec(
+            _megdnn_tensor_in A, _megdnn_tensor_in B, _megdnn_tensor_out C,
+            _megdnn_workspace workspace) = 0;
+    MGE_WIN_DECLSPEC_FUC void deduce_dtype(DType A, DType B, DType& C);
+    MGE_WIN_DECLSPEC_FUC void deduce_layout(
+            const TensorLayout& A, const TensorLayout& B, TensorLayout& C);
+    virtual size_t get_workspace_in_bytes(
+            const TensorLayout& A, const TensorLayout& B, const TensorLayout& C) = 0;
 
-    static size_t pack_size (const Param::Format format);
+    static size_t pack_size(const Param::Format format);
+
+    static Algorithm::OprType get_opr_type() {
+        return Algorithm::OprType::MATRIX_MUL_FORWARD;
+    }
+
 protected:
-    void check_exec(const TensorLayout& A, const TensorLayout& B,
-                    const TensorLayout& C, size_t workspace_in_bytes);
+    void check_exec(
+            const TensorLayout& A, const TensorLayout& B, const TensorLayout& C,
+            size_t workspace_in_bytes);
 };
 using MatrixMul = MatrixMulForward;
 
@@ -95,11 +96,11 @@ class MatrixInverse : public OperatorBase {
     DEF_OPR_PARAM(Empty);
 
 public:
-    virtual void exec(_megdnn_tensor_in src, _megdnn_tensor_out dst,
-                      _megdnn_workspace workspace) = 0;
+    virtual void exec(
+            _megdnn_tensor_in src, _megdnn_tensor_out dst,
+            _megdnn_workspace workspace) = 0;
     void deduce_layout(const TensorLayout& src, TensorLayout& dst);
-    size_t get_workspace_in_bytes(const TensorLayout& src,
-                                  const TensorLayout& dst);
+    size_t get_workspace_in_bytes(const TensorLayout& src, const TensorLayout& dst);
 
 protected:
     /*!
@@ -107,8 +108,7 @@ protected:
      *
      * Note that \p batch and \p n can be null
      */
-    static void canonize_params(const TensorLayout& layout, size_t* batch,
-                                size_t* n);
+    static void canonize_params(const TensorLayout& layout, size_t* batch, size_t* n);
 
     /*!
      * \brief canonize and validate input params for exec() impls
@@ -116,11 +116,12 @@ protected:
      * Since get_workspace_in_bytes() would be called, \p batch and \p n can not
      * be null
      */
-    void check_exec(const TensorLayout& src, const TensorLayout& dst,
-                    _megdnn_workspace workspace, size_t* batch, size_t* n);
+    void check_exec(
+            const TensorLayout& src, const TensorLayout& dst,
+            _megdnn_workspace workspace, size_t* batch, size_t* n);
 
-    virtual size_t get_workspace_in_bytes(size_t batch, size_t n,
-                                          size_t dtype_size) = 0;
+    virtual size_t get_workspace_in_bytes(
+            size_t batch, size_t n, size_t dtype_size) = 0;
 };
 
 //! inter-product of two vectors
@@ -138,17 +139,18 @@ public:
      * A, B, C must be contiguous. A and B must have the same 1-dimensional
      * shape and non-negative strides. C must be scalar.
      */
-    virtual void exec(_megdnn_tensor_in A, _megdnn_tensor_in B,
-                      _megdnn_tensor_out C, _megdnn_workspace workspace) = 0;
-    void deduce_layout(const TensorLayout& A, const TensorLayout& B,
-                       TensorLayout& C);
-    virtual size_t get_workspace_in_bytes(const TensorLayout& A,
-                                          const TensorLayout& B,
-                                          const TensorLayout& C) = 0;
+    virtual void exec(
+            _megdnn_tensor_in A, _megdnn_tensor_in B, _megdnn_tensor_out C,
+            _megdnn_workspace workspace) = 0;
+    MGE_WIN_DECLSPEC_FUC void deduce_layout(
+            const TensorLayout& A, const TensorLayout& B, TensorLayout& C);
+    virtual size_t get_workspace_in_bytes(
+            const TensorLayout& A, const TensorLayout& B, const TensorLayout& C) = 0;
 
 protected:
-    void check_exec(const TensorLayout& A, const TensorLayout& B,
-                    const TensorLayout& C, size_t workspace_in_bytes);
+    void check_exec(
+            const TensorLayout& A, const TensorLayout& B, const TensorLayout& C,
+            size_t workspace_in_bytes);
 };
 using Dot = DotForward;
 
@@ -184,26 +186,52 @@ public:
      * if compute_uv is false (default to true).
      *
      */
-    virtual void exec(_megdnn_tensor_in src, _megdnn_tensor_out u,
-                      _megdnn_tensor_out s, _megdnn_tensor_out vt,
-                      _megdnn_workspace workspace) = 0;
-    void deduce_layout(const TensorLayout& src, TensorLayout& u,
-                       TensorLayout& s, TensorLayout& vt);
-    size_t get_workspace_in_bytes(const TensorLayout& src,
-                                  const TensorLayout& u, const TensorLayout& s,
-                                  const TensorLayout& vt);
+    virtual void exec(
+            _megdnn_tensor_in src, _megdnn_tensor_out u, _megdnn_tensor_out s,
+            _megdnn_tensor_out vt, _megdnn_workspace workspace) = 0;
+    void deduce_layout(
+            const TensorLayout& src, TensorLayout& u, TensorLayout& s,
+            TensorLayout& vt);
+    size_t get_workspace_in_bytes(
+            const TensorLayout& src, const TensorLayout& u, const TensorLayout& s,
+            const TensorLayout& vt);
 
 protected:
-    static void canonize_params(const TensorLayout& layout, size_t* batch,
-                                size_t* m, size_t* n);
-    virtual size_t get_workspace_in_bytes(size_t block_cnt, size_t m, size_t n,
-                                          size_t dtype_size) = 0;
-    void check_exec(const TensorLayout& src, const TensorLayout& u,
-                    const TensorLayout& s, const TensorLayout& vt,
-                    size_t workspace_in_bytes);
+    static void canonize_params(
+            const TensorLayout& layout, size_t* batch, size_t* m, size_t* n);
+    virtual size_t get_workspace_in_bytes(
+            size_t block_cnt, size_t m, size_t n, size_t dtype_size) = 0;
+    void check_exec(
+            const TensorLayout& src, const TensorLayout& u, const TensorLayout& s,
+            const TensorLayout& vt, size_t workspace_in_bytes);
 };
 
 using SVD = SVDForward;
+
+//! return the cross product of two (arrays of) vectors.
+class Cross : public OperatorBase {
+    DEF_OPR_IMPL(Cross, OperatorBase, 2, 1);
+    DEF_OPR_PARAM(Cross);
+
+public:
+    /**
+     * \see https://numpy.org/doc/stable/reference/generated/numpy.cross.html
+     */
+    virtual void exec(
+            _megdnn_tensor_in A, _megdnn_tensor_in B, _megdnn_tensor_out C,
+            _megdnn_workspace) = 0;
+    MGE_WIN_DECLSPEC_FUC void deduce_layout(
+            const TensorLayout& A, const TensorLayout& B, TensorLayout& C);
+    virtual size_t get_workspace_in_bytes(
+            const TensorLayout& A, const TensorLayout& B, const TensorLayout& C) = 0;
+    void get_ABC(
+            const TensorShape& shape, size_t& A, size_t& B, size_t& C, int32_t axis);
+
+protected:
+    void check_exec(
+            const TensorLayout& A, const TensorLayout& B, const TensorLayout& C,
+            size_t workspace_in_bytes);
+};
 
 }  // namespace megdnn
 

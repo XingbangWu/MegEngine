@@ -1,22 +1,11 @@
-/**
- * \file dnn/test/common/task_executor.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "test/common/utils.h"
 
 #if MEGDNN_ENABLE_MULTI_THREADS
-#include <thread>
-#include <mutex>
 #include <atomic>
-#include <vector>
 #include <condition_variable>
+#include <mutex>
+#include <thread>
+#include <vector>
 
 #if defined(WIN32)
 #include <windows.h>
@@ -82,16 +71,14 @@ int set_cpu_affinity(const std::vector<size_t>& cpuset) {
 
 cpu_set_t do_set_cpu_affinity(const cpu_set_t& mask) {
     cpu_set_t prev_mask;
-#if defined(ANDROID) || defined(__ANDROID__)
-    SET_AFFINITY_CHECK(
-            sched_getaffinity(gettid(), sizeof(prev_mask), &prev_mask));
+#if defined(ANDROID) || defined(__ANDROID__) || defined(__OHOS__)
+    SET_AFFINITY_CHECK(sched_getaffinity(gettid(), sizeof(prev_mask), &prev_mask));
     SET_AFFINITY_CHECK(sched_setaffinity(gettid(), sizeof(mask), &mask));
 #else
-    SET_AFFINITY_CHECK(sched_getaffinity(syscall(__NR_gettid),
-                                         sizeof(prev_mask), &prev_mask));
     SET_AFFINITY_CHECK(
-            sched_setaffinity(syscall(__NR_gettid), sizeof(mask), &mask));
-#endif  // defined(ANDROID) || defined(__ANDROID__)
+            sched_getaffinity(syscall(__NR_gettid), sizeof(prev_mask), &prev_mask));
+    SET_AFFINITY_CHECK(sched_setaffinity(syscall(__NR_gettid), sizeof(mask), &mask));
+#endif  // defined(ANDROID) || defined(__ANDROID__) || defined(__OHOS__)
     return prev_mask;
 }
 
@@ -135,15 +122,17 @@ CpuDispatchChecker::TaskExecutor::TaskExecutor(TaskExecutorConfig* config) {
             }
         };
         m_nr_threads = config->nr_thread;
-        m_cpu_ids.insert(m_cpu_ids.end(), config->affinity_core_set.begin(),
-                         config->affinity_core_set.end());
+        m_cpu_ids.insert(
+                m_cpu_ids.end(), config->affinity_core_set.begin(),
+                config->affinity_core_set.end());
         if (m_cpu_ids.empty()) {
             megdnn_log_warn("Thread affinity was not set.");
         } else {
-            megdnn_assert(m_cpu_ids.size() <= get_cpu_count(),
-                          "The input affinity_core_set size exceed the "
-                          "number of CPU cores, got: %zu cpu_count: %zu.",
-                          m_cpu_ids.size(), get_cpu_count());
+            megdnn_assert(
+                    m_cpu_ids.size() <= get_cpu_count(),
+                    "The input affinity_core_set size exceed the "
+                    "number of CPU cores, got: %zu cpu_count: %zu.",
+                    m_cpu_ids.size(), get_cpu_count());
         }
         for (size_t i = 0; i < m_nr_threads - 1; i++) {
             m_workers_flag.emplace_back(new std::atomic_bool{false});
@@ -159,7 +148,8 @@ CpuDispatchChecker::TaskExecutor::TaskExecutor(TaskExecutorConfig* config) {
     }
 }
 
-void CpuDispatchChecker::TaskExecutor::add_task(const MultiThreadingTask& task, size_t parallelism) {
+void CpuDispatchChecker::TaskExecutor::add_task(
+        const MultiThreadingTask& task, size_t parallelism) {
 #if MEGDNN_ENABLE_MULTI_THREADS
     if (!m_main_thread_affinity && m_cpu_ids.size() == m_nr_threads) {
         m_main_thread_prev_affinity_mask =
@@ -182,11 +172,9 @@ void CpuDispatchChecker::TaskExecutor::add_task(const MultiThreadingTask& task, 
             *m_workers_flag[i] = true;
         }
         int index = -1;
-        while ((index = m_current_task_iter.fetch_sub(
-                        1, std::memory_order_acq_rel)) &&
+        while ((index = m_current_task_iter.fetch_sub(1, std::memory_order_acq_rel)) &&
                index > 0) {
-            m_task(static_cast<size_t>(m_all_task_iter - index),
-                   m_nr_threads - 1);
+            m_task(static_cast<size_t>(m_all_task_iter - index), m_nr_threads - 1);
         }
         sync();
 #else
@@ -230,8 +218,7 @@ CpuDispatchChecker::TaskExecutor::~TaskExecutor() {
     }
     if (m_main_thread_affinity) {
         //! Restore the main thread affinity.
-        MEGDNN_MARK_USED_VAR(
-                do_set_cpu_affinity(m_main_thread_prev_affinity_mask));
+        MEGDNN_MARK_USED_VAR(do_set_cpu_affinity(m_main_thread_prev_affinity_mask));
     }
 #endif
 }

@@ -1,22 +1,11 @@
-/**
- * \file dnn/src/armv7/handle.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "src/common/handle_impl.h"
 
 #include "src/armv7/handle.h"
 
-#include "src/armv7/matrix_mul/opr_impl.h"
-#include "src/armv7/rotate/opr_impl.h"
-#include "src/armv7/relayout/opr_impl.h"
 #include "src/armv7/conv_bias/opr_impl.h"
+#include "src/armv7/matrix_mul/opr_impl.h"
+#include "src/armv7/relayout/opr_impl.h"
+#include "src/armv7/rotate/opr_impl.h"
 
 namespace megdnn {
 namespace armv7 {
@@ -37,7 +26,7 @@ MEGDNN_SPECIALIZE_CREATE_OPERATOR(ConvBias)
 MEGDNN_FOREACH_OPR_CLASS(MEGDNN_INST_CREATE_OPERATOR)
 #pragma GCC diagnostic pop
 
-} // namespace armv7
-} // namespace megdnn
+}  // namespace armv7
+}  // namespace megdnn
 
 // vim: syntax=cpp.doxygen

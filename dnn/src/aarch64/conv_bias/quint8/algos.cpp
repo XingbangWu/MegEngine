@@ -1,20 +1,9 @@
-/**
- * \file dnn/src/aarch64/conv_bias/quint8/algos.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "src/aarch64/conv_bias/quint8/algos.h"
 #include "src/aarch64/conv_bias/quint8/strategy.h"
 #include "src/aarch64/matrix_mul/quint8_dot/gemv.h"
 #include "src/aarch64/matrix_mul/quint8_dot/strategy.h"
 #include "src/arm_common/convolution/img2col_helper.h"
-#include "src/arm_common/elemwise_op.h"
+#include "src/arm_common/elemwise_helper/elemwise_op.h"
 #include "src/common/opr_delegate.h"
 #include "src/fallback/conv_bias/common.h"
 #include "src/fallback/matrix_mul/gemm_impl.h"
@@ -69,11 +58,29 @@ WorkspaceBundle ConvBiasImpl::AlgoQU8MatrixMul::get_bundle(
         size_t K = IC * FH * FW;
         size_t N = OH * OW;
 
-#define DISPATCH_GEMM_STRATEGY(_gemm, _gemm_midout_enum, _bias,              \
-                               _bias_midout_enum, _nonline,                  \
-                               _nonline_midout_enum)                         \
-    MIDOUT_BEGIN(megdnn_aarch64_conv_bias_quint8_gemm, 0, _gemm_midout_enum, \
-                 _bias_midout_enum, _nonline_midout_enum) {                  \
+#if MGB_ENABLE_DOT
+#define DISPATCH_GEMM_STRATEGY(                                          \
+        _gemm, _gemm_midout_enum, _bias, _bias_midout_enum, _nonline,    \
+        _nonline_midout_enum)                                            \
+    matmul::gemm_##_gemm##_##_bias##_##_nonline strategy(                \
+            M, N, K, param.filter_type, param.src_type, param.dst_type); \
+    part2 = megdnn::matmul::GemmInterleaved<                             \
+                    matmul::gemm_##_gemm##_##_bias##_##_nonline>(        \
+                    M, N, K, false, false, strategy)                     \
+                    .get_workspace_size();
+
+        if (cpuinfo_has_arm_neon_dot()) {
+            DISPATCH_GEMM_BIAS(u8_8x8_dot, 1);
+        } else {
+            DISPATCH_GEMM_BIAS(u8_8x8_nodot, 0);
+        }
+#else
+#define DISPATCH_GEMM_STRATEGY(                                              \
+        _gemm, _gemm_midout_enum, _bias, _bias_midout_enum, _nonline,        \
+        _nonline_midout_enum)                                                \
+    MIDOUT_BEGIN(                                                            \
+            megdnn_aarch64_conv_bias_quint8_gemm, 0, _gemm_midout_enum,      \
+            _bias_midout_enum, _nonline_midout_enum) {                       \
         matmul::gemm_##_gemm##_##_bias##_##_nonline strategy(                \
                 M, N, K, param.filter_type, param.src_type, param.dst_type); \
         part2 = megdnn::matmul::GemmInterleaved<                             \
@@ -82,15 +89,15 @@ WorkspaceBundle ConvBiasImpl::AlgoQU8MatrixMul::get_bundle(
                         .get_workspace_size();                               \
     }                                                                        \
     MIDOUT_END()
-
-        DISPATCH_GEMM_BIAS(u8_8x8, 0)
+        DISPATCH_GEMM_BIAS(u8_8x8_nodot, 0)
+#endif
 #undef DISPATCH_GEMM_STRATEGY
     }
     return {nullptr, {part0, part1, part2}};
 }
 
-void ConvBiasImpl::AlgoQU8MatrixMul::kimpl(const NCBKernParam& param,
-                                           const NCBKernIndex& ncb_index) {
+void ConvBiasImpl::AlgoQU8MatrixMul::kimpl(
+        const NCBKernParam& param, const NCBKernIndex& ncb_index) {
     auto is_xcorr = !param.filter_meta.should_flip;
     UNPACK_CONV_NCB_KERN_SIZES(param);
     auto bundle = get_bundle(param);
@@ -143,36 +150,53 @@ void ConvBiasImpl::AlgoQU8MatrixMul::kimpl(const NCBKernParam& param,
                     img2col<false>(src2, B, OC, OH, OW, IC, IH2, IW2, FH, FW);
             } else {
                 if (is_xcorr)
-                    img2col_stride<true>(src2, B, OC, OH, OW, IC, IH2, IW2, FH,
-                                         FW, SH, SW);
+                    img2col_stride<true>(
+                            src2, B, OC, OH, OW, IC, IH2, IW2, FH, FW, SH, SW);
                 else
-                    img2col_stride<false>(src2, B, OC, OH, OW, IC, IH2, IW2, FH,
-                                          FW, SH, SW);
+                    img2col_stride<false>(
+                            src2, B, OC, OH, OW, IC, IH2, IW2, FH, FW, SH, SW);
             }
         }
         {
-            Workspace workspace(static_cast<dt_byte*>(bundle.get(2)),
-                                bundle.get_size(2));
+            Workspace workspace(
+                    static_cast<dt_byte*>(bundle.get(2)), bundle.get_size(2));
             size_t M = OC;
             size_t K = IC * FH * FW;
             size_t N = OH * OW;
 
-#define DISPATCH_GEMM_STRATEGY(_gemm, _gemm_midout_enum, _bias,              \
-                               _bias_midout_enum, _nonline,                  \
-                               _nonline_midout_enum)                         \
-    MIDOUT_BEGIN(megdnn_aarch64_conv_bias_quint8_gemm, 1, _gemm_midout_enum, \
-                 _bias_midout_enum, _nonline_midout_enum) {                  \
-        matmul::gemm_##_gemm##_##_bias##_##_nonline strategy(                \
-                M, N, K, param.filter_type, param.src_type, param.dst_type); \
-        megdnn::matmul::GemmInterleaved<                                     \
-                matmul::gemm_##_gemm##_##_bias##_##_nonline>                 \
-                gemm_interleaved(M, N, K, false, false, strategy);           \
-        gemm_interleaved.execute(filter, K, B, N, dst, N, workspace.raw_ptr, \
-                                 bias);                                      \
-    }                                                                        \
+#if MGB_ENABLE_DOT
+#define DISPATCH_GEMM_STRATEGY(                                                  \
+        _gemm, _gemm_midout_enum, _bias, _bias_midout_enum, _nonline,            \
+        _nonline_midout_enum)                                                    \
+    matmul::gemm_##_gemm##_##_bias##_##_nonline strategy(                        \
+            M, N, K, param.filter_type, param.src_type, param.dst_type);         \
+    megdnn::matmul::GemmInterleaved<matmul::gemm_##_gemm##_##_bias##_##_nonline> \
+            gemm_interleaved(M, N, K, false, false, strategy);                   \
+    gemm_interleaved.execute(filter, K, B, N, dst, N, workspace.raw_ptr, bias);
+
+            if (cpuinfo_has_arm_neon_dot()) {
+                DISPATCH_GEMM_BIAS(u8_8x8_dot, 1)
+            } else {
+                DISPATCH_GEMM_BIAS(u8_8x8_nodot, 0)
+            }
+#else
+#define DISPATCH_GEMM_STRATEGY(                                                      \
+        _gemm, _gemm_midout_enum, _bias, _bias_midout_enum, _nonline,                \
+        _nonline_midout_enum)                                                        \
+    MIDOUT_BEGIN(                                                                    \
+            megdnn_aarch64_conv_bias_quint8_gemm, 1, _gemm_midout_enum,              \
+            _bias_midout_enum, _nonline_midout_enum) {                               \
+        matmul::gemm_##_gemm##_##_bias##_##_nonline strategy(                        \
+                M, N, K, param.filter_type, param.src_type, param.dst_type);         \
+        megdnn::matmul::GemmInterleaved<matmul::gemm_##_gemm##_##_bias##_##_nonline> \
+                gemm_interleaved(M, N, K, false, false, strategy);                   \
+        gemm_interleaved.execute(filter, K, B, N, dst, N, workspace.raw_ptr, bias);  \
+    }                                                                                \
     MIDOUT_END()
 
-            DISPATCH_GEMM_BIAS(u8_8x8, 0)
+            DISPATCH_GEMM_BIAS(u8_8x8_nodot, 0)
+
+#endif
 #undef DISPATCH_GEMM_STRATEGY
         }
     }

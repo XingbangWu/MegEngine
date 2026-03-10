@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/naive/matrix_inverse/opr_impl.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "src/naive/matrix_inverse/opr_impl.h"
 #include <cmath>
 #include "src/common/utils.h"
@@ -16,15 +6,14 @@
 using namespace megdnn;
 using namespace naive;
 
-size_t MatrixInverseImpl::get_workspace_in_bytes(size_t batch, size_t n,
-                                                 size_t dtype_size) {
+size_t MatrixInverseImpl::get_workspace_in_bytes(
+        size_t batch, size_t n, size_t dtype_size) {
     MEGDNN_MARK_USED_VAR(batch);
     return n * n * 2 * dtype_size + n * sizeof(void*);
 }
 
 template <typename ctype>
-void MatrixInverseImpl::do_exec(ctype* dst, const ctype* src, size_t batch,
-                                size_t n, void* workspace) {
+void do_exec(ctype* dst, const ctype* src, size_t batch, size_t n, void* workspace) {
     auto row_ptr = static_cast<ctype**>(workspace);
     auto exmat = reinterpret_cast<ctype*>(row_ptr + n);
     for (size_t b = 0; b < batch; ++b, src += n * n, dst += n * n) {
@@ -46,8 +35,8 @@ void MatrixInverseImpl::do_exec(ctype* dst, const ctype* src, size_t batch,
                     pivot_row = j;
                 }
             }
-            megdnn_throw_if(pivot_row_val < ctype(1e-7), megdnn_error,
-                            "pivot value too small");
+            megdnn_throw_if(
+                    pivot_row_val < ctype(1e-7), megdnn_error, "pivot value too small");
             std::swap(row_ptr[i], row_ptr[pivot_row]);
 
             // substract pivot row from other rows
@@ -77,23 +66,24 @@ void MatrixInverseImpl::do_exec(ctype* dst, const ctype* src, size_t batch,
     }
 }
 
-void MatrixInverseImpl::exec(_megdnn_tensor_in src, _megdnn_tensor_out dst,
-                             _megdnn_workspace workspace) {
+void MatrixInverseImpl::exec(
+        _megdnn_tensor_in src, _megdnn_tensor_out dst, _megdnn_workspace workspace) {
+#if !MGE_BUILD_WITHOUT_NAIVE_EXEC
     size_t batch, n;
     check_exec(src.layout, dst.layout, workspace, &batch, &n);
-#define cb(DType)                                           \
-    if (dst.layout.dtype == DType()) {                      \
-        using ctype = typename DTypeTrait<DType>::ctype;    \
-        auto psrc = src.ptr<ctype>();                       \
-        auto pdst = dst.ptr<ctype>();                       \
-        void* pwk = workspace.raw_ptr;                      \
-        MEGDNN_DISPATCH_CPU_KERN_OPR(                       \
-                do_exec<ctype>(pdst, psrc, batch, n, pwk)); \
-        return;                                             \
+#define cb(DType)                                                                  \
+    if (dst.layout.dtype == DType()) {                                             \
+        using ctype = typename DTypeTrait<DType>::ctype;                           \
+        MEGDNN_DISPATCH_CPU_KERN_OPR(do_exec<ctype>(                               \
+                dst.ptr<ctype>(), src.ptr<ctype>(), batch, n, workspace.raw_ptr)); \
+        return;                                                                    \
     }
     MEGDNN_FOREACH_COMPUTING_DTYPE_FLOAT(cb)
 #undef cb
     megdnn_assert_internal(0);
+#else
+    __builtin_trap();
+#endif
 }
 
 // vim: syntax=cpp.doxygen

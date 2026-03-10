@@ -4,16 +4,9 @@
 # Copyright (c) Soumith Chintala 2016,
 # All rights reserved.
 # ---------------------------------------------------------------------
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #
 # This file has been modified by Megvii ("Megvii Modifications").
-# All Megvii Modifications are Copyright (C) 2014-2020 Megvii Inc. All rights reserved.
+# All Megvii Modifications are Copyright (C) 2014-2021 Megvii Inc. All rights reserved.
 # ---------------------------------------------------------------------
 import os
 import shutil
@@ -30,11 +23,10 @@ logger = get_logger(__name__)
 
 
 class ImageNet(ImageFolder):
-    r"""
-    Load ImageNet from raw files or folder. Expected folder looks like:
-
-    .. code-block:: bash
-
+    r"""Load ImageNet from raw files or folder. Expected folder looks like:
+    
+    .. code-block:: shell
+    
         ${root}/
         |       [REQUIRED TAR FILES]
         |-  ILSVRC2012_img_train.tar
@@ -45,22 +37,8 @@ class ImageNet(ImageFolder):
         |-  val/cls/xxx.${img_ext}
         |-  ILSVRC2012_devkit_t12/data/meta.mat
         |-  ILSVRC2012_devkit_t12/data/ILSVRC2012_validation_ground_truth.txt
-
+    
     If the image folders don't exist, raw tar files are required to get extracted and processed.
-    """
-
-    raw_file_meta = {
-        "train": ("ILSVRC2012_img_train.tar", "1d675b47d978889d74fa0da5fadfb00e"),
-        "val": ("ILSVRC2012_img_val.tar", "29b22e2961454d5413ddabcf34fc5622"),
-        "devkit": ("ILSVRC2012_devkit_t12.tar.gz", "fa75699e90414af021442c21a62c3abf"),
-    }  # ImageNet raw files
-    default_train_dir = "train"
-    default_val_dir = "val"
-    default_devkit_dir = "ILSVRC2012_devkit_t12"
-
-    def __init__(self, root: str = None, train: bool = True, **kwargs):
-        r"""
-        Initialization:
 
         * if ``root`` contains ``self.target_folder`` depending on ``train``:
 
@@ -77,10 +55,22 @@ class ImageNet(ImageFolder):
 
             * raise error.
 
-        :param root: root directory of imagenet data, if root is ``None``, use default_dataset_root.
-        :param train: if ``True``, load the train split, otherwise load the validation split.
-        """
+    Args:
+        root: root directory of imagenet data, if root is ``None``, use default_dataset_root.
+        train: if ``True``, load the train split, otherwise load the validation split.
 
+    """
+
+    raw_file_meta = {
+        "train": ("ILSVRC2012_img_train.tar", "1d675b47d978889d74fa0da5fadfb00e"),
+        "val": ("ILSVRC2012_img_val.tar", "29b22e2961454d5413ddabcf34fc5622"),
+        "devkit": ("ILSVRC2012_devkit_t12.tar.gz", "fa75699e90414af021442c21a62c3abf"),
+    }  # ImageNet raw files
+    default_train_dir = "train"
+    default_val_dir = "val"
+    default_devkit_dir = "ILSVRC2012_devkit_t12"
+
+    def __init__(self, root: str = None, train: bool = True, **kwargs):
         # process the root path
         if root is None:
             self.root = self._default_root
@@ -215,7 +205,7 @@ class ImageNet(ImageFolder):
             calculate_md5(raw_file) == checksum
         ), "checksum mismatch, {} may be damaged".format(raw_file)
         logger.info("extract valid tar file... this may take 10-20 minutes")
-        untar(os.path.join(self.root, raw_file), self.target_folder)
+        untar(raw_file, self.target_folder)
         self._organize_val_data()
 
     def _prepare_train(self):
@@ -227,9 +217,7 @@ class ImageNet(ImageFolder):
             calculate_md5(raw_file) == checksum
         ), "checksum mismatch, {} may be damaged".format(raw_file)
         logger.info("extract train tar file.. this may take several hours")
-        untar(
-            os.path.join(self.root, raw_file), self.target_folder,
-        )
+        untar(raw_file, self.target_folder)
         paths = [
             os.path.join(self.target_folder, child_dir)
             for child_dir in os.listdir(self.target_folder)

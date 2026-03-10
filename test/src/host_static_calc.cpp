@@ -5,15 +5,16 @@
  *
  * \brief static calculating on host to check opr correctness
  *
- * \copyright Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
+ * \copyright Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
  *
  */
 
 #include "megbrain/test/host_static_calc.h"
 
-void mgb::elemwise_static_calc(opr::Elemwise::Mode mode,
-        HostTensorND &dest, const std::vector<HostTensorND>& inputs) {
-#if defined(ANDROID) || defined(IOS) || defined(__arm__)
+void mgb::elemwise_static_calc(
+        opr::Elemwise::Mode mode, HostTensorND& dest,
+        const std::vector<HostTensorND>& inputs) {
+#if defined(ANDROID) || defined(__OHOS__) || defined(IOS) || defined(__arm__)
     static opr::intl::UniqPtrWithCN<megdnn::Elemwise> opr_impl;
     static std::mutex mtx;
     MGB_LOCK_GUARD(mtx);
@@ -26,7 +27,7 @@ void mgb::elemwise_static_calc(opr::Elemwise::Mode mode,
     }
     DeviceTensorND dev_dest{cn};
     SmallVector<DeviceTensorND> dev_inp(inputs.size());
-    for (size_t i = 0; i < inputs.size(); ++ i) {
+    for (size_t i = 0; i < inputs.size(); ++i) {
         dev_inp[i].comp_node(cn).copy_from(inputs[i]);
     }
     opr::Elemwise::perform(mode, dev_dest, dev_inp, opr_impl);
@@ -34,5 +35,3 @@ void mgb::elemwise_static_calc(opr::Elemwise::Mode mode,
 }
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}
-
-

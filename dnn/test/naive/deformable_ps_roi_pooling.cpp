@@ -1,13 +1,3 @@
-/**
- * \file dnn/test/naive/deformable_ps_roi_pooling.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "test/naive/fixture.h"
 
 #include "megdnn/oprs/nn.h"
@@ -36,8 +26,7 @@ TEST_F(NAIVE, DEFORMABLE_PSROI_POOLING_FWD) {
 
     checker.set_rng(0, &data).set_rng(1, &rois).set_rng(2, &trans);
 
-    checker.set_param(param).execs(
-            {{4, 2, 5, 5}, {2, 5}, {4, 2, 5, 5}, {}, {}});
+    checker.set_param(param).execs({{4, 2, 5, 5}, {2, 5}, {4, 2, 5, 5}, {}, {}});
 }
 
 TEST_F(NAIVE, DEFORMABLE_PSROI_POOLING_BWD) {
@@ -64,12 +53,13 @@ TEST_F(NAIVE, DEFORMABLE_PSROI_POOLING_BWD) {
             .set_rng(3, &out_diff)
             .set_rng(4, &out_count);
 
-    checker.set_param(param).execs({{4, 2, 5, 5},  // data
-                                    {2, 5},        // rois
-                                    {4, 2, 5, 5},  // trans
-                                    {2, 2, 3, 3},  // out_diff
-                                    {2, 2, 3, 3},  // out_count
-                                    {4, 2, 5, 5},
-                                    {4, 2, 5, 5}});
+    checker.set_param(param).execs(
+            {{4, 2, 5, 5},  // data
+             {2, 5},        // rois
+             {4, 2, 5, 5},  // trans
+             {2, 2, 3, 3},  // out_diff
+             {2, 2, 3, 3},  // out_count
+             {4, 2, 5, 5},
+             {4, 2, 5, 5}});
 }
 // vim: syntax=cpp.doxygen

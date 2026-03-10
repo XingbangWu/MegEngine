@@ -1,19 +1,8 @@
-/**
- * \file dnn/src/common/elemwise_multi_type/kern_defs.cuh
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megdnn/dtype.h"
-#include "src/common/utils.cuh"
 #include "src/common/elemwise_helper.cuh"
+#include "src/common/utils.cuh"
 
 #include <cmath>
 
@@ -30,7 +19,7 @@ struct Fma3iXxf32xf32xiYOp {
     }
 };
 
-template <typename stype, typename dtype> 
+template <typename stype, typename dtype>
 MEGDNN_HOST MEGDNN_DEVICE dtype round_shr_saturate(stype x, int k) {
     stype result = rounding_shift_right_away_from_zero(x, k);
     if (!is_same<stype, dtype>::value) {
@@ -39,7 +28,6 @@ MEGDNN_HOST MEGDNN_DEVICE dtype round_shr_saturate(stype x, int k) {
     }
     return static_cast<dtype>(result);
 }
-
 }  // namespace elemwise_multi_type
 }  // namespace megdnn
 

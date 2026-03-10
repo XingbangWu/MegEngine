@@ -1,14 +1,3 @@
-/**
- * \file src/jit/impl/ast_c.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megbrain/jit/ast_c.h"
 #include "megbrain/jit/executor_opr.h"
 #include "megbrain/opr/tensor_manip.h"
@@ -64,16 +53,22 @@ ASTPtr gen_powc(ASTPtr inp, float exp) {
 
     return make_call("powf", {inp, exp});
 }
+
 }  // anonymous namespace
 
-const ElemGeneratorMap& ast_c::elem_opr_generator() {
-#define ENTRY(_mode, _impl)                                                \
-    {                                                                      \
-        ElemMode::_mode, {                                                 \
-            [](const ASTPtrArray& inps) -> ASTPtrArray { return {_impl}; } \
-        }                                                                  \
+const ElemGeneratorMap& ast_c::elem_opr_generator(CompNode::DeviceType device_type) {
+#define ENTRY(_mode, _impl)                                             \
+    {                                                                   \
+        ElemMode::_mode, {                                              \
+            [=](const ASTPtrArray& inps, bool is_half) -> ASTPtrArray { \
+                MGB_MARK_USED_VAR(is_half);                             \
+                return {_impl};                                         \
+            }                                                           \
+        }                                                               \
     }
-    static ElemGeneratorMap map = {
+
+    //! other backends map
+    static ElemGeneratorMap other_map = {
             // unary
             ENTRY(RELU, make_call("fmaxf", {inps[0], 0.f})),
             ENTRY(ABS, make_call("fabsf", inps)),
@@ -94,14 +89,13 @@ const ElemGeneratorMap& ast_c::elem_opr_generator() {
             ENTRY(ERFC, make_call("erfcf", inps)),
             ENTRY(H_SWISH,
                   inps[0] *
-                          make_call("fmaxf",
-                                    {make_call("fminf", {inps[0] + 3.f, 6.f}),
-                                     0.f}) /
+                          make_call(
+                                  "fmaxf",
+                                  {make_call("fminf", {inps[0] + 3.f, 6.f}), 0.f}) /
                           6.f),
 
             // binary
-            ENTRY(ABS_GRAD,
-                  ASTPtr::make<Cond3AST>(inps[0] > 0, inps[1], -inps[1])),
+            ENTRY(ABS_GRAD, ASTPtr::make<Cond3AST>(inps[0] > 0, inps[1], -inps[1])),
             ENTRY(ADD, inps[0] + inps[1]),
             ENTRY(FLOOR_DIV, make_call("floorf", {inps[0] / inps[1]})),
             ENTRY(MAX, make_call("fmaxf", inps)),
@@ -114,8 +108,7 @@ const ElemGeneratorMap& ast_c::elem_opr_generator() {
             ENTRY(SWITCH_GT0, ASTPtr::make<Cond3AST>(inps[0] > 0, inps[1], 0)),
             ENTRY(TANH_GRAD, (1 - inps[0] * inps[0]) * inps[1]),
             ENTRY(TRUE_DIV, inps[0] / inps[1]),
-            ENTRY(LOG_SUM_EXP,
-                  make_call("mgb_log_sum_exp", {inps[0], inps[1]})),
+            ENTRY(LOG_SUM_EXP, make_call("jit_log_sum_exp", {inps[0], inps[1]})),
             ENTRY(LT, ASTPtr::make<BinaryAST>("<", inps[0], inps[1])),
             ENTRY(LEQ, ASTPtr::make<BinaryAST>("<=", inps[0], inps[1])),
             ENTRY(EQ, ASTPtr::make<BinaryAST>("==", inps[0], inps[1])),
@@ -130,6 +123,8 @@ const ElemGeneratorMap& ast_c::elem_opr_generator() {
             // misc
             ENTRY(COND_LEQ_MOV,
                   ASTPtr::make<BinaryAST>("<=", inps[0], inps[1]) * inps[2]),
+            ENTRY(COND_LT_MOV,
+                  ASTPtr::make<BinaryAST>("<", inps[0], inps[1]) * inps[2]),
             ENTRY(FUSE_MUL_ADD3, inps[0] * inps[1] + inps[2]),
             ENTRY(FUSE_MUL_ADD4, inps[0] * inps[1] + inps[2] * inps[3]),
             ENTRY(FUSE_ADD_RELU, make_call("fmaxf", {inps[0] + inps[1], 0})),
@@ -140,30 +135,32 @@ const ElemGeneratorMap& ast_c::elem_opr_generator() {
                   (inps[0] + inps[1]) *
                           make_call(
                                   "fmaxf",
-                                  {make_call("fminf",
-                                             {(inps[0] + inps[1]) + 3.f, 6.f}),
+                                  {make_call("fminf", {(inps[0] + inps[1]) + 3.f, 6.f}),
                                    0.f}) /
                           6.f),
     };
-    mgb_assert(map.size() + 12 == opr::Elemwise::Param::MODE_NR_MEMBER);
+    mgb_assert(other_map.size() + 41 == opr::Elemwise::Param::MODE_NR_MEMBER);
     // unimplemented modes: SHL, SHR, FAST_TANH, FAST_TANH_GRAD, ROUND, RMULH,
-    // ERFINV, ERFCINV, NOT, AND, OR, XOR
-    return map;
+    // ERFINV, ERFCINV, NOT, AND, OR, XOR, NEQ, ISNAN, ISINF
+
+    return other_map;
 #undef ADD_OPR
 }
 
-ASTPtrArray ast_c::opr2AST(cg::OperatorNodeBase* opr,
-                           const ASTPtrArray& inputs) {
+ASTPtrArray ast_c::opr2AST(
+        cg::OperatorNodeBase* opr, const ASTPtrArray& inputs,
+        CompNode::DeviceType device_type) {
     using namespace opr;
     if (auto elem = gopt::try_cast_as_op<Elemwise>(opr)) {
-        if (check_elem_mode(elem->param().mode)) {
-            return elem_opr_generator()
+        if (check_elem_mode(elem->param().mode, device_type)) {
+            return elem_opr_generator(device_type)
                     .find(elem->param().mode)
-                    ->second(inputs);
+                    ->second(inputs, false);
         }
     }
 
     if (auto powc = gopt::try_cast_as_op<PowC>(opr)) {
+
         mgb_assert(inputs.size() == 1);
         return {gen_powc(inputs[0], powc->param().exp)};
     }
@@ -172,6 +169,7 @@ ASTPtrArray ast_c::opr2AST(cg::OperatorNodeBase* opr,
     if (imm.valid()) {
         auto dtype = imm->dtype();
         if (dtype == dtype::Int32{}) {
+
             return {ASTPtr::make<IntAST>(imm->get<int>())};
         }
         float scalar_value;
@@ -180,21 +178,24 @@ ASTPtrArray ast_c::opr2AST(cg::OperatorNodeBase* opr,
         } else if (dtype == dtype::Float16()) {
             scalar_value = imm->get<dt_float16>();
         } else {
-            mgb_throw(InternalError,
-                      "dtype(%s) is not any of [Float16, Float32, Int32]",
-                      dtype.name());
+            mgb_throw(
+                    InternalError, "dtype(%s) is not any of [Float16, Float32, Int32]",
+                    dtype.name());
         }
-        return {ASTPtr::make<FloatAST>(scalar_value)};
+
+        return {ASTPtr::make<FloatAST>(scalar_value, device_type, false)};
     }
 
     if (opr->same_type<opr::TypeCvt>()) {
+
         // simply ignore TypeCvt oprs.
         mgb_assert(inputs.size() == 1);
         return inputs;
     }
 
-    mgb_throw(InternalError, "unknown opr %s{%s}", opr->cname(),
-              opr->dyn_typeinfo()->name);
+    mgb_throw(
+            InternalError, "unknown opr %s{%s}", opr->cname(),
+            opr->dyn_typeinfo()->name);
 }
 
 #endif  // MGB_JIT

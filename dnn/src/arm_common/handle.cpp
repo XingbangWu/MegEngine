@@ -1,33 +1,25 @@
-/**
- * \file dnn/src/arm_common/handle.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "src/common/handle_impl.h"
 
 #include "src/arm_common/handle.h"
 
+#include "src/arm_common/adaptive_pooling/opr_impl.h"
+#include "src/arm_common/conv_bias/opr_impl.h"
 #include "src/arm_common/convolution/opr_impl.h"
-#include "src/arm_common/pooling/opr_impl.h"
-#include "src/arm_common/local/opr_impl.h"
-#include "src/arm_common/separable_conv/opr_impl.h"
-#include "src/arm_common/separable_filter/opr_impl.h"
+#include "src/arm_common/cvt_color/opr_impl.h"
 #include "src/arm_common/elemwise/opr_impl.h"
 #include "src/arm_common/elemwise_multi_type/opr_impl.h"
-#include "src/arm_common/cvt_color/opr_impl.h"
-#include "src/arm_common/warp_affine/opr_impl.h"
-#include "src/arm_common/resize/opr_impl.h"
-#include "src/arm_common/warp_perspective/opr_impl.h"
-#include "src/arm_common/type_cvt/opr_impl.h"
+#include "src/arm_common/local/opr_impl.h"
+#include "src/arm_common/lstm/opr_impl.h"
+#include "src/arm_common/lstm_cell/opr_impl.h"
+#include "src/arm_common/pooling/opr_impl.h"
 #include "src/arm_common/reduce/opr_impl.h"
-#include "src/arm_common/conv_bias/opr_impl.h"
-
+#include "src/arm_common/resize/opr_impl.h"
+#include "src/arm_common/rnn_cell/opr_impl.h"
+#include "src/arm_common/separable_conv/opr_impl.h"
+#include "src/arm_common/separable_filter/opr_impl.h"
+#include "src/arm_common/type_cvt/opr_impl.h"
+#include "src/arm_common/warp_affine/opr_impl.h"
+#include "src/arm_common/warp_perspective/opr_impl.h"
 
 namespace megdnn {
 namespace arm_common {
@@ -51,6 +43,10 @@ MEGDNN_SPECIALIZE_CREATE_OPERATOR(TypeCvt)
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(Reduce)
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(ConvBias)
 MEGDNN_SPECIALIZE_CREATE_OPERATOR(ConvolutionBackwardData)
+MEGDNN_SPECIALIZE_CREATE_OPERATOR(RNNCell)
+MEGDNN_SPECIALIZE_CREATE_OPERATOR(LSTMCell)
+MEGDNN_SPECIALIZE_CREATE_OPERATOR(LSTM)
+MEGDNN_SPECIALIZE_CREATE_OPERATOR(AdaptivePooling)
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpragmas"
@@ -58,7 +54,7 @@ MEGDNN_SPECIALIZE_CREATE_OPERATOR(ConvolutionBackwardData)
 MEGDNN_FOREACH_OPR_CLASS(MEGDNN_INST_CREATE_OPERATOR)
 #pragma GCC diagnostic pop
 
-} // namespace arm_common
-} // namespace megdnn
+}  // namespace arm_common
+}  // namespace megdnn
 
 // vim: syntax=cpp.doxygen

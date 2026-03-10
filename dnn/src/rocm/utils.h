@@ -1,24 +1,14 @@
-/**
- * \file dnn/src/rocm/utils.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include "megcore_cdefs.h"
-#include "src/common/utils.h"
 #include "megdnn/handle.h"
+#include "src/common/utils.h"
 
 #include "src/rocm/handle.h"
 #include "src/rocm/utils.h.hip"
 
-#include "src/rocm/miopen_with_check.h"
 #include <rocblas.h>
+#include "src/rocm/miopen_with_check.h"
 
 namespace megdnn {
 namespace rocm {
@@ -35,10 +25,8 @@ static inline bool enable_miopen_algo_search(Handle* handle) {
     return concrete_handle(handle)->enable_miopen_algo_search();
 }
 
-static inline void enable_miopen_algo_search(Handle* handle,
-                                             bool enable_algo_search) {
-    return concrete_handle(handle)->enable_miopen_algo_search(
-            enable_algo_search);
+static inline void enable_miopen_algo_search(Handle* handle, bool enable_algo_search) {
+    return concrete_handle(handle)->enable_miopen_algo_search(enable_algo_search);
 }
 
 static inline rocblas_handle get_rocblas_handle(Handle* handle) {
@@ -53,8 +41,8 @@ static inline megcore::AsyncErrorInfo* async_error_info(Handle* handle) {
     return concrete_handle(handle)->megcore_context().error_info;
 }
 
-static inline void callback_free(hipStream_t /* stream */, hipError_t status,
-                                 void* userData) {
+static inline void callback_free(
+        hipStream_t /* stream */, hipError_t status, void* userData) {
     hip_check(status);
     free(userData);
 }

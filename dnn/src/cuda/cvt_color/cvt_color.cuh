@@ -47,14 +47,14 @@
  *
  * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
  *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
+ * Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *
  * This file has been modified by Megvii ("Megvii Modifications").
- * All Megvii Modifications are Copyright (C) 2014-2019 Megvii Inc. All rights reserved.
+ * All Megvii Modifications are Copyright (C) 2014-2021 Megvii Inc. All rights reserved.
  *
  * ---------------------------------------------------------------------------
  */
@@ -69,17 +69,15 @@ namespace cvt_color {
 
 typedef unsigned char uchar;
 
-void cvt_color_8u_proxy(const uchar* src, uchar* dst, const size_t src_rows,
-                        const size_t src_cols, const size_t src_step,
-                        const size_t dst_rows, const size_t dst_cols,
-                        const size_t dst_step, const uint32_t mode,
-                        cudaStream_t stream);
+void cvt_color_8u_proxy(
+        const uchar* src, uchar* dst, const size_t src_rows, const size_t src_cols,
+        const size_t src_step, const size_t dst_rows, const size_t dst_cols,
+        const size_t dst_step, const uint32_t mode, cudaStream_t stream);
 
-void cvt_color_32f_proxy(const float* src, float* dst, const size_t src_rows,
-                         const size_t src_cols, const size_t src_step,
-                         const size_t dst_rows, const size_t dst_cols,
-                         const size_t dst_step, const uint32_t mode,
-                         cudaStream_t stream);
+void cvt_color_32f_proxy(
+        const float* src, float* dst, const size_t src_rows, const size_t src_cols,
+        const size_t src_step, const size_t dst_rows, const size_t dst_cols,
+        const size_t dst_step, const uint32_t mode, cudaStream_t stream);
 
 }  // namespace cvt_color
 }  // namespace cuda

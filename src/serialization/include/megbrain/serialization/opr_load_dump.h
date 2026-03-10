@@ -3,7 +3,7 @@
  *
  * This file is part of MegBrain, a deep learning framework developed by Megvii.
  *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
+ * \copyright Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
  *
  */
 
@@ -20,8 +20,12 @@ class FlatBufferBuilder;
 }  // namespace flatbuffers
 
 namespace mgb {
-namespace serialization {
+constexpr uint8_t CURRENT_VERSION = 2u;
+constexpr uint8_t BEGIN_VERSION = 0u;
+constexpr uint8_t VERSION_1 = 1u;
+constexpr uint8_t VERSION_2 = 2u;
 
+namespace serialization {
 namespace fbs {
 template <typename T>
 struct OperatorParamTraits;
@@ -57,9 +61,9 @@ public:
      * \param name name used for retrieving the tensor after loading;
      *      pass an empty string to disable retrieving by name
      */
-    virtual void dump_tensor(const std::string& name,
-                             const HostTensorND& tensor,
-                             TensorWriteMethod method) = 0;
+    virtual void dump_tensor(
+            const std::string& name, const HostTensorND& tensor,
+            TensorWriteMethod method, TensorFormat format = {}) = 0;
 
     //! get associated global configuration
     virtual const GraphDumpConfig& config() const = 0;
@@ -95,8 +99,9 @@ public:
      */
     template <class Param>
     void write_param(const Param& param) {
-        static_assert(is_location_invariant<Param>::value,
-                      "param must be location-invariant");
+        static_assert(
+                is_location_invariant<Param>::value,
+                "param must be location-invariant");
         if (m_check_param_tag) {
             uint32_t tag = Param::TAG;
             write_raw(&tag, sizeof(tag));
@@ -121,8 +126,7 @@ struct SupportFlatBuffersSerialization : Yes {};
 #if MGB_ENABLE_FBS_SERIALIZATION
 class OprDumpContextFlatBuffers : public OprDumpContext {
 protected:
-    OprDumpContextFlatBuffers()
-            : OprDumpContext(SerializationFormat::FLATBUFFERS) {}
+    OprDumpContextFlatBuffers() : OprDumpContext(SerializationFormat::FLATBUFFERS) {}
     // value_offset should be a flatbuffers::Offset<ParamType> (or <void>).
     // Assuming flatbuffers::Offset<T> is a wrapper around uoffset_t = uint32_t,
     // we pass around a uint32_t to avoid dependency to flatbuffers in public
@@ -136,26 +140,27 @@ public:
     template <class Param>
     void write_param(const Param& param, fbs::Yes) {
         using ResultType = typename fbs::ParamConverter<Param>::FlatBufferType;
-        static_assert(fbs::OperatorParamTraits<ResultType>::enum_value != 0,
-                      "invalid param");
-        auto param_offset =
-                fbs::ParamConverter<Param>::to_flatbuffer(builder(), param);
-        append_param(fbs::OperatorParamTraits<ResultType>::enum_value,
-                     param_offset.Union().o);
+        static_assert(
+                fbs::OperatorParamTraits<ResultType>::enum_value != 0, "invalid param");
+        auto param_offset = fbs::ParamConverter<Param>::to_flatbuffer(builder(), param);
+        append_param(
+                fbs::OperatorParamTraits<ResultType>::enum_value,
+                param_offset.Union().o);
     }
 
     template <class Param>
     void write_param(const Param& param, fbs::No) {
-        mgb_throw(SerializationError,
-                  "Serialization of operator param %s unsupported", __func__);
+        mgb_throw(
+                SerializationError, "Serialization of operator param %s unsupported",
+                __func__);
     }
 };
 #endif
 
 template <class Param>
 void OprDumpContext::write_param(const Param& p) {
-    static_assert(is_location_invariant<Param>::value,
-                  "param must be location-invariant");
+    static_assert(
+            is_location_invariant<Param>::value, "param must be location-invariant");
     switch (m_format) {
         case SerializationFormat::RAW_POD:
             static_cast<OprDumpContextRawPOD*>(this)->write_param(p);
@@ -180,12 +185,14 @@ class OprLoadContext : public UserDataContainer::UserData {
     const SerializationFormat m_format;
     const uint32_t m_mgb_version;
 
-    explicit OprLoadContext(const SerializationFormat fmt,
-                            uint32_t mgb_version = 0)
+    explicit OprLoadContext(const SerializationFormat fmt, uint32_t mgb_version = 0)
             : m_format{fmt}, m_mgb_version{mgb_version} {}
 
     friend class OprLoadContextRawPOD;
     friend class OprLoadContextFlatBuffers;
+
+protected:
+    virtual ~OprLoadContext() = default;
 
 public:
     //! get current computing graph
@@ -201,7 +208,8 @@ public:
      *
      * It must be dumped with TensorWriteMethod::VALUE_SHARED
      */
-    virtual std::shared_ptr<DeviceTensorND> load_tensor_shared() = 0;
+    virtual std::shared_ptr<DeviceTensorND> load_tensor_shared(
+            bool copy_immediatly = false) = 0;
 
     //! get associated global configuration
     virtual const GraphLoadConfig& config() const = 0;
@@ -223,6 +231,12 @@ public:
      * Note that there is not alignment gurantee.
      */
     virtual SharedBuffer load_shared_buf_with_len() = 0;
+
+    /*!
+     * \brief get the serialization data of the current opr
+     *
+     */
+    virtual const void* get_current_opr_data() { return nullptr; };
 
     /*!
      * \brief read a param and check that tag matches
@@ -249,26 +263,26 @@ class OprLoadContextRawPOD : public OprLoadContext {
     } MGB_PACKED;
 
 protected:
-    explicit OprLoadContextRawPOD(bool check_param_tag = true,
-                                  uint32_t mgb_version = 0)
+    explicit OprLoadContextRawPOD(bool check_param_tag = true, uint32_t mgb_version = 0)
             : OprLoadContext(SerializationFormat::RAW_POD, mgb_version),
               m_check_param_tag{check_param_tag} {}
 
-    virtual void read_raw(void* dest, size_t size) = 0;
+    MGE_WIN_DECLSPEC_FUC virtual void read_raw(void* dest, size_t size) = 0;
 
     //! used for implementing load_shared_buf_with_len(); the default
     //! implementation uses read_raw()
-    virtual SharedBuffer load_shared_buf(size_t size);
+    MGE_WIN_DECLSPEC_FUC virtual SharedBuffer load_shared_buf(size_t size);
 
 public:
-    std::string load_buf_with_len() override;
+    MGE_WIN_DECLSPEC_FUC std::string load_buf_with_len() override;
 
-    SharedBuffer load_shared_buf_with_len() override;
+    MGE_WIN_DECLSPEC_FUC SharedBuffer load_shared_buf_with_len() override;
 
     template <class Param>
     Param read_param() {
-        static_assert(is_location_invariant<Param>::value,
-                      "param must be location-invariant");
+        static_assert(
+                is_location_invariant<Param>::value,
+                "param must be location-invariant");
         std::aligned_storage_t<sizeof(Param), alignof(Param)> p;
         if (m_check_param_tag) {
             ParamPack<Param> pack;
@@ -299,17 +313,16 @@ public:
     template <class T>
     T read_param(fbs::Yes) {
         using SourceType = typename fbs::ParamConverter<T>::FlatBufferType;
-        auto p = get_next_param(
-                fbs::OperatorParamTraits<SourceType>::enum_value);
+        auto p = get_next_param(fbs::OperatorParamTraits<SourceType>::enum_value);
         mgb_assert(p != nullptr, "wrong param type");
-        return fbs::ParamConverter<T>::to_param(
-                static_cast<const SourceType*>(p));
+        return fbs::ParamConverter<T>::to_param(static_cast<const SourceType*>(p));
     }
 
     template <class T>
     T read_param(fbs::No) {
-        mgb_throw(SerializationError,
-                  "Deserialization of operator param %s unsupported", __func__);
+        mgb_throw(
+                SerializationError, "Deserialization of operator param %s unsupported",
+                __func__);
     }
 };
 #endif
@@ -318,13 +331,11 @@ template <class Param>
 Param OprLoadContext::read_param() {
     switch (m_format) {
         case SerializationFormat::RAW_POD:
-            return static_cast<OprLoadContextRawPOD*>(this)
-                    ->read_param<Param>();
+            return static_cast<OprLoadContextRawPOD*>(this)->read_param<Param>();
         case SerializationFormat::FLATBUFFERS:
 #if MGB_ENABLE_FBS_SERIALIZATION
-            return static_cast<OprLoadContextFlatBuffers*>(this)
-                    ->read_param<Param>(
-                            fbs::SupportFlatBuffersSerialization<Param>{});
+            return static_cast<OprLoadContextFlatBuffers*>(this)->read_param<Param>(
+                    fbs::SupportFlatBuffersSerialization<Param>{});
 #else
             mgb_trap();
 #endif

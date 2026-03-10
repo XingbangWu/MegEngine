@@ -1,15 +1,3 @@
-/**
- * \file dnn/src/common/unroll_macro.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #pragma once
 
 #define UNROLL_RAW1(cb, v0, a...) cb(0, ##a)
@@ -177,6 +165,66 @@
     cb(8, 0, ##a) cb(8, 1, ##a) cb(8, 2, ##a) cb(8, 3, ##a)               \
     cb(8, 4, ##a) cb(8, 5, ##a) cb(8, 6, ##a) cb(8, 7, ##a) cb(8, 8, ##a)
 
+#define UNROLL_RAW_3x2(cb, v0, a...) \
+    UNROLL_RAW_2x2(cb, v0, ##a)      \
+    cb(2, 0, ##a) cb(2, 1, ##a)
+
+#define UNROLL_RAW_4x2(cb, v0, a...)                        \
+    cb(0, 0, ##a) cb(0, 1, ##a) cb(1, 0, ##a) cb(1, 1, ##a) \
+    cb(2, 0, ##a) cb(2, 1, ##a) cb(3, 0, ##a) cb(3, 1, ##a)
+
+#define UNROLL_RAW_5x2(cb, v0, a...) \
+    UNROLL_RAW_4x2(cb, v0, ##a)      \
+    cb(4, 0, ##a) cb(4, 1, ##a)
+
+#define UNROLL_RAW_6x2(cb, v0, a...) \
+    UNROLL_RAW_5x2(cb, v0, ##a)      \
+    cb(5, 0, ##a) cb(5, 1, ##a)
+
+#define UNROLL_RAW_9x2(cb, v0, a...) \
+    UNROLL_RAW_6x2(cb, v0, ##a)     \
+    cb(6, 0, ##a) cb(6, 1, ##a)     \
+    cb(7, 0, ##a) cb(7, 1, ##a)     \
+    cb(8, 0, ##a) cb(8, 1, ##a)
+
+#define UNROLL_RAW_13x2(cb, v0, a...) \
+    UNROLL_RAW_9x2(cb, v0, ##a)      \
+    cb(9, 0, ##a)  cb(9, 1, ##a)     \
+    cb(10, 0, ##a) cb(10, 1, ##a)    \
+    cb(11, 0, ##a) cb(11, 1, ##a)    \
+    cb(12, 0, ##a) cb(12, 1, ##a)
+
+#define UNROLL_RAW_4x6(cb, v0, a...) \
+    cb(0, 0, ##a) cb(0, 1, ##a) cb(0, 2, ##a) cb(0, 3, ##a) cb(0, 4, ##a) cb(0, 5, ##a) \
+    cb(1, 0, ##a) cb(1, 1, ##a) cb(1, 2, ##a) cb(1, 3, ##a) cb(1, 4, ##a) cb(1, 5, ##a) \
+    cb(2, 0, ##a) cb(2, 1, ##a) cb(2, 2, ##a) cb(2, 3, ##a) cb(2, 4, ##a) cb(2, 5, ##a) \
+    cb(3, 0, ##a) cb(3, 1, ##a) cb(3, 2, ##a) cb(3, 3, ##a) cb(3, 4, ##a) cb(3, 5, ##a)
+#define UNROLL_RAW_5x6(cb, v0, a...) \
+    UNROLL_RAW_4x6(cb, v0, ##a)      \
+    cb(4, 0, ##a) cb(4, 1, ##a) cb(4, 2, ##a) cb(4, 3, ##a) cb(4, 4, ##a) cb(4, 5, ##a) 
+
+#define UNROLL_RAW_2x4(cb, v0, a...)                        \
+    cb(0, 0, ##a) cb(0, 1, ##a) cb(0, 2, ##a) cb(0, 3, ##a) \
+    cb(1, 0, ##a) cb(1, 1, ##a) cb(1, 2, ##a) cb(1, 3, ##a)
+#define UNROLL_RAW_3x4(cb, v0, a...) \
+    UNROLL_RAW_2x4(cb, v0, ##a)      \
+    cb(2, 0, ##a) cb(2, 1, ##a) cb(2, 2, ##a) cb(2, 3, ##a)
+#define UNROLL_RAW_5x4(cb, v0, a...) \
+    UNROLL_RAW_4x4(cb, v0, ##a)      \
+    cb(4, 0, ##a) cb(4, 1, ##a) cb(4, 2, ##a) cb(4, 3, ##a)
+#define UNROLL_RAW_9x4(cb, v0, a...)                        \
+    UNROLL_RAW_5x4(cb, v0, ##a)                             \
+    cb(5, 0, ##a) cb(5, 1, ##a) cb(5, 2, ##a) cb(5, 3, ##a) \
+    cb(6, 0, ##a) cb(6, 1, ##a) cb(6, 2, ##a) cb(6, 3, ##a) \
+    cb(7, 0, ##a) cb(7, 1, ##a) cb(7, 2, ##a) cb(7, 3, ##a) \
+    cb(8, 0, ##a) cb(8, 1, ##a) cb(8, 2, ##a) cb(8, 3, ##a)
+#define UNROLL_RAW_13x4(cb, v0, a...)                           \
+    UNROLL_RAW_9x4(cb, v0, ##a)                                 \
+    cb(9, 0, ##a) cb(9, 1, ##a) cb(9, 2, ##a) cb(9, 3, ##a)     \
+    cb(10, 0, ##a) cb(10, 1, ##a) cb(10, 2, ##a) cb(10, 3, ##a) \
+    cb(11, 0, ##a) cb(11, 1, ##a) cb(11, 2, ##a) cb(11, 3, ##a) \
+    cb(12, 0, ##a) cb(12, 1, ##a) cb(12, 2, ##a) cb(12, 3, ##a)
+
 #define UNROLL_CALL0_D2(step, step2, cb, v...) \
     UNROLL_RAW_##step##x##step2(cb, 0, ##v)
 #define UNROLL_CALL1_D2(step, step2, cb, v...) \
@@ -190,6 +238,23 @@
     UNROLL_CALL1_D2(step, step2, cb, ##v);
 #define UNROLL_CALL_NOWRAPPER_D2(step, step2, cb) \
     UNROLL_CALL_RAW_D2(step, step2, cb)
+
+/////////////////// unroll call with one argument ///////////////////
+
+//! If the arg of cb is related to a macro inside cb, use this.
+//! Reason: ## before VA_ARGS removes the ',' when there are no arguments,
+//! but with that we can not nest macros.
+//! Ref: https://stackoverflow.com/questions/5891221/variadic-macros-with-zero-arguments
+
+#define UNROLL_ONE_ARG_RAW2(cb, arg) cb(0, arg) cb(1, arg)
+#define UNROLL_ONE_ARG_RAW3(cb, arg) UNROLL_ONE_ARG_RAW2(cb, arg) cb(2, arg)
+#define UNROLL_ONE_ARG_RAW5(cb, arg) \
+    UNROLL_ONE_ARG_RAW3(cb, arg)     \
+    cb(3, arg) cb(4, arg)
+#define UNROLL_ONE_ARG_RAW7(cb, arg) \
+    UNROLL_ONE_ARG_RAW5(cb, arg)     \
+    cb(5, arg) cb(6, arg)
+#define UNROLL_CALL_ONE_ARG_RAW(step, cb, arg) UNROLL_ONE_ARG_RAW##step(cb, arg)
 
 // clang-format on
 

@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/cuda/local_share/backward_filter/algo.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megdnn/oprs.h"
@@ -41,16 +30,18 @@ public:
         TensorLayout src_layout, diff_layout, grad_layout;
 
         std::string to_string() const;
-        SizeArgs(LocalShareBackwardFilterImpl* opr, const TensorLayout& src,
-                 const TensorLayout& diff, const TensorLayout& grad);
+        SizeArgs(
+                LocalShareBackwardFilterImpl* opr, const TensorLayout& src,
+                const TensorLayout& diff, const TensorLayout& grad);
     };
     struct ExecArgs : public SizeArgs {
         const TensorND *src_tensor, *diff_tensor, *grad_tensor;
         Workspace workspace;
 
-        ExecArgs(LocalShareBackwardFilterImpl* opr, _megdnn_tensor_in src,
-                 _megdnn_tensor_in diff, _megdnn_tensor_out grad,
-                 _megdnn_workspace workspace);
+        ExecArgs(
+                LocalShareBackwardFilterImpl* opr, _megdnn_tensor_in src,
+                _megdnn_tensor_in diff, _megdnn_tensor_out grad,
+                _megdnn_workspace workspace);
     };
     virtual bool is_available(const SizeArgs& args) const = 0;
     virtual size_t get_workspace_in_bytes(const SizeArgs& args) const = 0;
@@ -59,19 +50,21 @@ public:
     bool is_available_wk(const SizeArgs& args, size_t limit) {
         return is_available(args) && get_workspace_in_bytes(args) <= limit;
     }
-    bool is_available_reproducible(
-            const SizeArgs& args, bool reproducible = true,
+    bool is_available_attribute(
+            const SizeArgs& args,
+            const AlgoAttribute& positive_attr = AlgoAttribute::REPRODUCIBLE,
+            const AlgoAttribute& negative_attr = AlgoAttribute::DEFAULT,
             size_t limit = std::numeric_limits<size_t>::max()) {
-        return (!reproducible || is_reproducible()) &&
-               is_available_wk(args, limit);
+        return contain_attribute_all(positive_attr) &&
+               !contain_attribute_any(negative_attr) && is_available_wk(args, limit);
     }
-    AlgoBase& check_workspace(const SizeArgs& args,
-                              const Workspace& workspace) {
+    AlgoBase& check_workspace(const SizeArgs& args, const Workspace& workspace) {
         auto req = get_workspace_in_bytes(args);
-        megdnn_assert(req <= workspace.size,
-                      "local share conv fwd algo %s: required workspace %zu "
-                      "bytes, got %zu",
-                      name(), req, workspace.size);
+        megdnn_assert(
+                req <= workspace.size,
+                "local share conv fwd algo %s: required workspace %zu "
+                "bytes, got %zu",
+                name(), req, workspace.size);
         return *this;
     }
 };
@@ -82,7 +75,7 @@ public:
     size_t get_workspace_in_bytes(const SizeArgs& args) const override;
     void exec(const ExecArgs& args) const override;
 
-    bool is_reproducible() const override { return true; }
+    AlgoAttribute attribute() const override { return AlgoAttribute::REPRODUCIBLE; }
 
     const char* name() const override { return "LOCAL_SHARE_IMPLICIT_GEMM"; }
     MEGDNN_DECL_ALGO_TYPE(CUDA_IMPLICIT_GEMM)
@@ -92,11 +85,10 @@ class LocalShareBackwardFilterImpl::AlgoBatchedMatMul final : public AlgoBase {
 public:
     bool is_available(const SizeArgs& args) const override;
     size_t get_workspace_in_bytes(const SizeArgs& args) const override;
-    WorkspaceBundle get_workspace_bundle(dt_byte* raw_ptr,
-                                         const SizeArgs& args) const;
+    WorkspaceBundle get_workspace_bundle(dt_byte* raw_ptr, const SizeArgs& args) const;
     void exec(const ExecArgs& args) const override;
 
-    bool is_reproducible() const override { return true; }
+    AlgoAttribute attribute() const override { return AlgoAttribute::REPRODUCIBLE; }
 
     const char* name() const override { return "LOCAL_SHARE_BATCHED_MATMUL"; }
     MEGDNN_DECL_ALGO_TYPE(CUDA_BATCHED_MATMUL)

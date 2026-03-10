@@ -1,13 +1,3 @@
-/**
- * \file dnn/test/common/exec_proxy.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 #include "megdnn/basic_types.h"
 
@@ -23,6 +13,80 @@ template <typename Opr, size_t Arity, bool has_workspace>
 struct ExecProxy;
 
 template <typename Opr>
+struct ExecProxy<Opr, 13, true> {
+    WorkspaceWrapper W;
+    void exec(Opr* opr, const TensorNDArray& tensors) {
+        if (!W.valid()) {
+            W = WorkspaceWrapper(opr->handle(), 0);
+        }
+        W.update(opr->get_workspace_in_bytes(
+                tensors[0].layout, tensors[1].layout, tensors[2].layout,
+                tensors[3].layout, tensors[4].layout, tensors[5].layout,
+                tensors[6].layout, tensors[7].layout, tensors[8].layout,
+                tensors[9].layout, tensors[10].layout, tensors[11].layout,
+                tensors[12].layout));
+        opr->exec(
+                tensors[0], tensors[1], tensors[2], tensors[3], tensors[4], tensors[5],
+                tensors[6], tensors[7], tensors[8], tensors[9], tensors[10],
+                tensors[11], tensors[12], W.workspace());
+    }
+};
+
+template <typename Opr>
+struct ExecProxy<Opr, 11, true> {
+    WorkspaceWrapper W;
+    void exec(Opr* opr, const TensorNDArray& tensors) {
+        if (!W.valid()) {
+            W = WorkspaceWrapper(opr->handle(), 0);
+        }
+        W.update(opr->get_workspace_in_bytes(
+                tensors[0].layout, tensors[1].layout, tensors[2].layout,
+                tensors[3].layout, tensors[4].layout, tensors[5].layout,
+                tensors[6].layout, tensors[7].layout, tensors[8].layout,
+                tensors[9].layout, tensors[10].layout));
+        opr->exec(
+                tensors[0], tensors[1], tensors[2], tensors[3], tensors[4], tensors[5],
+                tensors[6], tensors[7], tensors[8], tensors[9], tensors[10],
+                W.workspace());
+    }
+};
+
+template <typename Opr>
+struct ExecProxy<Opr, 10, true> {
+    WorkspaceWrapper W;
+    void exec(Opr* opr, const TensorNDArray& tensors) {
+        if (!W.valid()) {
+            W = WorkspaceWrapper(opr->handle(), 0);
+        }
+        W.update(opr->get_workspace_in_bytes(
+                tensors[0].layout, tensors[1].layout, tensors[2].layout,
+                tensors[3].layout, tensors[4].layout, tensors[5].layout,
+                tensors[6].layout, tensors[7].layout, tensors[8].layout,
+                tensors[9].layout));
+        opr->exec(
+                tensors[0], tensors[1], tensors[2], tensors[3], tensors[4], tensors[5],
+                tensors[6], tensors[7], tensors[8], tensors[9], W.workspace());
+    }
+};
+
+template <typename Opr>
+struct ExecProxy<Opr, 9, true> {
+    WorkspaceWrapper W;
+    void exec(Opr* opr, const TensorNDArray& tensors) {
+        if (!W.valid()) {
+            W = WorkspaceWrapper(opr->handle(), 0);
+        }
+        W.update(opr->get_workspace_in_bytes(
+                tensors[0].layout, tensors[1].layout, tensors[2].layout,
+                tensors[3].layout, tensors[4].layout, tensors[5].layout,
+                tensors[6].layout, tensors[7].layout, tensors[8].layout));
+        opr->exec(
+                tensors[0], tensors[1], tensors[2], tensors[3], tensors[4], tensors[5],
+                tensors[6], tensors[7], tensors[8], W.workspace());
+    }
+};
+
+template <typename Opr>
 struct ExecProxy<Opr, 8, true> {
     WorkspaceWrapper W;
     void exec(Opr* opr, const TensorNDArray& tensors) {
@@ -33,10 +97,45 @@ struct ExecProxy<Opr, 8, true> {
                 tensors[0].layout, tensors[1].layout, tensors[2].layout,
                 tensors[3].layout, tensors[4].layout, tensors[5].layout,
                 tensors[6].layout, tensors[7].layout));
-        opr->exec(tensors[0], tensors[1], tensors[2], tensors[3], tensors[4],
-                  tensors[5], tensors[6], tensors[7], W.workspace());
+        opr->exec(
+                tensors[0], tensors[1], tensors[2], tensors[3], tensors[4], tensors[5],
+                tensors[6], tensors[7], W.workspace());
     }
 };
+
+template <typename Opr>
+struct ExecProxy<Opr, 7, true> {
+    WorkspaceWrapper W;
+    void exec(Opr* opr, const TensorNDArray& tensors) {
+        if (!W.valid()) {
+            W = WorkspaceWrapper(opr->handle(), 0);
+        }
+        W.update(opr->get_workspace_in_bytes(
+                tensors[0].layout, tensors[1].layout, tensors[2].layout,
+                tensors[3].layout, tensors[4].layout, tensors[5].layout,
+                tensors[6].layout));
+        opr->exec(
+                tensors[0], tensors[1], tensors[2], tensors[3], tensors[4], tensors[5],
+                tensors[6], W.workspace());
+    }
+};
+
+template <typename Opr>
+struct ExecProxy<Opr, 6, true> {
+    WorkspaceWrapper W;
+    void exec(Opr* opr, const TensorNDArray& tensors) {
+        if (!W.valid()) {
+            W = WorkspaceWrapper(opr->handle(), 0);
+        }
+        W.update(opr->get_workspace_in_bytes(
+                tensors[0].layout, tensors[1].layout, tensors[2].layout,
+                tensors[3].layout, tensors[4].layout, tensors[5].layout));
+        opr->exec(
+                tensors[0], tensors[1], tensors[2], tensors[3], tensors[4], tensors[5],
+                W.workspace());
+    }
+};
+
 template <typename Opr>
 struct ExecProxy<Opr, 5, true> {
     WorkspaceWrapper W;
@@ -47,8 +146,9 @@ struct ExecProxy<Opr, 5, true> {
         W.update(opr->get_workspace_in_bytes(
                 tensors[0].layout, tensors[1].layout, tensors[2].layout,
                 tensors[3].layout, tensors[4].layout));
-        opr->exec(tensors[0], tensors[1], tensors[2], tensors[3], tensors[4],
-                  W.workspace());
+        opr->exec(
+                tensors[0], tensors[1], tensors[2], tensors[3], tensors[4],
+                W.workspace());
     }
 };
 
@@ -62,8 +162,7 @@ struct ExecProxy<Opr, 4, true> {
         W.update(opr->get_workspace_in_bytes(
                 tensors[0].layout, tensors[1].layout, tensors[2].layout,
                 tensors[3].layout));
-        opr->exec(tensors[0], tensors[1], tensors[2], tensors[3],
-                  W.workspace());
+        opr->exec(tensors[0], tensors[1], tensors[2], tensors[3], W.workspace());
     }
 };
 
@@ -87,8 +186,7 @@ struct ExecProxy<Opr, 2, true> {
         if (!W.valid()) {
             W = WorkspaceWrapper(opr->handle(), 0);
         }
-        W.update(opr->get_workspace_in_bytes(tensors[0].layout,
-                                             tensors[1].layout));
+        W.update(opr->get_workspace_in_bytes(tensors[0].layout, tensors[1].layout));
         opr->exec(tensors[0], tensors[1], W.workspace());
     }
 };
@@ -130,24 +228,6 @@ template <typename Opr>
 struct ExecProxy<Opr, 2, false> {
     void exec(Opr* opr, const TensorNDArray& tensors) {
         opr->exec(tensors[0], tensors[1]);
-    }
-};
-
-template <typename Opr>
-struct ExecProxy<Opr, 7, true> {
-    WorkspaceWrapper W;
-
-    void exec(Opr* opr, const TensorNDArray& tensors) {
-        if (!W.valid()) {
-            W = WorkspaceWrapper(opr->handle(), 0);
-        }
-        W.update(opr->get_workspace_in_bytes(
-                tensors[0].layout, tensors[1].layout, tensors[2].layout,
-                tensors[3].layout, tensors[4].layout, tensors[5].layout,
-                tensors[6].layout));
-
-        opr->exec(tensors[0], tensors[1], tensors[2], tensors[3], tensors[4],
-                  tensors[5], tensors[6], W.workspace());
     }
 };
 

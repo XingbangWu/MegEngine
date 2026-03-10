@@ -1,15 +1,3 @@
-/**
- * \file src/jit/impl/mlir/ir/utils.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #include "megbrain_build_config.h"
 #if MGB_JIT && MGB_JIT_MLIR
 
@@ -31,9 +19,8 @@
 using namespace mgb;
 using namespace jit;
 
-mlir::Value jit::insert_alloc_and_dealloc(mlir::MemRefType type,
-                                          mlir::Location loc,
-                                          mlir::PatternRewriter& rewriter) {
+mlir::Value jit::insert_alloc_and_dealloc(
+        mlir::MemRefType type, mlir::Location loc, mlir::PatternRewriter& rewriter) {
     auto alloc = rewriter.create<mlir::AllocOp>(loc, type);
 
     // Make sure to allocate at the beginning of the block.
@@ -80,8 +67,8 @@ megdnn::TensorLayout jit::mlir_type_to_layout(mlir::Type type) {
     return ret;
 }
 
-mlir::MemRefType jit::layout_to_mlir_type(const megdnn::TensorLayout& layout,
-                                          mlir::Builder& builder) {
+mlir::MemRefType jit::layout_to_mlir_type(
+        const megdnn::TensorLayout& layout, mlir::Builder& builder) {
     std::vector<int64_t> shape;
     for (size_t i = 0; i < layout.ndim; i++) {
         shape.push_back(layout[i]);

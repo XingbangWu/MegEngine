@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/common/handle_impl.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megdnn/handle.h"
@@ -29,19 +18,13 @@ public:
     using Handle::Handle;
 
     //! global matmul opr
-    virtual MatrixMul* matmul_opr() {
-        megdnn_throw("Unimplement matmul opr.\n");
-    }
+    virtual MatrixMul* matmul_opr() { megdnn_throw("Unimplement matmul opr.\n"); }
 
     //! global matmul opr with first operand transposed
-    virtual MatrixMul* matmul_aT_opr() {
-        megdnn_throw("Unimplement matmul_aT opr.\n");
-    }
+    virtual MatrixMul* matmul_aT_opr() { megdnn_throw("Unimplement matmul_aT opr.\n"); }
 
     //! global matmul opr with second operand transposed
-    virtual MatrixMul* matmul_bT_opr() {
-        megdnn_throw("Unimplement matmul_bT opr.\n");
-    }
+    virtual MatrixMul* matmul_bT_opr() { megdnn_throw("Unimplement matmul_bT opr.\n"); }
 
     //! global matmul opr with both operand transposed
     virtual MatrixMul* matmul_aT_bT_opr() {
@@ -49,13 +32,9 @@ public:
     }
 
     //! global relayout opr
-    virtual Relayout* relayout_opr() {
-        megdnn_throw("Unimplement Relayout opr.\n");
-    }
+    virtual Relayout* relayout_opr() { megdnn_throw("Unimplement Relayout opr.\n"); }
 
-    virtual Checksum* checksum_opr() {
-        megdnn_throw("Unimplement Checksum opr.\n");
-    }
+    virtual Checksum* checksum_opr() { megdnn_throw("Unimplement Checksum opr.\n"); }
 
     virtual MaxTensorDiff* max_tensor_diff_opr() {
         megdnn_throw("Unimplement MaxTensorDiff opr.\n");
@@ -65,17 +44,14 @@ protected:
     static constexpr size_t NR_HELPER_OPRS = 7;
 
     template <class Opr, size_t idx, class Self>
-    static Opr* get_helper_opr(Self self,
-                               const typename Opr::Param& param = {}) {
+    static Opr* get_helper_opr(Self self, const typename Opr::Param& param = {}) {
         MIDOUT_BEGIN(dnn_src_common_handle_impl, Opr, idx) {
             static_assert(idx < NR_HELPER_OPRS, "invalid idx");
             if (!self->m_helper_oprs[idx]) {
-                std::lock_guard<std::mutex> lg{self->m_helper_oprs_mtx};
+                MEGDNN_LOCK_GUARD(self->m_helper_oprs_mtx);
                 if (!self->m_helper_oprs[idx]) {
-                    self->m_helper_oprs[idx] =
-                            self->template create_operator<Opr>();
-                    auto ret =
-                            static_cast<Opr*>(self->m_helper_oprs[idx].get());
+                    self->m_helper_oprs[idx] = self->template create_operator<Opr>();
+                    auto ret = static_cast<Opr*>(self->m_helper_oprs[idx].get());
                     ret->param() = param;
                     megdnn_assert(ret->is_thread_safe());
                     return ret;
@@ -88,14 +64,15 @@ protected:
 
 private:
     std::array<std::unique_ptr<OperatorBase>, NR_HELPER_OPRS> m_helper_oprs;
-    std::mutex m_helper_oprs_mtx;
+    DNN_MUTEX m_helper_oprs_mtx;
 };
 
 }  // namespace megdnn
-/*!
- * \brief iterate though each operator class name; useful for explicit
- *      instantialization of create_operator<> templates
- */
+   /*!
+    * \brief iterate though each operator class name; useful for explicit
+    *      instantialization of create_operator<> templates
+    */
+   // clang-format off
 #define MEGDNN_FOREACH_OPR_CLASS(cb) \
     cb(ConvolutionForward) \
     cb(ConvolutionBackwardData) \
@@ -104,6 +81,8 @@ private:
     cb(ConvBiasForward) \
     cb(Images2NeibsForward) \
     cb(Images2NeibsBackward) \
+    cb(SlidingWindowTransposeForward) \
+    cb(SlidingWindowTransposeBackward) \
     cb(ElemwiseForward) \
     cb(ElemwiseMultiType) \
     cb(AddUpdateForward) \
@@ -156,9 +135,18 @@ private:
     cb(BatchedSetMeshIndexing) \
     cb(Linspace) \
     cb(Eye) \
+    cb(Diag) \
     cb(SleepForward) \
     cb(UniformRNG) \
     cb(GaussianRNG) \
+    cb(GammaRNG) \
+    cb(BetaRNG) \
+    cb(PoissonRNG) \
+    cb(PermutationRNG) \
+    cb(MultinomialRNG) \
+    cb(ShuffleRNGForward) \
+    cb(ShuffleRNGBackward) \
+    cb(ExponentialRNG) \
     cb(SeparableConvForward) \
     cb(SeparableFilterForward) \
     cb(BNForward) \
@@ -174,6 +162,7 @@ private:
     cb(GaussianBlur) \
     cb(Resize) \
     cb(ResizeBackward) \
+    cb(Resize3D) \
     cb(ParamPackConcat) \
     cb(MaxTensorDiff) \
     cb(MaskConvForward) \
@@ -194,6 +183,9 @@ private:
     cb(LocalShareBackwardFilter) \
     cb(ROIAlignForward) \
     cb(ROIAlignBackward) \
+    cb(CorrelationForward) \
+    cb(CorrelationBackwardData1) \
+    cb(CorrelationBackwardData2) \
     cb(BatchConvBiasForward) \
     cb(Remap) \
     cb(RemapBackwardData) \
@@ -202,7 +194,44 @@ private:
     cb(AdaptivePoolingBackward) \
     cb(DctChannelSelectForward) \
     cb(FakeQuantForward) \
-    cb(FakeQuantBackward)
+    cb(FakeQuantBackward) \
+    cb(TQTForward) \
+    cb(TQTBackward) \
+    cb(CheckNonFinite) \
+    cb(LSQForward) \
+    cb(LSQBackward) \
+    cb(Fill) \
+    cb(PaddingForward) \
+    cb(PaddingBackward) \
+    cb(LayerNormForward) \
+    cb(LayerNormBackward) \
+    cb(GeneralNormForward) \
+    cb(GeneralNormBackward) \
+    cb(DropoutForward) \
+    cb(DropoutBackward) \
+    cb(RNNCell) \
+    cb(LSTMCell) \
+    cb(RNN) \
+    cb(RNNBackward) \
+    cb(LSTM) \
+    cb(LAMBUpdate) \
+    cb(LSTMBackward) \
+    cb(SoftmaxForward) \
+    cb(SoftmaxBackward) \
+    cb(NormForward) \
+    cb(RegionRestrictedConvolutionForward) \
+    cb(RegionRestrictedConvolutionBackwardData) \
+    cb(RegionRestrictedConvolutionBackwardFilter) \
+    cb(GroupNormForward) \
+    cb(GroupNormBackward) \
+    cb(MaskedFill) \
+    cb(MultiHeadAttnForward)\
+    cb(MultiHeadAttnBackward) \
+    cb(Cross)  \
+    cb(WhereForward)    \
+    cb(WhereBackward) \
+    cb(NonZero)
+// clang-format on
 
 /*!
  * \brief specialize HandleImpl::create_operator for a single opr type;

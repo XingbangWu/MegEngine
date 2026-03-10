@@ -47,14 +47,14 @@
  *
  * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
  *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
+ * Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *
  * This file has been modified by Megvii ("Megvii Modifications").
- * All Megvii Modifications are Copyright (C) 2014-2019 Megvii Inc. All rights reserved.
+ * All Megvii Modifications are Copyright (C) 2014-2021 Megvii Inc. All rights reserved.
  *
  * ---------------------------------------------------------------------------
  */
@@ -64,8 +64,9 @@ static inline int border_interpolate(int p, int len, BorderMode bmode) {
         ;
     else if (bmode == BorderMode::BORDER_REPLICATE)
         p = p < 0 ? 0 : len - 1;
-    else if (bmode == BorderMode::BORDER_REFLECT ||
-             bmode == BorderMode::BORDER_REFLECT_101) {
+    else if (
+            bmode == BorderMode::BORDER_REFLECT ||
+            bmode == BorderMode::BORDER_REFLECT_101) {
         int delta = (bmode == BorderMode::BORDER_REFLECT_101);
         if (len == 1)
             return 0;
@@ -82,8 +83,9 @@ static inline int border_interpolate(int p, int len, BorderMode bmode) {
         while (p >= len) {
             p -= len;
         }
-    } else if (bmode == BorderMode::BORDER_CONSTANT ||
-               bmode == BorderMode::BORDER_TRANSPARENT)
+    } else if (
+            bmode == BorderMode::BORDER_CONSTANT ||
+            bmode == BorderMode::BORDER_TRANSPARENT)
         p = -1;
     else
         MegCVException("Unknown/unsupported border type");

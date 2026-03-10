@@ -1,16 +1,6 @@
-/**
- * \file src/plugin/include/megbrain/plugin/var_sanity_check.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
+#if !__DEPLOY_ON_XP_SP2__
 #include "megbrain/exception.h"
 #include "megbrain/graph.h"
 #include "megbrain/plugin/base.h"
@@ -50,8 +40,8 @@ class VarSanityCheck final : public PluginBase {
 
         void add_producer(VarNode* var);
         void add_receiver(VarNode* var);
-        void on_var_produced(VarSanityCheck* checker, VarNode* var,
-                             ChecksumResult checksum);
+        void on_var_produced(
+                VarSanityCheck* checker, VarNode* var, ChecksumResult checksum);
         void on_var_received(VarNode* var);
     };
 
@@ -64,7 +54,7 @@ class VarSanityCheck final : public PluginBase {
 
     //! map from caller thread to workspace map
     ThinHashMap<std::thread::id, WorkspaceCache> m_workspace;
-    std::mutex m_workspace_mtx;
+    MGB_MUTEX m_workspace_mtx;
 
     ThinHashMap<VarNode*, ChecksumResult> m_var2chksum;
     /*! the ids of varnodes that have been modified by recv_opr
@@ -72,20 +62,19 @@ class VarSanityCheck final : public PluginBase {
      * cg::OperatorNodeBase::NodeProp::Flag:: FORCE_UPDATE_INPUT_VAR.
      */
     ThinHashSet<VarNode*> m_modified_vars;
-    std::mutex m_id2chksum_mtx;
+    MGB_MUTEX m_id2chksum_mtx;
 
-    typedef void (VarSanityCheck::*input_checker_fn)(cg::OperatorNodeBase*,
-                                                     VarNode*);
+    typedef void (VarSanityCheck::*input_checker_fn)(cg::OperatorNodeBase*, VarNode*);
 
     void on_var_produced(VarNode* var);
     void on_var_received(cg::OperatorNodeBase* recv_opr, VarNode* var);
     //! check after opr exec that input is not modified
     void check_input_unmodified(cg::OperatorNodeBase* recv_opr, VarNode* var);
-    void check_single_input(bool add_debug_log, cg::OperatorNodeBase* recv_opr,
-                            VarNode* var);
-    void setup_input_checker(bool add_debug_log, cg::OperatorNodeBase* opr,
-                             cg::GraphExecutable::ExecEnv& env,
-                             input_checker_fn checker);
+    void check_single_input(
+            bool add_debug_log, cg::OperatorNodeBase* recv_opr, VarNode* var);
+    void setup_input_checker(
+            bool add_debug_log, cg::OperatorNodeBase* opr,
+            cg::GraphExecutable::ExecEnv& env, input_checker_fn checker);
 
     static std::string str(const ChecksumResult& result);
 
@@ -106,5 +95,6 @@ public:
             VarNode* var, const ComputingGraph::VarReceiverInfo& recv);
 };
 }  // namespace mgb
+#endif
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

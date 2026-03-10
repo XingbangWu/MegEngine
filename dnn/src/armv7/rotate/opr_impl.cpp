@@ -1,18 +1,7 @@
-/**
- * \file dnn/src/armv7/rotate/opr_impl.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include <cstring>
 
-#include "src/armv7/rotate/opr_impl.h"
 #include "src/armv7/handle.h"
+#include "src/armv7/rotate/opr_impl.h"
 #include "src/common/cv/common.h"
 #include "src/common/cv/helper.h"
 #include "src/common/utils.h"
@@ -20,11 +9,10 @@
 namespace megdnn {
 
 namespace megcv {
-void rotate_8uc1_clockwise_16x16(const uchar *src,
-        uchar *dst,
-        size_t src_step, size_t dst_step)
-{
-    asm volatile ("\n"
+void rotate_8uc1_clockwise_16x16(
+        const uchar* src, uchar* dst, size_t src_step, size_t dst_step) {
+    asm volatile(
+            "\n"
             "vld1.8 {d0, d1}, [%[src]], %[src_step] \n"
             "vld1.8 {d2, d3}, [%[src]], %[src_step] \n"
             "vld1.8 {d4, d5}, [%[src]], %[src_step] \n"
@@ -121,27 +109,18 @@ void rotate_8uc1_clockwise_16x16(const uchar *src,
             "vst1.8 {d26, d27}, [%[dst]], %[dst_step] \n"
             "vst1.8 {d28, d29}, [%[dst]], %[dst_step] \n"
             "vst1.8 {d30, d31}, [%[dst]], %[dst_step] \n"
-            :
-            [src] "+r" (src),
-            [dst] "+r" (dst)
-            :
-            [src_step] "r" (src_step),
-            [dst_step] "r" (dst_step)
-            :
-            "r0", "r1", "r2", "r3",
-            "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",
-            "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15",
-            "d16", "d17", "d18", "d19", "d20", "d21", "d22", "d23",
-            "d24", "d25", "d26", "d27", "d28", "d29", "d30", "d31"
-        );
-
+            : [src] "+r"(src), [dst] "+r"(dst)
+            : [src_step] "r"(src_step), [dst_step] "r"(dst_step)
+            : "r0", "r1", "r2", "r3", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",
+              "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15", "d16", "d17", "d18",
+              "d19", "d20", "d21", "d22", "d23", "d24", "d25", "d26", "d27", "d28",
+              "d29", "d30", "d31");
 }
 
-void rotate_8uc1_counterclockwise_16x16(const uchar *src,
-        uchar *dst,
-        size_t src_step, size_t dst_step)
-{
-    asm volatile ("\n"
+void rotate_8uc1_counterclockwise_16x16(
+        const uchar* src, uchar* dst, size_t src_step, size_t dst_step) {
+    asm volatile(
+            "\n"
             "vld1.8 {d0, d1}, [%[src]], %[src_step] \n"
             "vld1.8 {d2, d3}, [%[src]], %[src_step] \n"
             "vld1.8 {d4, d5}, [%[src]], %[src_step] \n"
@@ -206,25 +185,17 @@ void rotate_8uc1_counterclockwise_16x16(const uchar *src,
             "vst1.8 {d4, d5}, [%[dst]], %[dst_step] \n"
             "vst1.8 {d2, d3}, [%[dst]], %[dst_step] \n"
             "vst1.8 {d0, d1}, [%[dst]], %[dst_step] \n"
-            :
-            [src] "+r" (src),
-            [dst] "+r" (dst)
-            :
-            [src_step] "r" (src_step),
-            [dst_step] "r" (dst_step)
-            :
-            "r0", "r1", "r2", "r3",
-            "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",
-            "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15",
-            "d16", "d17", "d18", "d19", "d20", "d21", "d22", "d23",
-            "d24", "d25", "d26", "d27", "d28", "d29", "d30", "d31"
-        );
+            : [src] "+r"(src), [dst] "+r"(dst)
+            : [src_step] "r"(src_step), [dst_step] "r"(dst_step)
+            : "r0", "r1", "r2", "r3", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",
+              "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15", "d16", "d17", "d18",
+              "d19", "d20", "d21", "d22", "d23", "d24", "d25", "d26", "d27", "d28",
+              "d29", "d30", "d31");
 }
 
-void rotate_8uc1_clockwise(const uchar *src, uchar *dst,
-        const size_t rows, const size_t cols,
-        const size_t src_step, const size_t dst_step)
-{
+void rotate_8uc1_clockwise(
+        const uchar* src, uchar* dst, const size_t rows, const size_t cols,
+        const size_t src_step, const size_t dst_step) {
     const size_t block = 16;
     (void)block;
     size_t i = 0;
@@ -232,28 +203,27 @@ void rotate_8uc1_clockwise(const uchar *src, uchar *dst,
     for (; i + block <= rows; i += block) {
         size_t j = 0;
         for (; j + block <= cols; j += block) {
-            rotate_8uc1_clockwise_16x16(src + i*src_step + j,
-                    dst + j*dst_step + (rows-(i+block)),
+            rotate_8uc1_clockwise_16x16(
+                    src + i * src_step + j, dst + j * dst_step + (rows - (i + block)),
                     src_step, dst_step);
         }
         for (; j < cols; ++j) {
             for (size_t k = 0; k < block; ++k) {
-                dst[j*dst_step + (rows-1-(i+k))] = src[(i+k)*src_step + j];
+                dst[j * dst_step + (rows - 1 - (i + k))] = src[(i + k) * src_step + j];
             }
         }
     }
 
     for (; i < rows; ++i) {
         for (size_t j = 0; j < cols; ++j) {
-            dst[j*dst_step + (rows-1-i)] = src[i*src_step + j];
+            dst[j * dst_step + (rows - 1 - i)] = src[i * src_step + j];
         }
     }
 }
 
-void rotate_8uc1_counterclockwise(const uchar *src, uchar *dst,
-        const size_t rows, const size_t cols,
-        const size_t src_step, const size_t dst_step)
-{
+void rotate_8uc1_counterclockwise(
+        const uchar* src, uchar* dst, const size_t rows, const size_t cols,
+        const size_t src_step, const size_t dst_step) {
     const size_t block = 16;
     (void)block;
     size_t i = 0;
@@ -261,37 +231,35 @@ void rotate_8uc1_counterclockwise(const uchar *src, uchar *dst,
     for (; i + block <= rows; i += block) {
         size_t j = 0;
         for (; j + block <= cols; j += block) {
-            rotate_8uc1_counterclockwise_16x16(src + i*src_step + j,
-                    dst + (cols-(j+block))*dst_step + i,
+            rotate_8uc1_counterclockwise_16x16(
+                    src + i * src_step + j, dst + (cols - (j + block)) * dst_step + i,
                     src_step, dst_step);
         }
         for (; j < cols; ++j) {
             for (size_t k = 0; k < block; ++k) {
-                dst[(cols-1-j)*dst_step + (i+k)] = src[(i+k)*src_step + j];
+                dst[(cols - 1 - j) * dst_step + (i + k)] = src[(i + k) * src_step + j];
             }
         }
     }
 
     for (; i < rows; ++i) {
         for (size_t j = 0; j < cols; ++j) {
-            dst[(cols-1-j)*dst_step + i] = src[i*src_step + j];
+            dst[(cols - 1 - j) * dst_step + i] = src[i * src_step + j];
         }
     }
 }
 
-void rotate(const Mat<uchar> &src, Mat<uchar> &dst,
-        bool clockwise)
-{
+void rotate(const Mat<uchar>& src, Mat<uchar>& dst, bool clockwise) {
     megdnn_assert(src.rows() == dst.cols());
     megdnn_assert(src.cols() == dst.rows());
     megdnn_assert(src.channels() == dst.channels());
     megdnn_assert(src.channels() == 1_z);
     if (clockwise) {
-        rotate_8uc1_clockwise(src.ptr(), dst.ptr(), src.rows(), src.cols(),
-                              src.step(), dst.step());
+        rotate_8uc1_clockwise(
+                src.ptr(), dst.ptr(), src.rows(), src.cols(), src.step(), dst.step());
     } else {
-        rotate_8uc1_counterclockwise(src.ptr(), dst.ptr(), src.rows(),
-                                     src.cols(), src.step(), dst.step());
+        rotate_8uc1_counterclockwise(
+                src.ptr(), dst.ptr(), src.rows(), src.cols(), src.step(), dst.step());
     }
 }
 
@@ -299,8 +267,8 @@ void rotate(const Mat<uchar> &src, Mat<uchar> &dst,
 
 namespace armv7 {
 
-void RotateImpl::exec(_megdnn_tensor_in src, _megdnn_tensor_in dst,
-                      _megdnn_workspace workspace) {
+void RotateImpl::exec(
+        _megdnn_tensor_in src, _megdnn_tensor_in dst, _megdnn_workspace workspace) {
     using namespace megcv;
     check_exec(src.layout, dst.layout, workspace.size);
 
@@ -309,14 +277,15 @@ void RotateImpl::exec(_megdnn_tensor_in src, _megdnn_tensor_in dst,
         return fallback::RotateImpl::exec(src, dst, workspace);
     }
 
+    auto clockwise = param().clockwise;
+
     MEGDNN_DISPATCH_CPU_KERN_OPR({
         for (size_t i = 0; i < src.layout.shape[0]; ++i) {
             Mat<uchar> src_mat = TensorND2Mat<uchar>(src, i);
             Mat<uchar> dst_mat = TensorND2Mat<uchar>(dst, i);
-            rotate(src_mat, dst_mat, param().clockwise);
+            rotate(src_mat, dst_mat, clockwise);
         }
     });
-
 }
 
 }  // namespace armv7

@@ -1,13 +1,4 @@
-/**
- * \file dnn/test/cuda/batched_matrix_mul.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
+#include <vector>
 #include "test/cuda/fixture.h"
 
 #include "test/common/checker.h"
@@ -62,60 +53,168 @@ TEST_F(CUDA, BATCHED_MATRIX_MUL_LT_F32_PART4) {
 
 #undef F32_TEST_PART
 
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_BROADCAST_PART1) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(), "CUBLAS", 1e-3,
+            matrix_mul::get_batched_matmul_broadcast_args_mask(0));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_BROADCAST_PART2) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(), "CUBLAS", 1e-3,
+            matrix_mul::get_batched_matmul_broadcast_args_mask(1));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_BROADCAST_PART3) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(), "CUBLAS", 1e-3,
+            matrix_mul::get_batched_matmul_broadcast_args_mask(2));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_BROADCAST_PART4) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(), "CUBLAS", 1e-3,
+            matrix_mul::get_batched_matmul_broadcast_args_mask(3));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_BRUTE_FORCE_PART1) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"BRUTE_FORCE", {{"CUBLAS", {}}}}, 1e-3,
+            matrix_mul::get_batched_matmul_args_mask(0));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_BRUTE_FORCE_PART2) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"BRUTE_FORCE", {{"CUBLAS", {}}}}, 1e-3,
+            matrix_mul::get_batched_matmul_args_mask(1));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_BRUTE_FORCE_PART3) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"BRUTE_FORCE", {{"CUBLAS", {}}}}, 1e-3,
+            matrix_mul::get_batched_matmul_args_mask(2));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_BRUTE_FORCE_PART4) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"BRUTE_FORCE", {{"CUBLAS", {}}}}, 1e-3,
+            matrix_mul::get_batched_matmul_args_mask(3));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_NAIVE_PART0) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"NAIVE_BMM"}, 1e-5,
+            matrix_mul::get_batched_matmul_args_mask(0));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_NAIVE_PART1) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"NAIVE_BMM"}, 1e-5,
+            matrix_mul::get_batched_matmul_args_mask(1));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_NAIVE_PART2) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"NAIVE_BMM"}, 1e-5,
+            matrix_mul::get_batched_matmul_args_mask(2));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F32_NAIVE_PART3) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float32{}, dtype::Float32{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"NAIVE_BMM"}, 1e-5,
+            matrix_mul::get_batched_matmul_args_mask(3));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F16_NAIVE_PART0) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"NAIVE_BMM"}, 1e-5,
+            matrix_mul::get_batched_matmul_args_mask(0));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F16_NAIVE_PART1) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"NAIVE_BMM"}, 1e-5,
+            matrix_mul::get_batched_matmul_args_mask(1));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F16_NAIVE_PART2) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"NAIVE_BMM"}, 1e-5,
+            matrix_mul::get_batched_matmul_args_mask(2));
+}
+
+TEST_F(CUDA, BATCHED_MATRIX_MUL_F16_NAIVE_PART3) {
+    matrix_mul::check_batched_matrix_mul(
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(),
+            ExecutionPolicyAlgoName{"NAIVE_BMM"}, 1e-5,
+            matrix_mul::get_batched_matmul_args_mask(3));
+}
+
 TEST_F(CUDA, BATCHED_MATRIX_MUL_F16_PART1) {
     require_compute_capability(6, 0);
     matrix_mul::check_batched_matrix_mul(
-            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS",
-            2e-2, matrix_mul::get_batched_matmul_args_mask(0));
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS", 2e-2,
+            matrix_mul::get_batched_matmul_args_mask(0));
 }
 
 TEST_F(CUDA, BATCHED_MATRIX_MUL_F16_PART2) {
     require_compute_capability(6, 0);
     matrix_mul::check_batched_matrix_mul(
-            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS",
-            2e-2, matrix_mul::get_batched_matmul_args_mask(1));
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS", 2e-2,
+            matrix_mul::get_batched_matmul_args_mask(1));
 }
 
 TEST_F(CUDA, BATCHED_MATRIX_MUL_F16_PART3) {
     require_compute_capability(6, 0);
     matrix_mul::check_batched_matrix_mul(
-            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS",
-            2e-2, matrix_mul::get_batched_matmul_args_mask(2));
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS", 2e-2,
+            matrix_mul::get_batched_matmul_args_mask(2));
 }
 
 TEST_F(CUDA, BATCHED_MATRIX_MUL_F16_PART4) {
     require_compute_capability(6, 0);
     matrix_mul::check_batched_matrix_mul(
-            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS",
-            2e-2, matrix_mul::get_batched_matmul_args_mask(3));
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS", 2e-2,
+            matrix_mul::get_batched_matmul_args_mask(3));
 }
 
 TEST_F(CUDA, BATCHED_MATRIX_MUL_CUBLASLT_F16_PART1) {
     require_compute_capability(7, 0);
     matrix_mul::check_batched_matrix_mul(
-            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS_LT",
-            2e-2, matrix_mul::get_batched_matmul_args_mask(0));
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS_LT", 2e-2,
+            matrix_mul::get_batched_matmul_args_mask(0));
 }
 
 TEST_F(CUDA, BATCHED_MATRIX_MUL_CUBLASLT_F16_PART2) {
     require_compute_capability(7, 0);
     matrix_mul::check_batched_matrix_mul(
-            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS_LT",
-            2e-2, matrix_mul::get_batched_matmul_args_mask(1));
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS_LT", 2e-2,
+            matrix_mul::get_batched_matmul_args_mask(1));
 }
 
 TEST_F(CUDA, BATCHED_MATRIX_MUL_CUBLASLT_F16_PART3) {
     require_compute_capability(7, 0);
     matrix_mul::check_batched_matrix_mul(
-            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS_LT",
-            2e-2, matrix_mul::get_batched_matmul_args_mask(2));
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS_LT", 2e-2,
+            matrix_mul::get_batched_matmul_args_mask(2));
 }
 
 TEST_F(CUDA, BATCHED_MATRIX_MUL_CUBLASLT_F16_PART4) {
     require_compute_capability(7, 0);
     matrix_mul::check_batched_matrix_mul(
-            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS_LT",
-            2e-2, matrix_mul::get_batched_matmul_args_mask(3));
+            dtype::Float16{}, dtype::Float16{}, {}, handle_cuda(), "CUBLAS_LT", 2e-2,
+            matrix_mul::get_batched_matmul_args_mask(3));
 }
 
 TEST_F(CUDA, BATCHED_MATRIX_MUL_CUBLASLT_INT8) {
@@ -128,29 +227,28 @@ TEST_F(CUDA, BATCHED_MATRIX_MUL_CUBLASLT_INT8) {
 TEST_F(CUDA, BATCHED_MATRIX_MUL_CUBLASLT_QS8) {
     require_compute_capability(7, 5);
     matrix_mul::check_batched_matrix_mul(
-            dtype::QuantizedS8(1.2f), dtype::QuantizedS8(1.3f), {},
-            handle_cuda(), "CUBLAS_LT", 1e-3,
-            matrix_mul::get_batched_matmul_args_cublaslt());
+            dtype::QuantizedS8(1.2f), dtype::QuantizedS8(1.3f), {}, handle_cuda(),
+            "CUBLAS_LT", 1e-3, matrix_mul::get_batched_matmul_args_cublaslt());
 }
 
 TEST_F(CUDA, BATCHED_MATRIX_MUL_QS8) {
-    matrix_mul::check_batched_matrix_mul(dtype::QuantizedS8(1.2f),
-                                         dtype::QuantizedS8(1.3f), {},
-                                         handle_cuda());
+    matrix_mul::check_batched_matrix_mul(
+            dtype::QuantizedS8(1.2f), dtype::QuantizedS8(1.3f), {}, handle_cuda());
 }
 
 TEST_F(CUDA, BATCHED_MATRIX_MUL_INT8x8x32) {
     require_compute_capability(6, 1);
     matrix_mul::check_batched_matrix_mul(
-            dtype::Int8{}, dtype::Int8{}, dtype::Int32{}, handle_cuda(),
-            "INT8x8x32", 1e-2, matrix_mul::get_batched_matmul_args_int8x8x32());
+            dtype::Int8{}, dtype::Int8{}, dtype::Int32{}, handle_cuda(), "INT8x8x32",
+            1e-2, matrix_mul::get_batched_matmul_args_int8x8x32());
 }
 
 #if MEGDNN_WITH_BENCHMARK
 TEST_F(CUDA, BATCHED_MATMUL_8x8x32_BENCHMARK) {
     require_compute_capability(6, 1);
     auto run = [&](bool transA, bool transB, size_t m, size_t n, size_t k,
-                   const char* algo1, const char* algo2, size_t b = 128) {
+                   const ExecutionPolicyAlgoName& algo1,
+                   const ExecutionPolicyAlgoName& algo2, size_t b = 128) {
         size_t RUNS = 10;
         CUBenchmarker<BatchedMatrixMul> bencher1(handle_cuda());
         bencher1.set_display(false).set_times(RUNS);
@@ -196,19 +294,20 @@ TEST_F(CUDA, BATCHED_MATMUL_8x8x32_BENCHMARK) {
         printf("trA: %d, trB: %d, m: %ld, n: %ld, k: %ld, b: %ld, speedup: %s "
                "/ "
                "%s %.3f\n",
-               transA, transB, m, n, k, b, algo1, algo2, flops1 / flops2);
+               transA, transB, m, n, k, b, algo1.name.c_str(), algo2.name.c_str(),
+               flops1 / flops2);
     };
 
     for (bool transA : {0, 1})
         for (bool transB : {0, 1}) {
             run(transA, transB, 128, 576, 128, "INT8x8x32",
-                "BRUTE_FORCE-CUBLAS");
+                ExecutionPolicyAlgoName{"BRUTE_FORCE", {{"CUBLAS", {}}}});
             run(transA, transB, 256, 144, 256, "INT8x8x32",
-                "BRUTE_FORCE-CUBLAS");
+                ExecutionPolicyAlgoName{"BRUTE_FORCE", {{"CUBLAS", {}}}});
             run(transA, transB, 512, 36, 512, "INT8x8x32",
-                "BRUTE_FORCE-CUBLAS");
+                ExecutionPolicyAlgoName{"BRUTE_FORCE", {{"CUBLAS", {}}}});
             run(transA, transB, 1024, 8, 1024, "INT8x8x32",
-                "BRUTE_FORCE-CUBLAS");
+                ExecutionPolicyAlgoName{"BRUTE_FORCE", {{"CUBLAS", {}}}});
         }
 }
 #endif

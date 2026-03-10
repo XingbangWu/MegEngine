@@ -1,33 +1,18 @@
-/**
- * \file dnn/src/common/cvt_color.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "megdnn/oprs.h"
 
 #include "src/common/utils.h"
 
 namespace megdnn {
 
-void CvtColorBase::deduce_layout_fwd(const TensorLayout& src,
-                                     TensorLayout& dst) {
+void CvtColorBase::deduce_layout_fwd(const TensorLayout& src, TensorLayout& dst) {
     auto errmsg = [&]() { return megdnn_layout_msg(src); };
     MEGDNN_MARK_USED_VAR(errmsg);
 
     auto mode = param().mode;
-    if (mode == Param::Mode::YUV2RGB_NV21 ||
-        mode == Param::Mode::YUV2BGR_NV21 ||
-        mode == Param::Mode::YUV2RGB_NV12 ||
-        mode == Param::Mode::YUV2BGR_NV12 ||
-        mode == Param::Mode::YUV2RGB_YV12 ||
-        mode == Param::Mode::YUV2BGR_YV12 ||
-        mode == Param::Mode::YUV2RGB_YU12 ||
-        mode == Param::Mode::YUV2BGR_YU12) {
+    if (mode == Param::Mode::YUV2RGB_NV21 || mode == Param::Mode::YUV2BGR_NV21 ||
+        mode == Param::Mode::YUV2RGB_NV12 || mode == Param::Mode::YUV2BGR_NV12 ||
+        mode == Param::Mode::YUV2RGB_YV12 || mode == Param::Mode::YUV2BGR_YV12 ||
+        mode == Param::Mode::YUV2RGB_YU12 || mode == Param::Mode::YUV2BGR_YU12) {
         megdnn_log_warn(
                 "Deprecated mode for cvtcolor, you should refer to the wiki "
                 "for detail usage");
@@ -42,8 +27,8 @@ void CvtColorBase::deduce_layout_fwd(const TensorLayout& src,
     }
 
     megdnn_assert(
-            src.ndim == 4_z && (src.shape[3] == 1_z || src.shape[3] == 3_z ||
-                                src.shape[3] == 4_z),
+            src.ndim == 4_z &&
+                    (src.shape[3] == 1_z || src.shape[3] == 3_z || src.shape[3] == 4_z),
             "%s", errmsg().c_str());
 
     size_t in = src.shape[0];
@@ -141,8 +126,7 @@ void CvtColorBase::deduce_layout_fwd(const TensorLayout& src,
     dst = TensorLayout(TensorShape({in, oh, ow, oc}), src.dtype);
 }
 
-void CvtColorBase::check_layout_fwd(const TensorLayout& src,
-                                    const TensorLayout& dst) {
+void CvtColorBase::check_layout_fwd(const TensorLayout& src, const TensorLayout& dst) {
     megdnn_assert_eq_dtype(src, dst);
     TensorLayout dst_expected;
     deduce_layout_fwd(src, dst_expected);
@@ -153,8 +137,8 @@ void CvtColor::deduce_layout(const TensorLayout& src, TensorLayout& dst) {
     deduce_layout_fwd(src, dst);
 }
 
-void CvtColor::check_exec(const TensorLayout& src, const TensorLayout& dst,
-                          size_t workspace_in_bytes) {
+void CvtColor::check_exec(
+        const TensorLayout& src, const TensorLayout& dst, size_t workspace_in_bytes) {
     check_layout_fwd(src, dst);
     megdnn_assert_contiguous(src);
     auto required_workspace_in_bytes = get_workspace_in_bytes(src, dst);

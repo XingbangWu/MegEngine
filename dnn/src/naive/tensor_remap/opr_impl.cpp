@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/naive/tensor_remap/opr_impl.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #include "src/naive/tensor_remap/opr_impl.h"
 
 #include "src/common/utils.h"
@@ -65,33 +54,33 @@ void backward(const TensorND& diff, const TensorND& map, const TensorND& grad) {
 
 }  // anonymous namespace
 
-void IndexingRemapForwardImpl::exec(_megdnn_tensor_in src,
-                                    _megdnn_tensor_in map,
-                                    _megdnn_tensor_out dst,
-                                    _megdnn_workspace workspace) {
+void IndexingRemapForwardImpl::exec(
+        _megdnn_tensor_in src, _megdnn_tensor_in map, _megdnn_tensor_out dst,
+        _megdnn_workspace workspace) {
+#if !MGE_BUILD_WITHOUT_NAIVE_EXEC
     check_exec(src.layout, map.layout, dst.layout, workspace.size);
     switch (src.layout.dtype.enumv()) {
-#define cb(dt)                                                  \
-    case DTypeTrait<dt>::enumv:                                 \
-        MEGDNN_DISPATCH_CPU_KERN_OPR(                           \
-                forward<DTypeTrait<dt>::ctype>(src, map, dst)); \
+#define cb(dt)                                                                       \
+    case DTypeTrait<dt>::enumv:                                                      \
+        MEGDNN_DISPATCH_CPU_KERN_OPR(forward<DTypeTrait<dt>::ctype>(src, map, dst)); \
         return;
-        cb(dtype::Float32)
-        cb(dtype::Int32)
+        cb(dtype::Float32) cb(dtype::Int32)
 #undef cb
 
-        default:
-            megdnn_throw(
-                    ssprintf("unsupported dtype %s in indexing "
-                             "remap forward naive\n",
-                             src.layout.dtype.name()));
+                default : megdnn_throw(ssprintf(
+                                  "unsupported dtype %s in indexing "
+                                  "remap forward naive\n",
+                                  src.layout.dtype.name()));
     }
+#else
+    __builtin_trap();
+#endif
 }
 
-void IndexingRemapBackwardImpl::exec(_megdnn_tensor_in diff,
-                                     _megdnn_tensor_in map,
-                                     _megdnn_tensor_out grad,
-                                     _megdnn_workspace workspace) {
+void IndexingRemapBackwardImpl::exec(
+        _megdnn_tensor_in diff, _megdnn_tensor_in map, _megdnn_tensor_out grad,
+        _megdnn_workspace workspace) {
+#if !MGE_BUILD_WITHOUT_NAIVE_EXEC
     check_exec(diff.layout, map.layout, grad.layout, workspace.size);
     switch (diff.layout.dtype.enumv()) {
 #define cb(dt)                                                     \
@@ -99,14 +88,16 @@ void IndexingRemapBackwardImpl::exec(_megdnn_tensor_in diff,
         MEGDNN_DISPATCH_CPU_KERN_OPR(                              \
                 backward<DTypeTrait<dt>::ctype>(diff, map, grad)); \
         return;
-        cb(dtype::Float32)
-        cb(dtype::Int32)
+        cb(dtype::Float32) cb(dtype::Int32)
 #undef cb
-        default:
-            megdnn_throw(ssprintf(
-                    "unsupported dtype %s in indexing remap backward naive\n",
-                    diff.layout.dtype.name()));
+                default
+                : megdnn_throw(ssprintf(
+                          "unsupported dtype %s in indexing remap backward naive\n",
+                          diff.layout.dtype.name()));
     }
+#else
+    __builtin_trap();
+#endif
 }
 
 // vim: syntax=cpp.doxygen

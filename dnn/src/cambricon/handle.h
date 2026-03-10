@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/cambricon/handle.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 #include "megcore_cambricon.h"
 #include "megdnn/basic_types.h"
@@ -20,6 +10,7 @@
 #include <atomic>
 #include <mutex>
 
+#include <cnnl.h>
 #include <cnrt.h>
 
 namespace megdnn {
@@ -32,7 +23,7 @@ public:
 
     size_t alignment_requirement() const override;
 
-    const cnrtDeviceInfo_t& device_info() const { return m_device_info; }
+    const cnrtDeviceProp_t& device_info() const { return m_device_info; }
 
     template <typename Opr>
     std::unique_ptr<Opr> create_operator();
@@ -44,6 +35,10 @@ public:
     int device_id() const { return m_device_id; }
 
     cnrtQueue_t queue() const { return megcore_context().queue; }
+    cnnlHandle_t cnnl_handle() const { return megcore_context().cnnl_handle; };
+
+    void* alloc(size_t size);
+    void free(void* ptr);
 
     //! global matmul opr
     Checksum* checksum_opr() override final {
@@ -55,11 +50,10 @@ private:
     //! MegDNN handle does not manage the lifetime of cnrt queue.
     megcore::CambriconContext m_megcore_context;
 
-    cnrtDeviceInfo_t m_device_info;
+    cnrtDeviceProp_t m_device_info;
 };
 
 }  // namespace cambricon
 }  // namespace megdnn
 
 // vim: syntax=cpp.doxygen
-

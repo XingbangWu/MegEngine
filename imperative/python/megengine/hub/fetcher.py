@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import hashlib
 import os
 import re
@@ -18,6 +11,7 @@ from zipfile import ZipFile
 import requests
 from tqdm import tqdm
 
+from megengine import __version__
 from megengine.utils.http_download import (
     CHUNK_SIZE,
     HTTP_CONNECTION_TIMEOUT,
@@ -101,24 +95,18 @@ class GitSSHFetcher(RepoFetcherBase):
         commit: str = None,
         silent: bool = True,
     ) -> str:
-        """
-        Fetches git repo by SSH protocol
+        """Fetches git repo by SSH protocol
 
-        :param git_host:
-            host address of git repo.
-            Example: github.com
-        :param repo_info:
-            a string with format ``"repo_owner/repo_name[:tag_name/:branch_name]"`` with an optional
-            tag/branch. The default branch is ``master`` if not specified.
-            Example: ``"brain_sdk/MegBrain[:hub]"``
-        :param use_cache:
-            whether to use locally fetched code or completely re-fetch.
-        :param commit:
-            commit id on github or gitlab.
-        :param silent:
-            whether to accept the stdout and stderr of the subprocess with PIPE, instead of
-            displaying on the screen.
-        :return:
+        Args:
+            git_host: host address of git repo. Eg: github.com
+            repo_info: a string with format ``"repo_owner/repo_name[:tag_name/:branch_name]"`` with an optional
+                tag/branch. The default branch is ``master`` if not specified. Eg: ``"brain_sdk/MegBrain[:hub]"``
+            use_cache: whether to use locally fetched code or completely re-fetch.
+            commit: commit id on github or gitlab.
+            silent: whether to accept the stdout and stderr of the subprocess with PIPE, instead of
+                displaying on the screen.
+
+        Returns:
             directory where the repo code is stored.
         """
         if not cls._check_git_host(git_host):
@@ -129,7 +117,9 @@ class GitSSHFetcher(RepoFetcherBase):
         repo_dir_raw = "{}_{}_{}".format(
             repo_owner, repo_name, normalized_branch_info
         ) + ("_{}".format(commit) if commit else "")
-        repo_dir = cls._gen_repo_dir(repo_dir_raw)
+        repo_dir = (
+            "_".join(__version__.split(".")) + "_" + cls._gen_repo_dir(repo_dir_raw)
+        )
         git_url = "git@{}:{}/{}.git".format(git_host, repo_owner, repo_name)
 
         if use_cache and os.path.exists(repo_dir):  # use cache
@@ -214,24 +204,19 @@ class GitHTTPSFetcher(RepoFetcherBase):
         commit: str = None,
         silent: bool = True,
     ) -> str:
-        """
-        Fetches git repo by HTTPS protocol.
+        """Fetches git repo by HTTPS protocol.
 
-        :param git_host:
-            host address of git repo.
-            Example: github.com
-        :param repo_info:
-            a string with format ``"repo_owner/repo_name[:tag_name/:branch_name]"`` with an optional
-            tag/branch. The default branch is ``master`` if not specified.
-            Example: ``"brain_sdk/MegBrain[:hub]"``
-        :param use_cache:
-            whether to use locally cached code or completely re-fetch.
-        :param commit:
-            commit id on github or gitlab.
-        :param silent:
-            whether to accept the stdout and stderr of the subprocess with PIPE, instead of
-            displaying on the screen.
-        :return:
+        Args:
+            git_host: host address of git repo. Eg: github.com
+            repo_info: a string with format ``"repo_owner/repo_name[:tag_name/:branch_name]"`` with an optional
+                tag/branch. The default branch is ``master`` if not specified. Eg: ``"brain_sdk/MegBrain[:hub]"``
+            use_cache: whether to use locally cached code or completely re-fetch.
+            commit: commit id on github or gitlab.
+            silent: whether to accept the stdout and stderr of the subprocess with PIPE, instead of
+                displaying on the screen.
+ 
+
+        Returns:
             directory where the repo code is stored.
         """
         if not cls._check_git_host(git_host):
@@ -242,7 +227,9 @@ class GitHTTPSFetcher(RepoFetcherBase):
         repo_dir_raw = "{}_{}_{}".format(
             repo_owner, repo_name, normalized_branch_info
         ) + ("_{}".format(commit) if commit else "")
-        repo_dir = cls._gen_repo_dir(repo_dir_raw)
+        repo_dir = (
+            "_".join(__version__.split(".")) + "_" + cls._gen_repo_dir(repo_dir_raw)
+        )
         archive_url = cls._git_archive_link(
             git_host, repo_owner, repo_name, branch_info, commit
         )

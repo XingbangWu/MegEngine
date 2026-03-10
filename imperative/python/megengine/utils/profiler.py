@@ -1,272 +1,335 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-import base64
 import json
 import os
 import re
-from typing import Iterable, List, Optional
+from contextlib import ContextDecorator, contextmanager
+from functools import wraps
+from typing import List
+from weakref import WeakSet
 
-from ..core._imperative_rt import OperatorNodeConfig, ProfileEntry
-from ..core._imperative_rt import ProfilerImpl as _Profiler
-from ..core._imperative_rt.imperative import sync
-from ..core._imperative_rt.ops import CollectiveComm
+from .. import _atexit
+from ..core._imperative_rt.core2 import Tensor as raw_tensor
+from ..core._imperative_rt.core2 import (
+    cupti_available,
+    disable_cupti,
+    enable_cupti,
+    full_sync,
+    pop_scope,
+    pop_scope_with_type,
+    push_scope,
+    push_scope_with_type,
+    set_python_backtrace,
+    start_profile,
+    stop_profile,
+    stop_step,
+    sync,
+)
+from ..logger import get_logger
 
-
-def _make_dict(**kwargs):
-    unused_keys = []
-    for k, v in kwargs.items():
-        if v is None:
-            unused_keys.append(k)
-    for k in unused_keys:
-        del kwargs[k]
-    return kwargs
-
-
-def _print_opnode_config(config):
-    return _make_dict(
-        name=config.name, dtype=config.dtype, comp_node_arr=config.comp_node_arr,
-    )
-
-
-def _dump_chrome_timeline(entries: List[ProfileEntry], path: str):
-    pid = os.getpid()
-    trace_events = []
-
-    def append_event(**kwargs):
-        trace_events.append(_make_dict(**kwargs))
-
-    for id, entry in enumerate(entries):
-        op = entry.op
-        name = type(op).__name__
-        host_begin, host_end = entry.host
-        device_list = entry.device_list
-        args = Profiler.fetch_attrs(op)
-        args["__id__"] = "[{}]".format(id)
-        cat = name
-        for ts, ph in [(host_begin, "B"), (host_end, "E")]:
-            append_event(
-                name=name, ph=ph, ts=ts * 1000, pid=pid, tid="host", args=args, cat=cat,
-            )
-        for device, device_begin, device_end in device_list:
-            for ts, ph in [(device_begin(), "B"), (device_end(), "E")]:
-                append_event(
-                    name=name, ph=ph, ts=ts * 1000, pid=pid, tid=str(device), args=args,
-                )
-    with open("{}.chrome_timeline.json".format(path), "w") as f:
-        json.dump(trace_events, f, indent=2)
+_running_profiler = None
+_living_profilers = WeakSet()
 
 
-def _dump_compatible(entries: List[ProfileEntry], path: str):
-    obj = {
-        "graph_exec": {"var": [], "operator": {}},
-        "profiler": {"device": {}, "host": {}, "opr_footprint": {}},
-    }
-    var_list = obj["graph_exec"]["var"]
-    operator_dict = obj["graph_exec"]["operator"]
-    device_dict = obj["profiler"]["device"]
-    host_dict = obj["profiler"]["host"]
-    opr_foot_print_dict = obj["profiler"]["opr_footprint"]
+class Profiler(ContextDecorator):
+    r"""Profile graph execution in imperative mode.
 
-    def add_var(var) -> int:
-        var_id = len(var_list)
-        var_list.append(
-            {"comp_node": str(var[2]),}
-        )
-        return var_id
-
-    for op_id, entry in enumerate(entries):
-        operator_dict[op_id] = {
-            "input": [add_var(var) for var in entry.inputs],
-            "output": [add_var(var) for var in entry.outputs],
-            "name": str(entry.op.ctype()),
-            "type": "imperative",
-            "id": entry.id,
-        }
-        op_device_dict = {}
-        for device, device_begin, device_end in entry.device_list:
-            op_device_dict[str(device)] = {
-                "start": device_begin(),
-                "kern": device_begin(),
-                "end": device_end(),
-            }
-        device_dict[op_id] = op_device_dict
-        host_begin, host_end = entry.host
-        host_dict[op_id] = {
-            "host": {"start": host_begin, "kern": host_begin, "end": host_end}
-        }
-        opr_footprint = {
-            "out_shapes": [oup[1] for oup in entry.outputs],
-            "in_shapes": [inp[1] for inp in entry.inputs],
-            "params": {},
-        }
-        if entry.memory > 0:
-            opr_footprint["memory"] = entry.memory
-        if entry.computation > 0:
-            opr_footprint["computation"] = entry.computation
-        opr_foot_print_dict[op_id] = opr_footprint
-    with open("{}.compatible.json".format(path), "w") as f:
-        json.dump(obj, f, indent=2)
-
-
-def _dump_graphviz(entries: List[ProfileEntry], path: str):
-    import json
-
-    import graphviz
-
-    graph = graphviz.Digraph()
-    graph.graph_attr["ordering"] = "out"
-    var_cache = {}
-
-    def cache_var(var_id, var_shape):
-        if var_id not in var_cache:
-            var_name = "var({})".format(var_id)
-            var_label = "{}\nshape:{}\n".format(var_name, shape)
-            graph.node(var_name, var_label)
-            var_cache[var_id] = var_name
-        return var_cache[var_id]
-
-    for op_id, entry in enumerate(entries):
-        op = entry.op
-        op_name = "op({})".format(op_id)
-        op_type = type(op).__name__
-        op_attrs = Profiler.fetch_attrs(op)
-        label_lines = []
-        if "param" in op_attrs:
-            del op_attrs["param"]
-        label_lines.append("{}:{}".format(op_name, op_type))
-        for k, v in op_attrs.items():
-            label_lines.append("attr[{}]: {}".format(k, v))
-        op_param_str = entry.param
-        if len(op_param_str) > 0:
-            op_param = json.loads(op_param_str)
-            for k, v in op_param.items():
-                label_lines.append("param[{}]:{}".format(k, v))
-        host_begin, host_end = entry.host
-        label_lines.append("time[host]: {:f}ms".format(host_end - host_begin))
-        for device, device_begin, device_end in entry.device_list:
-            device_time = device_end() - device_begin()
-            label_lines.append("time[{}]: {:f}ms".format(device, device_time))
-        op_label = "\n".join(label_lines)
-        graph.node(op_name, op_label, shape="rectangle")
-        for var_id, shape, device in entry.inputs:
-            graph.edge(cache_var(var_id, shape), op_name)
-        for var_id, shape, device in entry.outputs:
-            graph.edge(op_name, cache_var(var_id, shape))
-    graph.save("{}.graphviz.dot".format(path))
-
-
-class Profiler:
-    r"""
-    Profile graph execution in imperative mode.
-
-    :type path: Optional[str]
-    :param path: default path prefix for profiler to dump.
-
+    Args:
+        path: default path prefix for profiler to dump.
+        with_backtrace: Whether to record backtrace information for ops.
+        with_scopes: Whether to keep more scopes to record record module/functional hierarchy. Enabling this option will slow down your program execution.
+    
     Examples:
+    
+        .. code-block::
 
-    .. code-block::
+           import megengine as mge
+           import megengine.module as M
+           from megengine.utils.profiler import Profiler
 
-        import megengine as mge
-        import megengine.module as M
-        from megengine.utils.profiler import Profiler
+           # With Learnable Parameters
+           profiler = Profiler()
 
-        # With Learnable Parameters
-        for iter in range(0, 10):
-            # Only profile record of last iter would be saved
-            with Profiler("profile"):
-                # your code here
-        
-        # Then open the profile file in chrome timeline window
+           for iter in range(0, 10):
+           # Only profile record of last iter would be saved
+
+              with profiler:
+                 # your code here
+
+           # Then open the profile file in chrome timeline window
     """
 
-    CHROME_TIMELINE = "chrome_timeline"
-    COMPATIBLE = "compatible"
-    GRAPHVIZ = "graphviz"
+    CHROME_TIMELINE = "chrome_timeline.json"
 
-    WITH_FOOTPRINT = 1
-
-    _type_map = {
-        OperatorNodeConfig: lambda x: _print_opnode_config(x),
-        bytes: lambda x: base64.encodebytes(x).decode("ascii"),
-        CollectiveComm.Mode: lambda x: str(x),
+    valid_options = {
+        "sample_rate": 0,
+        "profile_device": 1,
+        "num_tensor_watch": 10,
+        "enable_cupti": 0,
     }
-
-    _dumper_map = {
-        CHROME_TIMELINE: _dump_chrome_timeline,
-        COMPATIBLE: _dump_compatible,
-        GRAPHVIZ: _dump_graphviz,
-    }
+    valid_formats = {"chrome_timeline.json", "memory_flow.svg"}
 
     def __init__(
         self,
         path: str = "profile",
-        *,
-        formats: Iterable[str] = (CHROME_TIMELINE,),
-        type_filter: str = ".*",
-        exit_dump: bool = True
+        format: str = "chrome_timeline.json",
+        formats: List[str] = None,
+        with_backtrace: bool = False,
+        with_scopes: bool = False,
+        **kwargs
     ) -> None:
-        self._impl = _Profiler()
+        if not formats:
+            formats = [format]
+
+        assert not isinstance(formats, str), "formats excepts list, got str"
+
+        for format in formats:
+            assert format in Profiler.valid_formats, "unsupported format {}".format(
+                format
+            )
+
         self._path = path
+        self._formats = formats
+        self._options = {}
+        for opt, optval in Profiler.valid_options.items():
+            self._options[opt] = int(kwargs.pop(opt, optval))
+        self._pid = "<PID>"
+        self._dump_callback = None
+        self._api_patcher = None
+        self._with_scopes = with_scopes
+        if self._options.get("enable_cupti", 0):
+            if cupti_available():
+                enable_cupti()
+            else:
+                get_logger().warning("CuPTI unavailable")
+        self.with_backtrace = with_backtrace
 
-        if isinstance(formats, str):
-            formats = (formats,)
+    @property
+    def path(self):
+        if len(self._formats) == 0:
+            format = "<FORMAT>"
+        elif len(self._formats) == 1:
+            format = self._formats[0]
+        else:
+            format = "{" + ",".join(self._formats) + "}"
+        return self.format_path(self._path, self._pid, format)
 
-        self._filter = type_filter
-        self._dumpers = [Profiler._dumper_map[fmt] for fmt in formats]
-        self._exit_dump = exit_dump
+    @property
+    def directory(self):
+        return self._path
 
-    def __enter__(self):
-        sync()
-        self._impl.start(Profiler.WITH_FOOTPRINT)
+    @property
+    def _patcher(self):
+        if self._api_patcher != None:
+            return self._api_patcher
+        from ..traced_module.module_tracer import Patcher, module_tracer
+        from ..module import Module
+
+        def wrap_tensormethod_and_functional(origin_fn):
+            def get_tensormeth_name(obj, func):
+                tp = obj if isinstance(obj, type) else type(obj)
+                if not issubclass(tp, raw_tensor):
+                    return None
+                for cls in tp.mro():
+                    for k, v in cls.__dict__.items():
+                        if v == func:
+                            return k
+                return None
+
+            @wraps(origin_fn)
+            def wrapped_fn(*args, **kwargs):
+                methname = (
+                    get_tensormeth_name(args[0], wrapped_fn) if len(args) > 0 else None
+                )
+                name, scope_type = (
+                    ("tensor." + methname, "tensor_method")
+                    if methname is not None
+                    else (origin_fn.__name__, "functional")
+                )
+                push_scope_with_type(name, scope_type)
+                rst = origin_fn(*args, **kwargs)
+                pop_scope_with_type(name, scope_type)
+                return rst
+
+            return wrapped_fn
+
+        def wrap_module_call(origin_fn):
+            @wraps(origin_fn)
+            def wrapped_fn(*args, **kwargs):
+                is_builtin_module = module_tracer.is_builtin(type(args[0]))
+                if not is_builtin_module:
+                    return origin_fn(*args, **kwargs)
+                name, scope_type = type(args[0]).__name__, "module"
+                push_scope_with_type(name, scope_type)
+                rst = origin_fn(*args, **kwargs)
+                pop_scope_with_type(name, scope_type)
+                return rst
+
+            return wrapped_fn
+
+        self._api_patcher = Patcher(wrap_tensormethod_and_functional)
+        self._api_patcher.patch_method(Module, "__call__", wrap_module_call)
+        return self._api_patcher
+
+    @property
+    def formats(self):
+        return list(self._formats)
+
+    def start(self):
+        global _running_profiler
+
+        assert _running_profiler is None
+        _running_profiler = self
+        self._pid = os.getpid()
+        start_profile(self._options)
+        self._origin_enable_bt = set_python_backtrace(self.with_backtrace)
         return self
 
+    def stop(self):
+        global _running_profiler
+
+        assert _running_profiler is self
+        _running_profiler = None
+        full_sync()
+        self._dump_callback = stop_profile()
+        self._pid = os.getpid()
+        _living_profilers.add(self)
+        set_python_backtrace(self._origin_enable_bt)
+
+    def step(self):
+        global _running_profiler
+
+        assert _running_profiler is not None
+        stop_step()
+        return self
+
+    def dump(self):
+        if self._dump_callback is not None:
+            if not os.path.exists(self._path):
+                os.makedirs(self._path)
+            if not os.path.isdir(self._path):
+                get_logger().warning(
+                    "{} is not a directory, cannot write profiling results".format(
+                        self._path
+                    )
+                )
+                return
+            for format in self._formats:
+                path = self.format_path(self._path, self._pid, format)
+                get_logger().info("process {} generating {}".format(self._pid, format))
+                self._dump_callback(path, format)
+                get_logger().info("profiling results written to {}".format(path))
+                if os.path.getsize(path) > 64 * 1024 * 1024:
+                    get_logger().warning(
+                        "profiling results too large, maybe you are profiling multi iters,"
+                        "consider attach profiler in each iter separately"
+                    )
+            self._dump_callback = None
+            _living_profilers.remove(self)
+
+    def format_path(self, path, pid, format):
+        return os.path.join(path, "{}.{}".format(pid, format))
+
+    def __enter__(self):
+        self.start()
+        if self._with_scopes:
+            self._patcher.__enter__()
+
     def __exit__(self, val, tp, trace):
-        if self._exit_dump:
-            self.dump()
-        sync()
-        self._impl.stop()
-        self._impl.clear()
-
-    @classmethod
-    def fetch_attrs(cls, op):
-        attrs = dir(op)
-        results = {}
-        for attr in attrs:
-            if attr.startswith("_"):
-                continue
-            value = op.__getattribute__(attr)
-            if callable(value):
-                continue
-            value_type = type(value)
-            if value_type in cls._type_map:
-                value = cls._type_map[value_type](value)
-            results[attr] = value
-        return results
-
-    def dump(self, path: Optional[str] = None):
-        sync()
-        raw = [
-            entry
-            for entry in self._impl.dump()
-            if re.match(self._filter, type(entry.op).__name__)
-        ]
-        if path is None:
-            path = self._path
-        for dumper in self._dumpers:
-            dumper(raw, path)
+        self.stop()
+        if self._with_scopes and self._api_patcher is not None:
+            self._api_patcher.__exit__(val, tp, trace)
+        self._api_patcher = None
 
     def __call__(self, func):
-        def wrapper(*args, **kwargs):
-            with self:
-                return func(*args, **kwargs)
+        func = super().__call__(func)
+        func.__profiler__ = self
+        return func
 
-        return wrapper
+    def __del__(self):
+        if self._options.get("enable_cupti", 0):
+            if cupti_available():
+                disable_cupti()
+        self.dump()
 
 
-profile = Profiler
+@contextmanager
+def scope(name):
+    push_scope(name)
+    yield
+    pop_scope(name)
+
+
+def profile(*args, **kwargs):
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        return Profiler()(args[0])
+    return Profiler(*args, **kwargs)
+
+
+def merge_trace_events(directory: str):
+    names = filter(
+        lambda x: re.match(r"\d+\.chrome_timeline\.json", x), os.listdir(directory)
+    )
+
+    def load_trace_events(name):
+        with open(os.path.join(directory, name), "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def find_metadata(content):
+        if isinstance(content, dict):
+            assert "traceEvents" in content
+            content = content["traceEvents"]
+        if len(content) == 0:
+            return None
+        assert content[0]["name"] == "Metadata"
+        return content[0]["args"]
+
+    contents = list(map(load_trace_events, names))
+
+    metadata_list = list(map(find_metadata, contents))
+
+    min_local_time = min(
+        map(lambda x: x["localTime"], filter(lambda x: x is not None, metadata_list))
+    )
+
+    events = []
+
+    for content, metadata in zip(contents, metadata_list):
+        local_events = content["traceEvents"]
+        if len(local_events) == 0:
+            continue
+
+        local_time = metadata["localTime"]
+        time_shift = local_time - min_local_time
+
+        for event in local_events:
+            if "ts" in event:
+                event["ts"] = int(event["ts"] + time_shift)
+
+        events.extend(filter(lambda x: x["name"] != "Metadata", local_events))
+
+    result = {
+        "traceEvents": events,
+    }
+
+    path = os.path.join(directory, "merge.chrome_timeline.json")
+
+    with open(path, "w") as f:
+        json.dump(result, f, ensure_ascii=False, separators=(",", ":"))
+
+    get_logger().info("profiling results written to {}".format(path))
+
+
+def is_profiling():
+    return _running_profiler is not None
+
+
+def _stop_current_profiler():
+    global _running_profiler
+    if _running_profiler is not None:
+        _running_profiler.stop()
+    living_profilers = [*_living_profilers]
+    for profiler in living_profilers:
+        profiler.dump()
+
+
+_atexit(_stop_current_profiler)

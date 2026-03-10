@@ -1,27 +1,32 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import collections
 import json
 import os
-import threading
 import weakref
-from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Dict, List, Union
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 
 from .. import _imperative_rt
-from .._imperative_rt import GraphOptimizeOptions
-from .._imperative_rt.ops import BackwardGraph
-from .._wrap import device as as_device
+from .._imperative_rt import GraphOptimizeOptions, SerializationFormat
+from .._imperative_rt.core2 import apply
+from .._wrap import as_device
 from ..ops.builtin import OpDef
-from .core import OpBase, TensorBase, apply
+
+
+def set_priority_to_id(dest_vars):
+    r"""For all oprs in the subgraph constructed by dest_vars,
+    sets its priority to id if its original priority is zero.
+
+    Args:
+        dest_vars: target vars representing the graph.
+    """
+    dest_vec = []
+    for i in dest_vars:
+        assert isinstance(i, _imperative_rt.VarNode)
+        dest_vec.append(i)
+    _imperative_rt.graph._set_priority_to_id(dest_vec)
 
 
 class Graph(_imperative_rt.ComputingGraph):
@@ -43,6 +48,9 @@ class Graph(_imperative_rt.ComputingGraph):
         if obj not in cache:
             cache[obj] = wrapper(obj)
         return cache[obj]
+
+    def _set_priority_to_id(self, dest_vars):
+        set_priority_to_id(_unwrap(dest_vars))
 
     def compile(self, *args):
         self._function = super().compile(_unwrap(args))
@@ -79,7 +87,7 @@ class Graph(_imperative_rt.ComputingGraph):
         data = data.numpy()
         return self._wrap(_imperative_rt.make_const(self, data, device, data.dtype))
 
-    def make_const(self, data, dtype=None, device=None):
+    def make_const(self, data, dtype=None, device=None, name=None):
         if isinstance(data, _imperative_rt.DeviceTensorND):
             assert dtype is None and device is None
             return self._wrap(_imperative_rt.make_shared(self, data))
@@ -90,7 +98,9 @@ class Graph(_imperative_rt.ComputingGraph):
             elif data.dtype == np.int64:
                 data = data.astype(np.int32)
             device = as_device(device).to_c()
-            return self._wrap(_imperative_rt.make_const(self, data, device, dtype))
+            return self._wrap(
+                _imperative_rt.make_const(self, data, device, dtype, name)
+            )
 
     def make_input(self, *args: "VarNode", device=None, dtype=None, shape=None):
         opnode = InputNode(*args, device=device, dtype=dtype, shape=shape, graph=self)
@@ -100,11 +110,18 @@ class Graph(_imperative_rt.ComputingGraph):
         device = as_device(device).to_c()
         return self._wrap(_imperative_rt.make_h2d(self, device, dtype, shape, name))
 
+    def _to_json(self, filename):
+        # debug interface
+        if self._function:
+            js = json.loads(self._function._to_json())
+            json.dump(js, open(filename, "w"))
+        else:
+            print("this function should be called after compilation.")
 
-class VarNode(TensorBase):
-    def __init__(self, node: _imperative_rt.VarNode, isscalar=False):
+
+class VarNode:
+    def __init__(self, node: _imperative_rt.VarNode):
         self._node = node
-        self._isscalar = isscalar
         if hasattr(self.graph, "_var_cache"):
             self.graph._var_cache[node] = self
 
@@ -194,49 +211,52 @@ class OpNode:
 
 
 def optimize_for_inference(dest_vars, **kwargs):
-    r"""
-    Applies optimize_for_inference pass for computing graph.
+    r"""Applies optimize_for_inference pass for computing graph.
 
-        :param dest_vars: list of output vars in the computing graph
+    Args:
+        dest_vars: list of output vars in the computing graph
 
-        :Keyword Arguments:
+    Keyword Arguments:
 
-            * enable_io16xc32 --
-                whether to use float16 for I/O between oprs and use
-                float32 as internal computation precision. Note the output var would be
-                changed to float16.
-            * enable_ioc16 --
-                whether to use float16 for both I/O and computation
-                precision.
-
-            * enable_hwcd4 --
-                whether to use NHWCD4 data layout. This is faster on some
-                OpenCL backend.
-            * enable_nchw88 --
-                whether to use NCHW88 data layout, currently
-                used in X86 AVX backend.
-            * enable_nchw44 --
-                whether to use NCHW44 data layout, currently
-                used in arm backend.
-            * enable_nchw44_dot --
-                whether to use NCHW44_dot data layout, currently
-                used in armv8.2+dotprod backend.
-            * enable_nchw4 --
-                whether to use NCHW4 data layout, currently
-                used in nvidia backend(based on cudnn).
-            * enable_nchw32 --
-                whether to use NCHW32 data layout, currently
-                used in nvidia backend with tensorcore(based on cudnn).
-            * enable_chwn4 --
-                whether to use CHWN4 data layout, currently
-                used in nvidia backend with tensorcore.
-
-            * enable_fuse_conv_bias_nonlinearity: whether to fuse conv+bias+nonlinearty
-                into one opr.
-            * enable_fuse_conv_bias_with_z: whether to fuse conv_bias with z
-                input for inference on nvidia backend(this optimization pass will
-                result in mismatch of the precision of output of training and
-                inference)
+        * enable_io16xc32 --
+          whether to use float16 for I/O between oprs and use
+          float32 as internal computation precision. Note the output var would be
+          changed to float16.
+        * enable_ioc16 --
+          whether to use float16 for both I/O and computation
+          precision.
+        * enable_hwcd4 --
+          whether to use NHWCD4 data layout. This is faster on some
+          OpenCL backend.
+        * enable_nchw88 --
+          whether to use NCHW88 data layout, currently
+          used in X86 AVX backend.
+        * enable_nchw44 --
+          whether to use NCHW44 data layout, currently
+          used in arm backend.
+        * enable_nchw44_dot --
+          whether to use NCHW44_dot data layout, currently
+          used in armv8.2+dotprod backend.
+        * enable_nchw4 --
+          whether to use NCHW4 data layout, currently
+          used in nvidia backend(based on cudnn).
+        * enable_nchw32 --
+          whether to use NCHW32 data layout, currently
+          used in nvidia backend with tensorcore(based on cudnn).
+        * enable_chwn4 --
+          whether to use CHWN4 data layout, currently
+          used in nvidia backend with tensorcore.
+        * enable_nchw64 --
+          whether to use NCHW64 data layout, used for fast int4
+          support on Nvidia GPU.
+        * enable_fuse_conv_bias_nonlinearity: whether to fuse conv+bias+nonlinearty
+          into one opr.
+        * enable_fuse_conv_bias_with_z: whether to fuse conv_bias with z
+          input for inference on nvidia backend(this optimization pass will
+          result in mismatch of the precision of output of training and
+          inference
+        * enable_fuse_grain: fuse grain will be enable by default to fuse grain operator to huge operator, you can disable it.
+          )
     """
     inference_options = GraphOptimizeOptions()
     inference_optimize_layout_transform_map = {
@@ -247,6 +267,7 @@ def optimize_for_inference(dest_vars, **kwargs):
         "enable_nchw44": GraphOptimizeOptions.LayoutTransform.NCHW44,
         "enable_nchw44_dot": GraphOptimizeOptions.LayoutTransform.NCHW44_DOT,
         "enable_chwn4": GraphOptimizeOptions.LayoutTransform.CHWN4,
+        "enable_nchw64": GraphOptimizeOptions.LayoutTransform.NCHW64,
     }
 
     for k, v in inference_optimize_layout_transform_map.items():
@@ -261,14 +282,74 @@ def optimize_for_inference(dest_vars, **kwargs):
         inference_options.fuse_conv_bias_nonlinearity = True
     if kwargs.pop("enable_fuse_conv_bias_with_z", False):
         inference_options.fuse_conv_bias_with_z = True
+    if kwargs.pop("enable_fuse_preprocess", False):
+        inference_options.fuse_preprocess = True
+    if kwargs.pop("enable_fuse_grain", True):
+        inference_options.fuse_grain = True
 
     if kwargs:
         raise ValueError("unknown options: %s" % list(kwargs))
 
-    res_vars = _imperative_rt.optimize_for_inference(
-        [i._node for i in dest_vars], inference_options
-    )
-    return [VarNode(i) for i in res_vars]
+    dest_vars = _unwrap(dest_vars)
+    res_vars = _imperative_rt.optimize_for_inference(dest_vars, inference_options)
+    return _wrap(res_vars), inference_options.serialize()
+
+
+def deserialize_infer_option(x: int) -> Dict[str, bool]:
+    r"""Deserailize optimize options generated by ``imperative_rt.GraphOptimizeOptions``.
+
+    Args:
+        x: inference options represented by int.
+
+    Returns:
+        inference options represented by dict.
+    """
+
+    inference_options = GraphOptimizeOptions.deserialize(x)
+
+    inference_optimize_layout_transform_map = {
+        GraphOptimizeOptions.LayoutTransform.NHWCD4: "enable_hwcd4",
+        GraphOptimizeOptions.LayoutTransform.NCHW4: "enable_nchw4",
+        GraphOptimizeOptions.LayoutTransform.NCHW88: "enable_nchw88",
+        GraphOptimizeOptions.LayoutTransform.NCHW32: "enable_nchw32",
+        GraphOptimizeOptions.LayoutTransform.NCHW44: "enable_nchw44",
+        GraphOptimizeOptions.LayoutTransform.NCHW44_DOT: "enable_nchw44_dot",
+        GraphOptimizeOptions.LayoutTransform.CHWN4: "enable_chwn4",
+        GraphOptimizeOptions.LayoutTransform.NCHW64: "enable_nchw64",
+    }
+
+    ret = dict()
+
+    layout = inference_options.layout_transform
+    if layout != GraphOptimizeOptions.LayoutTransform.DEFAULT:
+        ret[inference_optimize_layout_transform_map[layout]] = True
+
+    if inference_options.f16_io_f32_comp:
+        ret["enable_io16xc32"] = True
+    if inference_options.f16_io_comp:
+        ret["enable_ioc16"] = True
+    if inference_options.fuse_conv_bias_nonlinearity:
+        ret["enable_fuse_conv_bias_nonlinearity"] = True
+    if inference_options.fuse_conv_bias_with_z:
+        ret["enable_fuse_conv_bias_with_z"] = True
+    if inference_options.fuse_preprocess:
+        ret["enable_fuse_preprocess"] = True
+    if inference_options.fuse_grain:
+        ret["enable_fuse_grain"] = True
+
+    return ret
+
+
+def modify_opr_algo_strategy_inplace(dest_vars, strategy: str):
+    r"""C++ graph version of :func:`~.set_execution_strategy`. Used to inplacely modify
+    dumped graph's fast-run strategy.
+
+    Args:
+        dest_vars: list of output vars in the computing graph.
+        strategy: fast-run algorithms strategy.
+    """
+    dest_vars = _unwrap(dest_vars)
+    _imperative_rt.modify_opr_algo_strategy_inplace(dest_vars, strategy)
 
 
 CompGraphDumpResult = collections.namedtuple(
@@ -289,71 +370,115 @@ def dump_graph(
     output_vars: Union[Dict[str, VarNode], List[VarNode]],
     *,
     keep_var_name: int = 1,
+    keep_opr_name: bool = False,
     keep_param_name: bool = False,
     keep_opr_priority: bool = False,
+    no_change_graph: bool = False,
     strip_info_file=None,
-    append_json=False
-):
-    """
-    serialize the computing graph of `output_vars` and get byte result.
+    append_json=False,
+    metadata=None,
+    dump_format=None,
+    model_version: int = 2,
+    compat_older_version: str = None,
+) -> Tuple[bytes, CompGraphDumpResult]:
+    r"""serialize the computing graph of `output_vars` and get byte result.
 
-    :param output_vars: output variables which are the graph's end point.
+    Args:
+        output_vars: output variables which are the graph's end point.
+        keep_var_name: level for keeping variable names:
 
-        .. note::
+            * 0: none of the names are kept
+            * 1: (default)keep names of output vars
+            * 2: keep names of all (output and internal) vars
 
-            The underlying C++ API only accepts a var list. If a dict is given,
-            the vars would be renamed to the given names.
+        keep_opr_name: whether to keep operator names.
+        keep_param_name: whether to keep param names, so param values can be
+            easily manipulated after loading model
+        keep_opr_priority: whether to keep priority setting for operators
+        no_change_graph: whether to change the compute graph when dump, for
+            model compatibility, some operators will convert to its compatible
+            format in this version.
 
-    :param keep_var_name: level for keeping variable names:
+            * if set False, some operators maybe convert to other operator for
+              compatibility, all operators will ensure compatibility.
+            * if set True, no operator will change in the graph when dump.
 
-        * 0: none of the names are kept
-        * 1: (default)keep names of output vars
-        * 2: keep names of all (output and internal) vars
-    :param keep_param_name: whether to keep param names, so param values can be
-        easily manipulated after loading model
-    :param keep_opr_priority: whether to keep priority setting for operators
-    :param strip_info_file: a string for path or a file handler. if is not None,
-        then the dump information for code strip would be written to ``strip_info_file``
-    :param append_json: will be check when `strip_info_file` is not None. if set
-        true, the information for code strip will be append to strip_info_file.
-        if set false, will rewrite strip_info_file
-    :return: dump result as byte string, and an instance of namedtuple
+        strip_info_file: a string for path or a file handler. if is not None,
+            then the dump information for code strip would be written to ``strip_info_file``
+        append_json: will be check when `strip_info_file` is not None. if set
+            true, the information for code strip will be append to strip_info_file.
+            if set false, will rewrite strip_info_file
+        dump_format: using different dump formats. the open source MegEngine
+                defaults to the FBS_V2 format, there are two format FBS_V2 and FBS to choose,
+                internal MegEngine have an other choice of internal proprietary formats
+        model_version: the model version of "FBS_V2", begin with version 2, this
+            works only when dump format is "FBS_V2".
+        compat_older_version: the specified megbrain version which is less than 8.16 for model forward compatibility, only support "8.14" currently. Default: None.
+
+    Note:
+        The underlying C++ API only accepts a var list. If a dict is given,
+        the vars would be renamed to the given names.
+
+    Returns:
+        dump result as byte string, and an instance of namedtuple
         :class:`CompGraphDumpResult`, whose fields are:
 
-            * ``nr_opr`` number of operators dumped
-            * ``tot_bytes`` total bytes for the whole graph
-            * ``tensor_value_bytes`` bytes consumed for dumping tensor values
-            * ``inputs`` names of input tensors
-            * ``params`` list of names of dumped params
-            * ``outputs`` names of output vars
+        * ``nr_opr`` number of operators dumped
+        * ``tot_bytes`` total bytes for the whole graph
+        * ``tensor_value_bytes`` bytes consumed for dumping tensor values
+        * ``inputs`` names of input tensors
+        * ``params`` list of names of dumped params
+        * ``outputs`` names of output vars
     """
-    ov = []
+    if compat_older_version:
+        compat_older_version = compat_older_version.strip()
+        assert (
+            compat_older_version == "8.14"
+        ), "Forward compatibility for older version only support 8.14 currently."
+        assert (
+            not no_change_graph
+        ), "forward compatibility for mgb8.14 will change the graph."
+        assert (
+            dump_format == "FBS"
+        ), "forward compatibility for older version only works when dump_format is FBS"
     if isinstance(output_vars, dict):
         used_vars = set()
         for name, var in output_vars.items():
-            assert isinstance(var, VarNode), "bad output var: {!r}".format(var)
             assert var.id not in used_vars, (
                 "var name is associated with a var object, so we can not have "
                 "two names given to the same var: {}".format(var)
             )
             used_vars.add(var.id)
             var.name = name
-            ov.append(var._node)
+        output_vars = list(output_vars.values())
     else:
-        for var in output_vars:
-            assert isinstance(var, VarNode), "bad output var: {!r}".format(var)
-            ov.append(var._node)
+        output_vars = list(output_vars)
+
+    ov = _unwrap(output_vars)
 
     stat = []
     inputs = []
     outputs = []
     params = []
 
+    dump_format_map = {
+        None: None,
+        "FBS_V2": SerializationFormat.FBS_V2,
+        "FBS": SerializationFormat.FBS,
+    }
+    dump_format = dump_format_map[dump_format]
+
     dump_content = _imperative_rt.dump_graph(
         ov,
         keep_var_name,
+        keep_opr_name,
         keep_param_name,
         keep_opr_priority,
+        no_change_graph,
+        metadata,
+        dump_format,
+        model_version,
+        compat_older_version,
         stat,
         inputs,
         outputs,
@@ -388,22 +513,24 @@ def dump_graph(
 
 
 CompGraphLoadResult = collections.namedtuple(
-    "CompGraphLoadResult", ["graph", "output_vars_dict", "output_vars_list"]
+    "CompGraphLoadResult", ["graph", "output_vars_dict", "output_vars_list", "metadata"]
 )
 
 
-def load_graph(fpath):
-    """
-    Load a serialized computing graph from file.
+def load_graph(fpath) -> CompGraphLoadResult:
+    r"""Load a serialized computing graph from file.
 
-    :param fpath: Path or Handle of the input file
-    :return: An instance of namedtuple :class:`CompGraphLoadResult`,
+    Args:
+        fpath: Path or Handle of the input file
+
+    Returns:
+        An instance of namedtuple :class:`CompGraphLoadResult`,
         whose fields are:
 
-            * ``graph`` loaded CompGraph
-            * ``output_vars_dict`` A Python dict, mapping name to output SymbolVar
-            * ``output_vars_list`` A Python list, containing output vars in the
-                                   order passed to serialize_comp_graph_to_file
+        * ``graph`` loaded CompGraph
+        * ``output_vars_dict`` A Python dict, mapping name to output SymbolVar
+        * ``output_vars_list`` A Python list, containing output vars in the
+          order passed to serialize_comp_graph_to_file
     """
     output_vars_map = []
     output_vars_list = []
@@ -411,8 +538,8 @@ def load_graph(fpath):
         buf = open(fpath, "rb").read()
     else:
         buf = fpath.read()
-    cg = _imperative_rt.load_graph(buf, output_vars_map, output_vars_list)
-    return CompGraphLoadResult(cg, dict(output_vars_map), output_vars_list)
+    cg, metadata = _imperative_rt.load_graph(buf, output_vars_map, output_vars_list)
+    return CompGraphLoadResult(cg, dict(output_vars_map), output_vars_list, metadata)
 
 
 def _wrap(x):
@@ -429,23 +556,12 @@ def _unwrap(x):
         return type(x)(map(_unwrap, x))
     if isinstance(x, VarNode):
         return x._node
-    else:
-        return x
+    return x
 
 
-@apply.register()
-def _(op: OpDef, *args: VarNode):
+def apply_normal_varnode(op: OpDef, *args: VarNode):
     outputs = _imperative_rt.invoke_op(op, _unwrap(args))
     return _wrap(outputs)
-
-
-@apply.register()
-def _(op: BackwardGraph, *args: VarNode):
-    assert args
-    graph = args[0].graph
-    return op.interpret(
-        lambda op, args: apply(op, *args), graph._make_const_for_backward, args
-    )
 
 
 def input_callback(callback, *args, device=None, dtype=None, shape=None, graph=None):
@@ -490,7 +606,11 @@ class InputNode(OpNode):
 
     @property
     def device(self):
-        return self.outputs[0].device
+        var = self.outputs[0]
+        if isinstance(var, VarNode):
+            return var.device
+        else:
+            return var.comp_node
 
     @property
     def dtype(self):
@@ -565,3 +685,9 @@ class AttrOutputNode(OpNode):
 
     def reset(self):
         self._rendezvous.reset()
+
+
+class VirtualDepNode(OpNode):
+    def __init__(self, vars, device=""):
+        out = _imperative_rt.virtual_dep(_unwrap(vars), device)
+        super().__init__(out)

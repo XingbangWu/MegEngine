@@ -1,14 +1,3 @@
-/**
- * \file src/core/include/megbrain/utils/metahelper_basic.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/common.h"
@@ -16,84 +5,81 @@
 
 #include <cstddef>
 #include <tuple>
-#include <vector>
 #include <type_traits>
+#include <vector>
 
 namespace mgb {
 
 namespace metahelper_detail {
-    [[noreturn]] void on_maybe_invalid_val_access();
+[[noreturn]] MGE_WIN_DECLSPEC_FUC void on_maybe_invalid_val_access();
 
-    template <class T, class Tuple, size_t... I>
-    constexpr T make_from_tuple_impl(Tuple&& t, std::index_sequence<I...>) {
-        return T(std::get<I>(std::forward<Tuple>(t))...);
+template <class T, class Tuple, size_t... I>
+constexpr T make_from_tuple_impl(Tuple&& t, std::index_sequence<I...>) {
+    return T(std::get<I>(std::forward<Tuple>(t))...);
+}
+
+template <typename T, size_t idx>
+void do_unpack(const std::vector<T>&) {}
+template <typename T, size_t idx, typename R, typename... Args>
+void do_unpack(const std::vector<T>& vec, R& dest, Args&... args) {
+    dest = vec[idx];
+    do_unpack<T, idx + 1>(vec, args...);
+}
+
+template <typename T, size_t idx>
+void do_unpack(const mgb::SmallVectorImpl<T>&) {}
+template <typename T, size_t idx, typename R, typename... Args>
+void do_unpack(const mgb::SmallVectorImpl<T>& vec, R& dest, Args&... args) {
+    dest = vec[idx];
+    do_unpack<T, idx + 1>(vec, args...);
+}
+
+template <typename T, class tag>
+struct is_complete_helper {
+    template <typename U>
+    static std::integral_constant<bool, sizeof(U) == sizeof(U)> test(U*);
+    static std::false_type test(...);
+    using type = decltype(test(reinterpret_cast<T*>(0)));
+};
+
+struct if_constexpr_identity {
+    template <typename T>
+    decltype(auto) operator()(T&& x) {
+        return std::forward<T>(x);
     }
+};
 
-    template<typename T, size_t idx>
-    void do_unpack(const std::vector<T> &) {
+template <bool cond>
+struct if_constexpr_impl;
+
+template <>
+struct if_constexpr_impl<true> {
+    template <class Then, class Else>
+    static decltype(auto) run(Then&& then, Else&&) {
+        return then(if_constexpr_identity{});
     }
-    template<typename T, size_t idx, typename R, typename ...Args>
-    void do_unpack(const std::vector<T> &vec, R &dest, Args&... args) {
-        dest = vec[idx];
-        do_unpack<T, idx+1>(vec, args...);
+};
+
+template <>
+struct if_constexpr_impl<false> {
+    template <class Then, class Else>
+    static decltype(auto) run(Then&&, Else&& else_) {
+        return else_(if_constexpr_identity{});
     }
+};
 
-    template<typename T, size_t idx>
-    void do_unpack(const mgb::SmallVectorImpl<T> &) {
-    }
-    template<typename T, size_t idx, typename R, typename ...Args>
-    void do_unpack(const mgb::SmallVectorImpl<T> &vec, R &dest, Args&... args) {
-        dest = vec[idx];
-        do_unpack<T, idx+1>(vec, args...);
-    }
-
-    template <typename T, class tag>
-    struct is_complete_helper {
-        template <typename U>
-        static std::integral_constant<bool, sizeof(U) == sizeof(U)> test(U*);
-        static std::false_type test(...);
-        using type = decltype(test(reinterpret_cast<T*>(0)));
-    };
-
-    struct if_constexpr_identity {
-        template <typename T>
-        decltype(auto) operator()(T&& x) {
-            return std::forward<T>(x);
-        }
-    };
-
-    template <bool cond>
-    struct if_constexpr_impl;
-
-    template <>
-    struct if_constexpr_impl<true> {
-        template <class Then, class Else>
-        static decltype(auto) run(Then&& then, Else&&) {
-            return then(if_constexpr_identity{});
-        }
-    };
-
-    template <>
-    struct if_constexpr_impl<false> {
-        template <class Then, class Else>
-        static decltype(auto) run(Then&&, Else&& else_) {
-            return else_(if_constexpr_identity{});
-        }
-    };
-
-    template <size_t skip, typename T, size_t isize, size_t... I>
-    decltype(auto) array_skip_impl(const std::array<T, isize>& arr,
-                                   std::index_sequence<I...>) {
-        static_assert(isize > skip, "invalid argument `skip`");
-        return std::forward_as_tuple(arr[I + skip]...);
-    }
-} // namespace metahelper_detail
+template <size_t skip, typename T, size_t isize, size_t... I>
+decltype(auto) array_skip_impl(
+        const std::array<T, isize>& arr, std::index_sequence<I...>) {
+    static_assert(isize > skip, "invalid argument `skip`");
+    return std::forward_as_tuple(arr[I + skip]...);
+}
+}  // namespace metahelper_detail
 
 //! construct object T from tuple of arguments
 template <class T, class Tuple>
 constexpr T make_from_tuple(Tuple&& t) {
-    constexpr std::size_t size =
-        std::tuple_size<std::decay_t<Tuple>>::value;
+    constexpr std::size_t size = std::tuple_size<std::decay_t<Tuple>>::value;
     return metahelper_detail::make_from_tuple_impl<T>(
             std::forward<Tuple>(t), std::make_index_sequence<size>{});
 }
@@ -103,33 +89,34 @@ constexpr T make_from_tuple(Tuple&& t) {
  *
  * throw exception if vector size does not match given arguments
  */
-template<typename T, typename ...Args>
-void unpack_vector(const std::vector<T> &vec, Args&...args) {
-    mgb_assert(vec.size() == sizeof...(args),
-            "can not unpack vector of size %zu into %zu elements",
-            vec.size(), sizeof...(args));
+template <typename T, typename... Args>
+void unpack_vector(const std::vector<T>& vec, Args&... args) {
+    mgb_assert(
+            vec.size() == sizeof...(args),
+            "can not unpack vector of size %zu into %zu elements", vec.size(),
+            sizeof...(args));
     metahelper_detail::do_unpack<T, 0>(vec, args...);
 }
-template<typename T, typename ...Args>
-void unpack_vector(const mgb::SmallVectorImpl<T> &vec, Args&...args) {
-    mgb_assert(vec.size() == sizeof...(args),
-            "can not unpack vector of size %zu into %zu elements",
-            vec.size(), sizeof...(args));
+template <typename T, typename... Args>
+void unpack_vector(const mgb::SmallVectorImpl<T>& vec, Args&... args) {
+    mgb_assert(
+            vec.size() == sizeof...(args),
+            "can not unpack vector of size %zu into %zu elements", vec.size(),
+            sizeof...(args));
     metahelper_detail::do_unpack<T, 0>(vec, args...);
 }
 
 //! whether a type can be copied regardless of its memory location
-template<class T>
+template <class T>
 struct is_location_invariant {
-    static constexpr bool value =
-        std::is_standard_layout<T>::value &&
-        std::is_trivially_copyable<T>::value &&
-        std::is_trivially_destructible<T>::value;
+    static constexpr bool value = std::is_standard_layout<T>::value &&
+                                  std::is_trivially_copyable<T>::value &&
+                                  std::is_trivially_destructible<T>::value;
 };
-template<class A, class B>
+template <class A, class B>
 struct is_location_invariant<std::pair<A, B>> {
     static constexpr bool value =
-        is_location_invariant<A>::value && is_location_invariant<B>::value;
+            is_location_invariant<A>::value && is_location_invariant<B>::value;
 };
 
 /*!
@@ -142,17 +129,15 @@ constexpr bool is_complete_v =
 
 //! a None type to represent invalid Maybe
 class None {};
-extern class None None;
+MGE_WIN_DECLSPEC_DATA extern class None None;
 
 //! an optional storage for arbitrary object
 template <typename T>
 class Maybe {
-    static constexpr bool nothrow_move =
-            std::is_nothrow_move_assignable<T>::value &&
-            std::is_nothrow_move_constructible<T>::value;
-    static constexpr bool nothrow_copy =
-            std::is_nothrow_copy_assignable<T>::value &&
-            std::is_nothrow_copy_constructible<T>::value;
+    static constexpr bool nothrow_move = std::is_nothrow_move_assignable<T>::value &&
+                                         std::is_nothrow_move_constructible<T>::value;
+    static constexpr bool nothrow_copy = std::is_nothrow_copy_assignable<T>::value &&
+                                         std::is_nothrow_copy_constructible<T>::value;
 
     //! object is valid if this is not null
     T* m_ptr = nullptr;
@@ -171,8 +156,9 @@ public:
     Maybe(Maybe&& rhs) noexcept(nothrow_move) { operator=(std::move(rhs)); }
 
     //! construct from value
-    template <typename TT, typename = typename std::enable_if<
-                                   std::is_constructible<T, TT>::value>::type>
+    template <
+            typename TT, typename = typename std::enable_if<
+                                 std::is_constructible<T, TT>::value>::type>
     Maybe(TT&& val_init) {
         emplace(std::forward<TT>(val_init));
     }
@@ -210,8 +196,9 @@ public:
         return *this;
     }
 
-    template <typename TT, typename = typename std::enable_if<
-                                   std::is_constructible<T, TT>::value>::type>
+    template <
+            typename TT, typename = typename std::enable_if<
+                                 std::is_constructible<T, TT>::value>::type>
     Maybe& operator=(TT&& rhs_init) {
         emplace(std::forward<TT>(rhs_init));
         return *this;
@@ -222,8 +209,9 @@ public:
     template <typename A0, typename A1, typename... Args>
     T& emplace(A0&& a0, A1&& a1, Args&&... args) {
         invalidate();
-        m_ptr = new (&m_storage) T{std::forward<A0>(a0), std::forward<A1>(a1),
-                                   std::forward<Args>(args)...};
+        m_ptr = new (&m_storage)
+                T{std::forward<A0>(a0), std::forward<A1>(a1),
+                  std::forward<Args>(args)...};
         return *m_ptr;
     }
 
@@ -265,9 +253,7 @@ public:
      * Note: this function returns by value rather than by reference to
      * ensure valid storage. The type should usually be a scalar type.
      */
-    T val_with_default(T default_ = T{}) const {
-        return m_ptr ? *m_ptr : default_;
-    }
+    T val_with_default(T default_ = T{}) const { return m_ptr ? *m_ptr : default_; }
 
     bool valid() const { return m_ptr; }
 
@@ -293,11 +279,12 @@ T* __attribute__((__may_alias__)) aliased_ptr(U* src) {
 //! union of two types with same size and alignment, without constructor
 template <typename T, typename U>
 union SafeUnion2 {
-    static_assert(is_location_invariant<T>::value &&
-                          is_location_invariant<U>::value,
-                  "must be location invariant");
-    static_assert(sizeof(T) == sizeof(U) && alignof(T) && alignof(U),
-                  "size and alignments must be the same");
+    static_assert(
+            is_location_invariant<T>::value && is_location_invariant<U>::value,
+            "must be location invariant");
+    static_assert(
+            sizeof(T) == sizeof(U) && alignof(T) && alignof(U),
+            "size and alignments must be the same");
     T t;
     U u;
 
@@ -333,6 +320,6 @@ decltype(auto) array_skip(const std::array<T, isize>& arr) {
             arr, std::make_index_sequence<isize - skip>{});
 }
 
-} // namespace mgb
+}  // namespace mgb
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}

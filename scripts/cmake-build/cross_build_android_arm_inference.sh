@@ -4,10 +4,23 @@ set -e
 ARCHS=("arm64-v8a" "armeabi-v7a")
 BUILD_TYPE=Release
 MGE_ARMV8_2_FEATURE_FP16=OFF
-MGE_ARMV8_2_FEATURE_DOTPROD=OFF
 MGE_DISABLE_FLOAT16=OFF
 ARCH=arm64-v8a
 REMOVE_OLD_BUILD=false
+NINJA_VERBOSE=OFF
+NINJA_DRY_RUN=OFF
+SPECIFIED_TARGET="install/strip"
+READLINK=readlink
+OS=$(uname -s)
+
+if [ $OS = "Darwin" ];then
+    READLINK=greadlink
+fi
+
+SRC_DIR=$($READLINK -f "`dirname $0`/../../")
+source $SRC_DIR/scripts/cmake-build/utils/utils.sh
+config_ninja_default_max_jobs
+
 echo "EXTRA_CMAKE_ARGS: ${EXTRA_CMAKE_ARGS}"
 
 function usage() {
@@ -15,19 +28,32 @@ function usage() {
     echo "available args detail:"
     echo "-d : Build with Debug mode, default Release mode"
     echo "-f : enable MGE_ARMV8_2_FEATURE_FP16 for ARM64, need toolchain and hardware support"
-    echo "-p : enable MGE_ARMV8_2_FEATURE_DOTPROD for ARM64, need toolchain and hardware support"
     echo "-k : open MGE_DISABLE_FLOAT16 for NEON "
     echo "-a : config build arch available: ${ARCHS[@]}"
     echo "-r : remove old build dir before make, default off"
+    echo "-v : ninja with verbose and explain, default off"
+    echo "-n : ninja with -n dry run (don't run commands but act like they succeeded)"
+    echo "-j : run N jobs in parallel for ninja, defaut is cpu_number + 2"
+    echo "-e : build a specified target (always for debug, NOTICE: do not do strip/install target when use -e)"
+    echo "-l : list CMakeLists.txt all options, can be use to config EXTRA_CMAKE_ARGS"
     echo "-h : show usage"
-    echo "append other cmake config by export EXTRA_CMAKE_ARGS=..."
-    echo "example: $0 -d"
+    echo "append other cmake config by config EXTRA_CMAKE_ARGS, for example, enable MGE_WITH_TEST and build with Debug mode:"
+    echo "EXTRA_CMAKE_ARGS=\"-DMGE_WITH_TEST=ON\" $0 -d"
     exit -1
 }
 
-while getopts "rkhdfpa:" arg
+while getopts "lnvrkhdfa:e:j:" arg
 do
     case $arg in
+        j)
+            NINJA_MAX_JOBS=$OPTARG
+            echo "config NINJA_MAX_JOBS to ${NINJA_MAX_JOBS}"
+            ;;
+        l)
+            echo "list CMakeLists.txt all options, can be used to config EXTRA_CMAKE_ARGS"
+            show_cmakelist_options
+            exit 0
+            ;;
         d)
             echo "Build with Debug mode"
             BUILD_TYPE=Debug
@@ -35,10 +61,6 @@ do
         f)
             echo "enable MGE_ARMV8_2_FEATURE_FP16 for ARM64"
             MGE_ARMV8_2_FEATURE_FP16=ON
-            ;;
-        p)
-            echo "enable MGE_ARMV8_2_FEATURE_DOTPROD for ARM64"
-            MGE_ARMV8_2_FEATURE_DOTPROD=ON
             ;;
         k)
             echo "open MGE_DISABLE_FLOAT16 for NEON"
@@ -68,6 +90,17 @@ do
             echo "config REMOVE_OLD_BUILD=true"
             REMOVE_OLD_BUILD=true
             ;;
+        v)
+            echo "config NINJA_VERBOSE=ON"
+            NINJA_VERBOSE=ON
+            ;;
+        n)
+            echo "config NINJA_DRY_RUN=ON"
+            NINJA_DRY_RUN=ON
+            ;;
+        e)
+            SPECIFIED_TARGET=$OPTARG
+            ;;
         ?)
             echo "unkonw argument"
             usage
@@ -78,24 +111,14 @@ echo "----------------------------------------------------"
 echo "build config summary:"
 echo "BUILD_TYPE: $BUILD_TYPE"
 echo "MGE_ARMV8_2_FEATURE_FP16: $MGE_ARMV8_2_FEATURE_FP16"
-echo "MGE_ARMV8_2_FEATURE_DOTPROD: $MGE_ARMV8_2_FEATURE_DOTPROD"
 echo "MGE_DISABLE_FLOAT16: $MGE_DISABLE_FLOAT16"
+echo "SPECIFIED_TARGET: ${SPECIFIED_TARGET}"
 echo "ARCH: $ARCH"
 echo "----------------------------------------------------"
 
-READLINK=readlink
-MAKEFILE_TYPE="Unix"
-OS=$(uname -s)
-
-if [ $OS = "Darwin" ];then
-    READLINK=greadlink
-elif [[ $OS =~ "NT" ]]; then
+if [[ $OS =~ "NT" ]]; then
     echo "BUILD in NT ..."
-    MAKEFILE_TYPE="Unix"
 fi
-
-SRC_DIR=$($READLINK -f "`dirname $0`/../../")
-source $SRC_DIR/scripts/cmake-build/utils/utils.sh
 
 if [ -z $NDK_ROOT ];then
     echo "can not find NDK_ROOT env, pls export you NDK root dir to NDK_ROOT"
@@ -103,7 +126,11 @@ if [ -z $NDK_ROOT ];then
 fi
 
 function cmake_build() {
-    BUILD_DIR=$SRC_DIR/build_dir/android/$1/$BUILD_TYPE/build
+    if [ $1 = "armeabi-v7a with NEON" ] ;then
+        BUILD_DIR=$SRC_DIR/build_dir/android/armeabi-v7a/$BUILD_TYPE/build
+    else
+        BUILD_DIR=$SRC_DIR/build_dir/android/$1/$BUILD_TYPE/build
+    fi
     INSTALL_DIR=$BUILD_DIR/../install
     BUILD_ABI=$1
     BUILD_NATIVE_LEVEL=$2
@@ -112,31 +139,29 @@ function cmake_build() {
     echo "build type: $BUILD_TYPE"
     echo "build ABI: $BUILD_ABI"
     echo "build native level: $BUILD_NATIVE_LEVEL"
-    echo "BUILD MAKEFILE_TYPE: $MAKEFILE_TYPE"
     try_remove_old_build $REMOVE_OLD_BUILD $BUILD_DIR $INSTALL_DIR
 
     echo "create build dir"
     mkdir -p $BUILD_DIR
     mkdir -p $INSTALL_DIR
-    cd $BUILD_DIR
+    cd_real_build_dir $BUILD_DIR
     unset IFS
-    cmake -G "$MAKEFILE_TYPE Makefiles" \
+    bash -c "cmake -G Ninja \
         -DCMAKE_TOOLCHAIN_FILE="$NDK_ROOT/build/cmake/android.toolchain.cmake" \
         -DANDROID_NDK="$NDK_ROOT" \
         -DCMAKE_BUILD_TYPE=$BUILD_TYPE \
-        -DANDROID_ABI=$BUILD_ABI \
+        -DANDROID_ABI=\"$BUILD_ABI\" \
         -DANDROID_NATIVE_API_LEVEL=$BUILD_NATIVE_LEVEL \
         -DMGE_INFERENCE_ONLY=ON \
         -DMGE_WITH_CUDA=OFF \
-        -DMGE_ARMV8_2_FEATURE_FP16= $MGE_ARMV8_2_FEATURE_FP16 \
-        -DMGE_ARMV8_2_FEATURE_DOTPROD=$MGE_ARMV8_2_FEATURE_DOTPROD \
+        -DMGE_ARMV8_2_FEATURE_FP16=$MGE_ARMV8_2_FEATURE_FP16 \
         -DMGE_DISABLE_FLOAT16=$MGE_DISABLE_FLOAT16 \
         -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR \
         ${EXTRA_CMAKE_ARGS} \
-        $SRC_DIR
+        $SRC_DIR "
 
-    make -j$(nproc)
-    make install/strip
+    config_ninja_target_cmd ${NINJA_VERBOSE} "OFF" "${SPECIFIED_TARGET}" ${NINJA_DRY_RUN} ${NINJA_MAX_JOBS}
+    bash -c "${NINJA_CMD}"
 }
 
 build_flatc $SRC_DIR $REMOVE_OLD_BUILD

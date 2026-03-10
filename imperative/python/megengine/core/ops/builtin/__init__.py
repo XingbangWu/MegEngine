@@ -1,24 +1,31 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-import warnings
-from typing import Union
+from ..._imperative_rt import OpDef
 
-from ..._imperative_rt import OpDef, ops
-from ...tensor.core import OpBase, TensorBase, TensorWrapperBase, apply
+original_keys = set()
 
-# register OpDef as a "virtual subclass" of OpBase, so any of registered
-# apply(OpBase, ...) rules could work well on OpDef
-OpBase.register(OpDef)
 
-__all__ = ["OpDef"]
+def backup_keys():
+    global original_keys
+    original_keys = set()
+    for k in globals().keys():
+        original_keys.add(k)
 
-for k, v in ops.__dict__.items():
-    if isinstance(v, type) and issubclass(v, OpDef):
-        globals()[k] = v
-        __all__.append(k)
+
+backup_keys()
+
+from ..._imperative_rt.ops import *  # isort:skip
+
+
+def setup():
+    to_be_removed = set()
+    for k, v in globals().items():
+        is_original_key = k in original_keys
+        is_op = isinstance(v, type) and issubclass(v, OpDef)
+        if not is_op and not is_original_key:
+            to_be_removed.add(k)
+
+    for k in to_be_removed:
+        del globals()[k]
+
+
+setup()

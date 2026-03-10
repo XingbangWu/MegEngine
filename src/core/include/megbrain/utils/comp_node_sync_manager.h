@@ -1,14 +1,3 @@
-/**
- * \file src/core/include/megbrain/utils/comp_node_sync_manager.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/comp_node.h"
@@ -65,8 +54,7 @@ public:
      * \param nr_waiter number of waiter records to be added; it is the
      *      number of corresponding busy_wait_set_ready() calls
      */
-    CompNodeSyncManager& add_waiter_record(bool need_ready_event,
-                                           size_t nr_waiter = 1);
+    CompNodeSyncManager& add_waiter_record(bool need_ready_event, size_t nr_waiter = 1);
 
     /*!
      * \brief clear waiter status
@@ -104,4 +92,3 @@ public:
 }  // namespace mgb
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}
-

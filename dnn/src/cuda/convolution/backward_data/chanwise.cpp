@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/cuda/convolution/backward_data/chanwise.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "./algo.h"
 #include "src/cuda/convolution/chanwise/kern.cuh"
 #include "src/cuda/utils.h"
@@ -19,8 +8,19 @@ using namespace convolution;
 
 bool ConvolutionBackwardDataImpl::AlgoChanwise::is_available(
         const SizeArgs& args) const {
-    if (args.diff_layout->dtype == args.filter_layout->dtype &&
-        args.diff_layout->dtype == dtype::BFloat16()) {
+    auto kparam = chanwise::Param::from_fwd_args(args.as_fwd_args());
+    auto&& device_prop = cuda::current_device_prop();
+    if (device_prop.sharedMemPerBlock <
+        kparam.chl_mul * kparam.flt_h * kparam.flt_w * args.diff_layout->dtype.size()) {
+        return false;
+    }
+    if (!args.grad_layout->is_contiguous() || !args.diff_layout->is_contiguous()) {
+        return false;
+    }
+    if ((args.diff_layout->dtype == args.filter_layout->dtype &&
+         args.diff_layout->dtype == dtype::BFloat16()) ||
+        (args.diff_layout->dtype == args.filter_layout->dtype &&
+         args.diff_layout->dtype == dtype::QuantizedS8())) {
         return false;
     }
     auto&& fm = args.filter_meta;
@@ -35,25 +35,23 @@ size_t ConvolutionBackwardDataImpl::AlgoChanwise::get_workspace_in_bytes(
     return 0;
 }
 
-void ConvolutionBackwardDataImpl::AlgoChanwise::exec(
-        const ExecArgs& args) const {
+void ConvolutionBackwardDataImpl::AlgoChanwise::exec(const ExecArgs& args) const {
     auto kparam = chanwise::Param::from_fwd_args(args.as_fwd_args());
     auto stream = cuda_stream(args.handle);
     switch (args.diff_layout->dtype.enumv()) {
         case DTypeEnum::Float32:
-            return chanwise::run_bwd_data(args.grad_tensor->ptr<float>(),
-                                          args.diff_tensor->ptr<float>(),
-                                          args.filter_tensor->ptr<float>(),
-                                          kparam, stream);
+            return chanwise::run_bwd_data(
+                    args.grad_tensor->ptr<float>(), args.diff_tensor->ptr<float>(),
+                    args.filter_tensor->ptr<float>(), kparam, stream);
 
         case DTypeEnum::Float16:
 #if CUDA_VERSION >= 9000
             if (is_compute_capability_required(5, 3)) {
                 return chanwise::run_bwd_data(
-                        static_cast<__half*>(args.grad_tensor->raw_ptr),
-                        static_cast<__half*>(args.diff_tensor->raw_ptr),
-                        static_cast<__half*>(args.filter_tensor->raw_ptr),
-                        kparam, stream);
+                        static_cast<__half*>(args.grad_tensor->raw_ptr()),
+                        static_cast<__half*>(args.diff_tensor->raw_ptr()),
+                        static_cast<__half*>(args.filter_tensor->raw_ptr()), kparam,
+                        stream);
             } else {
                 return chanwise::run_bwd_data(
                         args.grad_tensor->ptr<dt_float16>(),
@@ -61,10 +59,10 @@ void ConvolutionBackwardDataImpl::AlgoChanwise::exec(
                         args.filter_tensor->ptr<dt_float16>(), kparam, stream);
             }
 #else
-            return chanwise::run_bwd_data(args.grad_tensor->ptr<dt_float16>(),
-                                          args.diff_tensor->ptr<dt_float16>(),
-                                          args.filter_tensor->ptr<dt_float16>(),
-                                          kparam, stream);
+            return chanwise::run_bwd_data(
+                    args.grad_tensor->ptr<dt_float16>(),
+                    args.diff_tensor->ptr<dt_float16>(),
+                    args.filter_tensor->ptr<dt_float16>(), kparam, stream);
 #endif
 
         default:
@@ -74,4 +72,3 @@ void ConvolutionBackwardDataImpl::AlgoChanwise::exec(
 }
 
 // vim: syntax=cpp.doxygen
-

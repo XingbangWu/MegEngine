@@ -1,18 +1,5 @@
-/**
- * \file dnn/src/naive/fakequant/opr_impl.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
-
 #include "src/naive/fake_quant/opr_impl.h"
 #include <cmath>
-#include <iostream>
 #include "megdnn/tensor_iter.h"
 #include "src/common/elemwise_helper.cuh"
 #include "src/common/utils.h"
@@ -62,13 +49,13 @@ void backward_impl(const ElemwiseOpParamN<5> src, float qmin, float qmax) {
 namespace megdnn {
 namespace naive {
 
-void FakeQuantForwardImpl::exec(_megdnn_tensor_in input,
-                                _megdnn_tensor_in scale,
-                                _megdnn_tensor_in zero_point,
-                                _megdnn_tensor_out output,
-                                _megdnn_workspace workspace) {
-    check_exec(input.layout, scale.layout, zero_point.layout, output.layout,
-               workspace.size);
+void FakeQuantForwardImpl::exec(
+        _megdnn_tensor_in input, _megdnn_tensor_in scale, _megdnn_tensor_in zero_point,
+        _megdnn_tensor_out output, _megdnn_workspace workspace) {
+#if !MGE_BUILD_WITHOUT_NAIVE_EXEC
+    check_exec(
+            input.layout, scale.layout, zero_point.layout, output.layout,
+            workspace.size);
     ElemwiseOpParamN<4> src;
     src[0] = input;
     src[1] = output;
@@ -85,16 +72,19 @@ void FakeQuantForwardImpl::exec(_megdnn_tensor_in input,
     }
     cb(dtype::Float32)
 #undef cb
+#else
+    __builtin_trap();
+#endif
 }
 
-void FakeQuantBackwardImpl::exec(_megdnn_tensor_in diff,
-                                 _megdnn_tensor_in input,
-                                 _megdnn_tensor_in scale,
-                                 _megdnn_tensor_in zero_point,
-                                 _megdnn_tensor_out grad,
-                                 _megdnn_workspace workspace) {
-    check_exec(diff.layout, input.layout, scale.layout, zero_point.layout,
-               grad.layout, workspace.size);
+void FakeQuantBackwardImpl::exec(
+        _megdnn_tensor_in diff, _megdnn_tensor_in input, _megdnn_tensor_in scale,
+        _megdnn_tensor_in zero_point, _megdnn_tensor_out grad,
+        _megdnn_workspace workspace) {
+#if !MGE_BUILD_WITHOUT_NAIVE_EXEC
+    check_exec(
+            diff.layout, input.layout, scale.layout, zero_point.layout, grad.layout,
+            workspace.size);
     ElemwiseOpParamN<5> src;
     src[0] = diff;
     src[1] = input;
@@ -113,6 +103,9 @@ void FakeQuantBackwardImpl::exec(_megdnn_tensor_in diff,
     }
     cb(dtype::Float32)
 #undef cb
+#else
+    __builtin_trap();
+#endif
 }
 }  // namespace naive
 }  // namespace megdnn

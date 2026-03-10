@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/cuda/mesh_indexing/opr_impl.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include "megdnn/oprs.h"
@@ -22,12 +12,11 @@ class MeshIndexingImpl : public MeshIndexing {
 public:
     using MeshIndexing::MeshIndexing;
 
-    void exec(_megdnn_tensor_in src, const IndexDesc& desc,
-              _megdnn_tensor_out dst, _megdnn_workspace workspace) override;
+    void exec(
+            _megdnn_tensor_in src, const IndexDesc& desc, _megdnn_tensor_out dst,
+            _megdnn_workspace workspace) override;
 
-    void set_error_tracker(void* tracker) override {
-        m_error_tracker = tracker;
-    }
+    void set_error_tracker(void* tracker) override { m_error_tracker = tracker; }
 };
 
 class IncrMeshIndexingImpl : public IncrMeshIndexing {
@@ -36,12 +25,11 @@ class IncrMeshIndexingImpl : public IncrMeshIndexing {
 public:
     using IncrMeshIndexing::IncrMeshIndexing;
 
-    void exec(_megdnn_tensor_inout data, _megdnn_tensor_in value,
-              const IndexDesc& desc, _megdnn_workspace workspace) override;
+    void exec(
+            _megdnn_tensor_inout data, _megdnn_tensor_in value, const IndexDesc& desc,
+            _megdnn_workspace workspace) override;
 
-    void set_error_tracker(void* tracker) override {
-        m_error_tracker = tracker;
-    }
+    void set_error_tracker(void* tracker) override { m_error_tracker = tracker; }
 };
 
 class SetMeshIndexingImpl : public SetMeshIndexing {
@@ -50,12 +38,11 @@ class SetMeshIndexingImpl : public SetMeshIndexing {
 public:
     using SetMeshIndexing::SetMeshIndexing;
 
-    void exec(_megdnn_tensor_inout data, _megdnn_tensor_in value,
-              const IndexDesc& desc, _megdnn_workspace workspace) override;
+    void exec(
+            _megdnn_tensor_inout data, _megdnn_tensor_in value, const IndexDesc& desc,
+            _megdnn_workspace workspace) override;
 
-    void set_error_tracker(void* tracker) override {
-        m_error_tracker = tracker;
-    }
+    void set_error_tracker(void* tracker) override { m_error_tracker = tracker; }
 };
 
 class BatchedMeshIndexingImpl : public BatchedMeshIndexing {
@@ -64,12 +51,11 @@ class BatchedMeshIndexingImpl : public BatchedMeshIndexing {
 public:
     using BatchedMeshIndexing::BatchedMeshIndexing;
 
-    void exec(_megdnn_tensor_in src, const IndexDesc& desc,
-              _megdnn_tensor_out dst, _megdnn_workspace workspace) override;
+    void exec(
+            _megdnn_tensor_in src, const IndexDesc& desc, _megdnn_tensor_out dst,
+            _megdnn_workspace workspace) override;
 
-    void set_error_tracker(void* tracker) override {
-        m_error_tracker = tracker;
-    }
+    void set_error_tracker(void* tracker) override { m_error_tracker = tracker; }
 };
 
 class BatchedIncrMeshIndexingImpl : public BatchedIncrMeshIndexing {
@@ -78,12 +64,11 @@ class BatchedIncrMeshIndexingImpl : public BatchedIncrMeshIndexing {
 public:
     using BatchedIncrMeshIndexing::BatchedIncrMeshIndexing;
 
-    void exec(_megdnn_tensor_inout data, _megdnn_tensor_in value,
-              const IndexDesc& desc, _megdnn_workspace workspace) override;
+    void exec(
+            _megdnn_tensor_inout data, _megdnn_tensor_in value, const IndexDesc& desc,
+            _megdnn_workspace workspace) override;
 
-    void set_error_tracker(void* tracker) override {
-        m_error_tracker = tracker;
-    }
+    void set_error_tracker(void* tracker) override { m_error_tracker = tracker; }
 };
 
 class BatchedSetMeshIndexingImpl : public BatchedSetMeshIndexing {
@@ -92,12 +77,11 @@ class BatchedSetMeshIndexingImpl : public BatchedSetMeshIndexing {
 public:
     using BatchedSetMeshIndexing::BatchedSetMeshIndexing;
 
-    void exec(_megdnn_tensor_inout data, _megdnn_tensor_in value,
-              const IndexDesc& desc, _megdnn_workspace workspace) override;
+    void exec(
+            _megdnn_tensor_inout data, _megdnn_tensor_in value, const IndexDesc& desc,
+            _megdnn_workspace workspace) override;
 
-    void set_error_tracker(void* tracker) override {
-        m_error_tracker = tracker;
-    }
+    void set_error_tracker(void* tracker) override { m_error_tracker = tracker; }
 };
 
 }  // namespace cuda

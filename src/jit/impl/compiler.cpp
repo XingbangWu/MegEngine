@@ -1,17 +1,6 @@
-/**
- * \file src/jit/impl/compiler.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
+#include "./mlir/compiler.h"
 #include "./halide/compiler_cuda.h"
 #include "./nvrtc/compiler_cuda.h"
-#include "./mlir/compiler.h"
 
 #include "megbrain/jit/compiler.h"
 #include "megbrain/utils/hash.h"
@@ -43,8 +32,8 @@ public:
 
     void init_workspace_size_infer(JITExecutor*) {}
 
-    std::unique_ptr<Executable> do_compile(const InternalGraph&,
-                                           const JITExecutor::Args&) {
+    std::unique_ptr<Executable> do_compile(
+            const InternalGraph&, const JITExecutor::Args&) {
         mgb_throw(InternalError, "EmptyCompiler should not be used");
     }
 };
@@ -74,51 +63,62 @@ Compiler* Compiler::get(ComputingGraph& graph, CompNode comp_node) {
     {
         static std::mutex mtx;
         MGB_LOCK_GUARD(mtx);
-        holder = graph.options()
-                         .user_data.get_user_data_or_create<CompilerHolder>();
+        holder = graph.options().user_data.get_user_data_or_create<CompilerHolder>();
     }
     MGB_LOCK_GUARD(holder->mtx);
     auto&& compiler = holder->dev2compiler[comp_node.device_type()];
-    auto backend = MGB_GETENV("MGB_JIT_BACKEND");
+    std::string backend = gopt::JITFusionPass::get_jit_backend_str();
+    mgb_assert(
+            !backend.empty(),
+            "code issue happened, need call config_jit_backends before get compiler");
+    //! please keep logic with JITFusionPass::Impl::config_jit_backends
+    mgb_log_debug("Compiler: JIT backend: %s", backend.c_str());
     if (!compiler) {
         switch (comp_node.device_type()) {
 #if MGB_CUDA
             case CompNode::DeviceType::CUDA:
 #if MGB_JIT_HALIDE
-                if (!backend || !strcmp(backend, "HALIDE")) {
+                if (!strcmp(backend.c_str(), "HALIDE")) {
                     compiler = std::make_unique<HalideCudaCompiler>();
                     break;
                 }
 #endif
 #if MGB_JIT_MLIR
-                if (!backend || !strcmp(backend, "MLIR")) {
-                    compiler = std::make_unique<MLIRCompiler>(
-                            CompNode::DeviceType::CUDA);
+                if (!strcmp(backend.c_str(), "MLIR")) {
+                    compiler =
+                            std::make_unique<MLIRCompiler>(CompNode::DeviceType::CUDA);
                     break;
                 }
 #endif
-                if (!backend || !strcmp(backend, "NVRTC")) {
+                if (!strcmp(backend.c_str(), "NVRTC")) {
                     compiler = std::make_unique<CudaCompiler>();
                     break;
                 }
-                mgb_throw(InternalError, "No compiler support for cuda");
+                mgb_throw(
+                        InternalError,
+                        "No compiler support for cuda, may caused by build not enable "
+                        "MLIR/HALIDE module or error config jit backend env");
                 break;
 #endif
             case CompNode::DeviceType::CPU:
 #if MGB_JIT_MLIR
-                if (!backend || !strcmp(backend, "MLIR")) {
-                    compiler = std::make_unique<MLIRCompiler>(
-                            CompNode::DeviceType::CPU);
+                if (!strcmp(backend.c_str(), "MLIR")) {
+                    compiler =
+                            std::make_unique<MLIRCompiler>(CompNode::DeviceType::CPU);
                     break;
                 }
 #endif
-                mgb_throw(InternalError, "No compiler support for cpu");
+                mgb_throw(
+                        InternalError,
+                        "No compiler support for cpu, may caused by build not enable "
+                        "MLIR module or error config jit backend env");
                 break;
             default:
-                mgb_throw(InternalError,
-                          "unsupported JIT config: "
-                          "comp_node=%s backend_setting=%s",
-                          comp_node.to_string().c_str(), backend);
+                mgb_throw(
+                        InternalError,
+                        "unsupported JIT config: "
+                        "comp_node=%s backend_setting=%s",
+                        comp_node.to_string().c_str(), backend.c_str());
         }
     }
 

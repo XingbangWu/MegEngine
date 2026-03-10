@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import copy
 import os
 import sys
@@ -14,7 +7,12 @@ import numpy as np
 import pytest
 
 from megengine.data.dataset import ArrayDataset
-from megengine.data.sampler import RandomSampler, ReplacementSampler, SequentialSampler
+from megengine.data.sampler import (
+    Infinite,
+    RandomSampler,
+    ReplacementSampler,
+    SequentialSampler,
+)
 
 
 def test_sequential_sampler():
@@ -30,6 +28,13 @@ def test_RandomSampler():
     sample_indices = sampler
     assert indices != list(each[0] for each in sample_indices)
     assert indices == sorted(list(each[0] for each in sample_indices))
+
+
+def test_InfiniteSampler():
+    indices = list(range(20))
+    seque_sampler = SequentialSampler(ArrayDataset(indices), batch_size=2)
+    inf_sampler = Infinite(seque_sampler)
+    assert inf_sampler.batch_size == seque_sampler.batch_size
 
 
 def test_random_sampler_seed():
@@ -53,8 +58,34 @@ def test_random_sampler_seed():
 
 def test_ReplacementSampler():
     num_samples = 30
-    indices = list(range(20))
-    weights = list(range(20))
+    num_data = 20
+    indices = list(range(num_data))
+    sampler = ReplacementSampler(
+        ArrayDataset(indices), num_samples=num_samples, weights=None
+    )
+    assert len(list(each[0] for each in sampler)) == num_samples
+
+    num_data = 8
+    weights = list(range(num_data))
+    indices = list(range(num_data))
+    sampler = ReplacementSampler(
+        ArrayDataset(indices), num_samples=num_samples, weights=weights
+    )
+    assert len(list(each[0] for each in sampler)) == num_samples
+    iter = 1000
+    hist = [0 for _ in range(num_data)]
+    for _ in range(iter):
+        for index in sampler:
+            index = index[0]
+            hist[index] += 1
+    actual_weights = np.array(hist) / sum(hist)
+    desired_weights = np.array(weights) / sum(weights)
+    np.testing.assert_allclose(actual_weights, desired_weights, rtol=8e-2)
+
+    num_data = 50000
+    num_samples = 50000 * 30
+    weights = list(range(num_data))
+    indices = list(range(num_data))
     sampler = ReplacementSampler(
         ArrayDataset(indices), num_samples=num_samples, weights=weights
     )

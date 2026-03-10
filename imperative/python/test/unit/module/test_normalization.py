@@ -1,11 +1,4 @@
 # -*- coding: utf-8 -*-
-# MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
-#
-# Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 import numpy as np
 
 import megengine.module.normalization as norm
@@ -30,12 +23,12 @@ def test_group_norm():
 
 
 def test_layer_norm():
-    input_shape = (2, 100, 128, 128)
-    channels = input_shape[1]
-    x = tensor(np.random.rand(*input_shape))
-    ln = norm.LayerNorm(channels)
-    out = ln(x)
-    assert shape_to_tuple(out.shape) == input_shape
+    input_shape_list = [(2, 3, 10, 10), (2, 2, 3, 10, 10)]
+    ln = norm.LayerNorm((10, 10))
+    for input_shape in input_shape_list:
+        x = tensor(np.random.rand(*input_shape))
+        out = ln(x)
+        assert shape_to_tuple(out.shape) == input_shape
 
 
 def test_instance_norm():

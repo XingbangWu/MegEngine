@@ -1,13 +1,3 @@
-/**
- * \file src/rocm/elemwise_helper.h.hip
- *
- * This file is part of MegBrain, a deep learning framework developed by Megvii.
- *
- * \brief helper utilities for implementing element-wise kernels
- *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
-
 #pragma once
 
 #include "hip_header.h"

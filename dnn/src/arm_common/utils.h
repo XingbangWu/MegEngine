@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/arm_common/utils.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include <cstring>
@@ -99,9 +88,7 @@ struct Vector<__fp16, 8> {
         v.value = vld1q_f16(addr);
         return v;
     }
-    static void save(__fp16* addr, const Vector& v) {
-        vst1q_f16(addr, v.value);
-    }
+    static void save(__fp16* addr, const Vector& v) { vst1q_f16(addr, v.value); }
     void save(__fp16* addr) { save(addr, *this); }
     Vector operator+(const Vector& lr) {
         Vector dst;
@@ -233,9 +220,7 @@ struct Vector<float, 8> {
         v.value = vld1q_f32_x2(addr);
         return v;
     }
-    static void save(float* addr, const Vector& v) {
-        vst1q_f32_x2(addr, v.value);
-    }
+    static void save(float* addr, const Vector& v) { vst1q_f32_x2(addr, v.value); }
 
     void save(float* addr) { save(addr, *this); }
     Vector operator+(const Vector& lr) {
@@ -318,9 +303,7 @@ struct Vector<int16_t, 8> {
         v.value = vld1q_s16(addr);
         return v;
     }
-    static void save(int16_t* addr, const Vector& v) {
-        vst1q_s16(addr, v.value);
-    }
+    static void save(int16_t* addr, const Vector& v) { vst1q_s16(addr, v.value); }
     void save(int16_t* addr) { save(addr, *this); }
     Vector operator+(const Vector& lr) {
         Vector dst;
@@ -382,9 +365,7 @@ struct Vector<int16_t, 4> {
         v.value = vld1_s16(addr);
         return v;
     }
-    static void save(int16_t* addr, const Vector& v) {
-        vst1_s16(addr, v.value);
-    }
+    static void save(int16_t* addr, const Vector& v) { vst1_s16(addr, v.value); }
     void save(int16_t* addr) { save(addr, *this); }
     Vector operator+(const Vector& lr) {
         Vector dst;
@@ -432,8 +413,6 @@ struct Vector<int16_t, 4> {
         return dst;
     }
 };
-
-
 
 template <>
 struct Vector<int32_t, 8> {

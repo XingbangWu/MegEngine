@@ -1,14 +1,3 @@
-/**
- * \file dnn/test/common/elemwise_multi_type.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "test/common/elemwise_multi_type.h"
 #include "test/common/checker.h"
 #include "test/common/utils.h"
@@ -20,8 +9,7 @@ using namespace test;
 
 namespace {
 
-void fuse_add_rmulh_round_shr_saturate_extra_opr_impl(
-        const TensorNDArray& data) {
+void fuse_add_rmulh_round_shr_saturate_extra_opr_impl(const TensorNDArray& data) {
     megdnn_assert(data.size() == 7);
     auto handle = create_cpu_handle(2);
     auto elem_opr = handle->create_operator<Elemwise>();
@@ -30,8 +18,7 @@ void fuse_add_rmulh_round_shr_saturate_extra_opr_impl(
     size_t st_bytes = data[0].layout.span().dist_byte();
     size_t out_bytes = data[6].layout.span().dist_byte();
     std::vector<uint8_t> tmp_storage(st_bytes), tmq_storage(st_bytes),
-        outlike_storage(out_bytes),
-        outlike2_storage(out_bytes);
+            outlike_storage(out_bytes), outlike2_storage(out_bytes);
     TensorND tmp{tmp_storage.data(), data[0].layout},
             tmq{tmq_storage.data(), data[0].layout},
             outlike{outlike_storage.data(), data[6].layout},
@@ -46,10 +33,9 @@ void fuse_add_rmulh_round_shr_saturate_extra_opr_impl(
     elem_opr->param().mode = Elemwise::Mode::RMULH;
     elem_opr->exec({tmp, data[2]}, tmq);
 
-    elem_mt_opr->param().mode =
-            ElemwiseMultiType::Mode::ROUND_SHR_SATURATE_IXxI8xI8;
+    elem_mt_opr->param().mode = ElemwiseMultiType::Mode::ROUND_SHR_SATURATE_IXxI8xI8;
     elem_mt_opr->exec({tmq, data[3]}, outlike);
-    
+
     elem_opr->param().mode = Elemwise::Mode::MAX;
     elem_opr->exec({outlike, data[4]}, outlike2);
 
@@ -82,13 +68,79 @@ DEF_TEST(fuse_mul_add3_int16x32x32x32) {
             .execs({{102, 67, 71}, {1, 67, 1}, {1, 67, 1}, {}});
 }
 
+DEF_TEST(fuse_mul_add3_int16xf32xf32xf32) {
+    // This is not implemented on CUDA.
+    if (handle->type() == Handle::HandleType::CUDA) {
+        return;
+    }
+    Checker<ElemwiseMultiType> checker(handle);
+    checker.set_param({ElemwiseMultiType::Mode::FUSE_MUL_ADD3_INT16xF32xF32xF32});
+    checker.set_dtype(0, dtype::Int16());
+    checker.set_dtype(1, dtype::Float32());
+    checker.set_dtype(2, dtype::Float32());
+    UniformIntRNG rng{-100, 100};
+    checker.set_rng(0, &rng);
+    checker.set_rng(1, &rng);
+    checker.set_rng(2, &rng);
+    checker.execs({{5, 7, 6}, {1, 1, 6}, {1, 1, 6}, {}})
+            .execs({{1, 700, 600}, {1, 1, 600}, {1, 1, 600}, {}})
+            .execs({{1, 700, 600}, {1, 700, 600}, {1, 700, 600}, {}})
+            .execs({{102, 71, 67}, {1, 1, 67}, {1, 1, 67}, {}})
+            .execs({{16, 16, 128}, {16, 16, 128}, {16, 16, 128}, {}})
+            .execs({{16, 128, 16, 16}, {1, 128, 1, 1}, {1, 128, 1, 1}, {}})
+            .execs({{16, 128, 16, 16}, {1, 1, 1, 1}, {1, 1, 1, 1}, {}});
+}
+
+DEF_TEST(fuse_mul_add3_uint8xf32xf32xf32) {
+    // This is not implemented on CUDA.
+    if (handle->type() == Handle::HandleType::CUDA) {
+        return;
+    }
+    Checker<ElemwiseMultiType> checker(handle);
+    checker.set_param({ElemwiseMultiType::Mode::FUSE_MUL_ADD3_UINT8xF32xF32xF32});
+    checker.set_dtype(0, dtype::Uint8());
+    checker.set_dtype(1, dtype::Float32());
+    checker.set_dtype(2, dtype::Float32());
+    UniformIntRNG rng{-100, 100};
+    checker.set_rng(0, &rng);
+    checker.set_rng(1, &rng);
+    checker.set_rng(2, &rng);
+    checker.execs({{5, 7, 6}, {1, 1, 6}, {1, 1, 6}, {}})
+            .execs({{1, 700, 600}, {1, 1, 600}, {1, 1, 600}, {}})
+            .execs({{1, 700, 600}, {1, 700, 600}, {1, 700, 600}, {}})
+            .execs({{102, 71, 67}, {1, 1, 67}, {1, 1, 67}, {}})
+            .execs({{16, 16, 128}, {16, 16, 128}, {16, 16, 128}, {}})
+            .execs({{16, 128, 16, 16}, {1, 128, 1, 1}, {1, 128, 1, 1}, {}})
+            .execs({{16, 128, 16, 16}, {1, 1, 1, 1}, {1, 1, 1, 1}, {}});
+}
+
+DEF_TEST(fuse_mul_add3_int16xf32xf32) {
+    // This is not implemented on CUDA.
+    if (handle->type() == Handle::HandleType::CUDA) {
+        return;
+    }
+    Checker<ElemwiseMultiType> checker(handle);
+    checker.set_param({ElemwiseMultiType::Mode::MUL_INT16xF32xF32});
+    checker.set_dtype(0, dtype::Int16());
+    checker.set_dtype(1, dtype::Float32());
+    UniformIntRNG rng{-100, 100};
+    checker.set_rng(0, &rng);
+    checker.set_rng(1, &rng);
+    checker.execs({{5, 7, 6}, {1, 1, 6}, {}})
+            .execs({{1, 700, 600}, {1, 1, 600}, {}})
+            .execs({{1, 700, 600}, {1, 700, 600}, {}})
+            .execs({{102, 71, 67}, {1, 1, 67}, {}})
+            .execs({{16, 16, 128}, {16, 16, 128}, {}})
+            .execs({{16, 128, 16, 16}, {1, 128, 1, 1}, {}})
+            .execs({{16, 128, 16, 16}, {1, 1, 1, 1}, {}});
+}
+
 DEF_TEST(fuse_mul_add3_iXxf32xf32xi8) {
     Checker<ElemwiseMultiType> checker(handle);
     checker.set_param({ElemwiseMultiType::Mode::FUSE_MUL_ADD3_IXxF32xF32xI8});
     checker.set_dtype(1, dtype::Float32());
     checker.set_dtype(2, dtype::Float32());
-    std::array<DType, 3> src_types{
-            {dtype::Int8{}, dtype::Int16{}, dtype::Int32{}}};
+    std::array<DType, 3> src_types{{dtype::Int8{}, dtype::Int16{}, dtype::Int32{}}};
     UniformIntRNG rng{-100, 100};
     checker.set_rng(0, &rng);
     for (DType stype : src_types) {
@@ -110,8 +162,7 @@ DEF_TEST(round_shr_saturate_iXxi8xi8) {
 
     typedef std::tuple<DType, int, int> TestDesciption;
     std::array<TestDesciption, 3> testcases{
-            {TestDesciption{dtype::Int8(), 1, 7},
-             TestDesciption{dtype::Int16(), 2, 14},
+            {TestDesciption{dtype::Int8(), 1, 7}, TestDesciption{dtype::Int16(), 2, 14},
              TestDesciption{dtype::Int32(), 7, 25}}};
     for (auto desc : testcases) {
         DType dtype;
@@ -154,10 +205,8 @@ DEF_TEST(fuse_add_rmulh_round_shr_saturate_int16) {
             .set_rng(3, &offset_rng)
             .set_rng(4, &minv_rng)
             .set_rng(5, &maxv_rng)
-            .set_extra_opr_impl(
-                    fuse_add_rmulh_round_shr_saturate_extra_opr_impl);
-    auto run_with_shape = [&](const TensorShape& shape0,
-                              const TensorShape& shape1) {
+            .set_extra_opr_impl(fuse_add_rmulh_round_shr_saturate_extra_opr_impl);
+    auto run_with_shape = [&](const TensorShape& shape0, const TensorShape& shape1) {
         checker.execs({shape0, shape1, {1}, {1}, {1}, {1}, {}});
     };
     run_with_shape({7, 9, 11, 13}, {1, 9, 1, 1});
@@ -186,10 +235,8 @@ DEF_TEST(fuse_add_rmulh_round_shr_saturate_int32) {
             .set_rng(3, &offset_rng)
             .set_rng(4, &minv_rng)
             .set_rng(5, &maxv_rng)
-            .set_extra_opr_impl(
-                    fuse_add_rmulh_round_shr_saturate_extra_opr_impl);
-    auto run_with_shape = [&](const TensorShape& shape0,
-                              const TensorShape& shape1) {
+            .set_extra_opr_impl(fuse_add_rmulh_round_shr_saturate_extra_opr_impl);
+    auto run_with_shape = [&](const TensorShape& shape0, const TensorShape& shape1) {
         checker.execs({shape0, shape1, {1}, {1}, {1}, {1}, {}});
     };
     run_with_shape({7, 9, 11, 13}, {1, 9, 1, 1});

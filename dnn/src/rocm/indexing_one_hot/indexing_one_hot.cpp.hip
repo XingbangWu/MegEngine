@@ -1,11 +1,3 @@
-/**
- * \file src/rocm/indexing_one_hot/indexing_one_hot.cpp.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \copyright Copyright (c) 2014-2016 Megvii Inc. All rights reserved.
- */
 #include "hcc_detail/hcc_defs_prologue.h"
 #include "./indexing_one_hot.h.hip"
 #include "src/rocm/elemwise_helper.h.hip"

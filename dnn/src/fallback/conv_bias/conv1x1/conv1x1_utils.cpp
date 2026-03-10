@@ -1,24 +1,14 @@
-/**
- * \file dnn/src/fallback/conv_bias/conv1x1/conv1x1_utils.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "src/fallback/conv_bias/conv1x1/conv1x1_utils.h"
 
 namespace megdnn {
 namespace fallback {
 namespace conv1x1 {
-namespace utils{
+namespace utils {
 
 //! get_thread_bundle
-WorkspaceBundle get_thread_bundle(const ConvBiasImpl::NCBKernSizeParam& param,
-                                  size_t matmul_c_size, size_t oc_tile_size) {
+WorkspaceBundle get_thread_bundle(
+        const ConvBiasImpl::NCBKernSizeParam& param, size_t matmul_c_size,
+        size_t oc_tile_size) {
     //! for some cases, matmul result need temp space to store
     size_t OH = param.osz[0];
     size_t OW = param.osz[1];
@@ -27,9 +17,8 @@ WorkspaceBundle get_thread_bundle(const ConvBiasImpl::NCBKernSizeParam& param,
                        (param.src_type.enumv() == DTypeEnum::Quantized8Asymm &&
                         param.dst_type.enumv() == DTypeEnum::Quantized8Asymm);
     size_t matmul_dst_bytes_per_thread =
-            is_dst_8bit ? oc_tile_size * OH * OW * sizeof(param.bias_type) : 0;
-    return WorkspaceBundle{nullptr,
-                           {matmul_c_size, matmul_dst_bytes_per_thread}};
+            is_dst_8bit ? oc_tile_size * OH * OW * param.bias_type.size() : 0;
+    return WorkspaceBundle{nullptr, {matmul_c_size, matmul_dst_bytes_per_thread}};
 }
 
 //! get_matmul_kern_param
@@ -47,9 +36,10 @@ MatrixMulImpl::KernSizeParam get_matmul_kern_param(
     auto format = param::MatrixMul::Format::DEFAULT;
     if (param.filter_meta.format == param::ConvBias::Format::NCHW44) {
         format = param::MatrixMul::Format::MK4;
-    } else if (param.filter_meta.format ==
-               param::ConvBias::Format::NCHW44_DOT) {
+    } else if (param.filter_meta.format == param::ConvBias::Format::NCHW44_DOT) {
         format = param::MatrixMul::Format::MK4_DOT;
+    } else if (param.filter_meta.format == param::ConvBias::Format::NCHW88) {
+        format = param::MatrixMul::Format::MK8;
     }
 
     return {param.filter_type,

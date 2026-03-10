@@ -1,11 +1,3 @@
-/**
- * \file src/rocm/convolution/forward/inplace_matmul_impl.h.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
 #pragma once
 
 #include <stddef.h>

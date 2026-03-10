@@ -1,19 +1,9 @@
-/**
- * \file dnn/src/common/batched_matrix_mul.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "megdnn/oprs.h"
 #include "src/common/utils.h"
 
 namespace megdnn {
 
-void BatchedMatrixMulForward::deduce_dtype(DType A, DType B, DType &C) {
+void BatchedMatrixMulForward::deduce_dtype(DType A, DType B, DType& C) {
     DType C_candi, C_candi2;
     if (A.category() == DTypeCategory::FLOAT) {
         C_candi = A;
@@ -30,24 +20,29 @@ void BatchedMatrixMulForward::deduce_dtype(DType A, DType B, DType &C) {
     if (!C.valid()) {
         C = C_candi;
     }
-    megdnn_assert(C.valid() && (C == C_candi || C == C_candi2),
-                  "unsupported BatchedMatMul(%s, %s) -> %s", A.name(), B.name(),
-                  C.name());
+    megdnn_assert(
+            C.valid() && (C == C_candi || C == C_candi2),
+            "runtime does not support BatchedMatMul(%s, %s) -> %s\n"
+            "now support case list: BatchedMatMul(FLOAT, FLOAT)\n"
+            "                       BatchedMatMul(Int8, Int8)\n"
+            "                       BatchedMatMul(QuantizedS8, QuantizedS8)\n"
+            "                       BatchedMatMul(Quantized8Asymm, Quantized8Asymm)\n"
+            "                       BatchedMatMul(Quantized4Asymm, Quantized4Asymm)\n",
+            A.name(), B.name(), C.name());
 }
-void BatchedMatrixMulForward::deduce_layout(const TensorLayout& A,
-                                            const TensorLayout& B,
-                                            TensorLayout& C) {
+void BatchedMatrixMulForward::deduce_layout(
+        const TensorLayout& A, const TensorLayout& B, TensorLayout& C) {
     auto errmsg = [&]() {
         std::string msg;
-        msg.append(megdnn_mangle("A="));
+        msg.append("A=");
         msg.append(A.to_string());
-        msg.append(megdnn_mangle(", B="));
+        msg.append(", B=");
         msg.append(B.to_string());
-        msg.append(megdnn_mangle(", C="));
+        msg.append(", C=");
         msg.append(C.to_string());
-        msg.append(megdnn_mangle(", transposeA="));
+        msg.append(", transposeA=");
         msg.append(std::to_string(m_param.transposeA));
-        msg.append(megdnn_mangle(", transposeB="));
+        msg.append(", transposeB=");
         msg.append(std::to_string(m_param.transposeB));
         return msg;
     };
@@ -59,8 +54,7 @@ void BatchedMatrixMulForward::deduce_layout(const TensorLayout& A,
         return l.ndim == 3 && l.stride[2] == 1 &&
                l.stride[1] >= static_cast<ptrdiff_t>(l.shape[2]) &&
                (l.shape[0] == 1 ||
-                l.stride[0] >=
-                        static_cast<ptrdiff_t>(l.shape[1]) * l.stride[1] ||
+                l.stride[0] >= static_cast<ptrdiff_t>(l.shape[1]) * l.stride[1] ||
                 l.stride[0] == 0);
     };
     size_t A0, A1, B0, B1;
@@ -73,24 +67,26 @@ void BatchedMatrixMulForward::deduce_layout(const TensorLayout& A,
     if (m_param.transposeB)
         std::swap(B0, B1);
     deduce_dtype(A.dtype, B.dtype, C.dtype);
-    megdnn_assert(good_layout(A) && good_layout(B) && A1 == B0 &&
-                          A[0] == B[0] && A.dtype.enumv() == B.dtype.enumv(),
-                  "bad input layouts: %s", errmsg().c_str());
+    megdnn_assert(
+            good_layout(A) && good_layout(B) && A1 == B0 && A[0] == B[0] &&
+                    A.dtype.enumv() == B.dtype.enumv(),
+            "bad input layouts: %s", errmsg().c_str());
     C = TensorLayout(TensorShape({A[0], A0, B1}), C.dtype);
 }
 
-void BatchedMatrixMulForward::check_exec(const TensorLayout& A,
-                                         const TensorLayout& B,
-                                         const TensorLayout& C,
-                                         size_t workspace_in_bytes) {
+void BatchedMatrixMulForward::check_exec(
+        const TensorLayout& A, const TensorLayout& B, const TensorLayout& C,
+        size_t workspace_in_bytes) {
     TensorLayout C_expect;
     deduce_layout(A, B, C_expect);
-    megdnn_assert(C_expect.eq_layout(C), "bad layout for C: expect=%s got=%s",
-                  C_expect.to_string().c_str(), C.to_string().c_str());
+    megdnn_assert(
+            C_expect.eq_layout(C), "bad layout for C: expect=%s got=%s",
+            C_expect.to_string().c_str(), C.to_string().c_str());
     auto required_workspace_in_bytes = get_workspace_in_bytes(A, B, C);
-    megdnn_assert(workspace_in_bytes >= required_workspace_in_bytes,
-                  "needed workspace: %zu; got: %zu",
-                  required_workspace_in_bytes, workspace_in_bytes);
+    megdnn_assert(
+            workspace_in_bytes >= required_workspace_in_bytes,
+            "needed workspace: %zu; got: %zu", required_workspace_in_bytes,
+            workspace_in_bytes);
 }
 }  // namespace megdnn
 

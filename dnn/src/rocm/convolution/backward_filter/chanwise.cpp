@@ -1,17 +1,6 @@
-/**
- * \file dnn/src/rocm/convolution/backward_filter/chanwise.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "./algo.h"
-#include "src/rocm/utils.h"
 #include "src/rocm/convolution/chanwise/kern.h.hip"
+#include "src/rocm/utils.h"
 
 using namespace megdnn;
 using namespace rocm;
@@ -32,8 +21,7 @@ size_t ConvolutionBackwardFilterImpl::AlgoChanwise::get_workspace_in_bytes(
     return 0;
 }
 
-void ConvolutionBackwardFilterImpl::AlgoChanwise::exec(
-        const ExecArgs& args) const {
+void ConvolutionBackwardFilterImpl::AlgoChanwise::exec(const ExecArgs& args) const {
     auto kparam = chanwise::Param::from_fwd_args(args.as_fwd_args());
     auto stream = hip_stream(args.handle);
     switch (args.diff_layout->dtype.enumv()) {

@@ -1,14 +1,4 @@
-/**
- * \file dnn/src/cuda/query_blocksize_impl.cu
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
+#include "src/cuda/kernel_common/diagnostic_prologue.cuh"
 #include "src/cuda/query_blocksize.cuh"
 #include "src/cuda/utils.cuh"
 
@@ -51,5 +41,5 @@ LaunchConfig cuda::detail::query_launch_config_for_kernel_uncached(
     return ret;
 }
 
+#include "src/cuda/kernel_common/diagnostic_epilogue.cuh"
 // vim: ft=cpp syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}
-

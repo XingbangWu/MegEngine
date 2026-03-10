@@ -1,16 +1,6 @@
-/**
- * \file dnn/test/common/warp_affine.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
-#include "megdnn/opr_param_defs.h"
 #include "megdnn/basic_types.h"
+#include "megdnn/opr_param_defs.h"
 #include "test/common/opr_proxy.h"
 
 #include <iostream>
@@ -45,33 +35,32 @@ inline std::vector<TestArg> get_cv_args() {
                   BorderMode::BORDER_REFLECT_101, BorderMode::BORDER_WRAP,
                   BorderMode::BORDER_CONSTANT}) {
                 for (InterpolationMode imode :
-                     {InterpolationMode::LINEAR,
-                      InterpolationMode::INTER_NEAREST,
+                     {InterpolationMode::LINEAR, InterpolationMode::INTER_NEAREST,
                       InterpolationMode::INTER_CUBIC,
                       InterpolationMode::INTER_LANCZOS4}) {
                     cur_param.border_mode = bmode;
                     cur_param.border_val = 1.1f;
 
                     cur_param.imode = imode;
-                    args.emplace_back(cur_param, TensorShape{1, i, i, ic},
-                                      TensorShape{1, 2, 3},
-                                      TensorShape{1, i, i, ic});
-                    args.emplace_back(cur_param, TensorShape{1, i, i * 2, ic},
-                                      TensorShape{1, 2, 3},
-                                      TensorShape{1, i, i * 2, ic});
-                    args.emplace_back(cur_param, TensorShape{1, i * 3, i, ic},
-                                      TensorShape{1, 2, 3},
-                                      TensorShape{1, i * 3, i, ic});
+                    args.emplace_back(
+                            cur_param, TensorShape{1, i, i, ic}, TensorShape{1, 2, 3},
+                            TensorShape{1, i, i, ic});
+                    args.emplace_back(
+                            cur_param, TensorShape{1, i, i * 2, ic},
+                            TensorShape{1, 2, 3}, TensorShape{1, i, i * 2, ic});
+                    args.emplace_back(
+                            cur_param, TensorShape{1, i * 3, i, ic},
+                            TensorShape{1, 2, 3}, TensorShape{1, i * 3, i, ic});
 
-                    args.emplace_back(cur_param, TensorShape{1, i, i, ic},
-                                      TensorShape{1, 2, 3},
-                                      TensorShape{1, 8, 8, ic});
-                    args.emplace_back(cur_param, TensorShape{1, i, i * 2, ic},
-                                      TensorShape{1, 2, 3},
-                                      TensorShape{1, 8, 8, ic});
-                    args.emplace_back(cur_param, TensorShape{1, i * 3, i, ic},
-                                      TensorShape{1, 2, 3},
-                                      TensorShape{1, 8, 8, ic});
+                    args.emplace_back(
+                            cur_param, TensorShape{1, i, i, ic}, TensorShape{1, 2, 3},
+                            TensorShape{1, 8, 8, ic});
+                    args.emplace_back(
+                            cur_param, TensorShape{1, i, i * 2, ic},
+                            TensorShape{1, 2, 3}, TensorShape{1, 8, 8, ic});
+                    args.emplace_back(
+                            cur_param, TensorShape{1, i * 3, i, ic},
+                            TensorShape{1, 2, 3}, TensorShape{1, 8, 8, ic});
                 }
             }
         }

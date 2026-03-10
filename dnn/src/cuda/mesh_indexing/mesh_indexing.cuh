@@ -1,13 +1,3 @@
-/**
- * \file dnn/src/cuda/mesh_indexing/mesh_indexing.cuh
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include <cstdio>
@@ -35,12 +25,10 @@ struct KernIndexer {
     uint32_t batch_stride;
     uint32_t size;
 
-    KernIndexer(const TensorLayout& origin_layout,
-                const TensorLayout& indexed_layout, int** _ptrs,
-                const TensorLayout* desc_layouts,
-                void* _err_tracker = nullptr,
-                megcore::AsyncErrorInfo* _err_info = nullptr,
-                bool _batch_mode = false)
+    KernIndexer(
+            const TensorLayout& origin_layout, const TensorLayout& indexed_layout,
+            int** _ptrs, const TensorLayout* desc_layouts, void* _err_tracker = nullptr,
+            megcore::AsyncErrorInfo* _err_info = nullptr, bool _batch_mode = false)
             : error_tracker(_err_tracker),
               error_info(_err_info),
               batch_mode(_batch_mode),
@@ -76,10 +64,11 @@ struct KernIndexer {
                 pos += (pos < 0 ? origin_shape[i] : 0);
             }
             if (static_cast<uint32_t>(pos) >= origin_shape[i]) {
-                set_async_error_info(error_info, error_tracker,
-                                     "invalid mesh indexing: "
-                                     "indexer=%d idx=%d shape=%d",
-                                     i, pos, origin_shape[i]);
+                set_async_error_info(
+                        error_info, error_tracker,
+                        "invalid mesh indexing: "
+                        "indexer=%d idx=%d shape=%d",
+                        i, pos, origin_shape[i]);
             }
             data_offset += pos * origin_stride[i];
             index /= indexed_shape[i];
@@ -91,8 +80,8 @@ struct KernIndexer {
 };
 
 template <typename T, class Opr>
-void mesh_indexing_proxy(T* origin, T* indexed, KernIndexer* indexer,
-                         cudaStream_t stream);
+void mesh_indexing_proxy(
+        T* origin, T* indexed, KernIndexer* indexer, cudaStream_t stream);
 }  // namespace mesh_indexing
 }  // namespace cuda
 }  // namespace megdnn

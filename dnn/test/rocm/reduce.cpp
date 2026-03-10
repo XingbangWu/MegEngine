@@ -1,13 +1,3 @@
-/**
- * \file dnn/test/rocm/reduce.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #include "hcc_detail/hcc_defs_prologue.h"
 
 #include "megdnn/oprs.h"
@@ -55,7 +45,7 @@ TEST_F(ROCM, REDUCE) {
                      Reduce::DataType data_type) {
         for (int32_t axis : {0, 1, 2, 3}) {
             if (data_type == Reduce::DataType::DEFAULT &&
-                MEGDNN_FLOAT16_SELECT(src_dtype == dtype::Float16(), false)) {
+                DNN_FLOAT16_SELECT(src_dtype == dtype::Float16(), false)) {
                 checker.set_epsilon(1e-2);
             } else {
                 checker.set_epsilon(1e-3);
@@ -69,11 +59,10 @@ TEST_F(ROCM, REDUCE) {
                     .execs({{2, 3, 100, 5}, dst_shape});
         }
     };
-    for (auto mode : {Mode::SUM, Mode::MEAN, Mode::SUM_SQR, Mode::PRODUCT,
-                      Mode::MIN, Mode::MAX}) {
+    for (auto mode :
+         {Mode::SUM, Mode::MEAN, Mode::SUM_SQR, Mode::PRODUCT, Mode::MIN, Mode::MAX}) {
         for (auto dtype : std::vector<DType>{
-                     MEGDNN_INC_FLOAT16(dtype::Float16() MEGDNN_COMMA)
-                             dtype::Float32(),
+                     DNN_INC_FLOAT16(dtype::Float16() MEGDNN_COMMA) dtype::Float32(),
                      dtype::Int32()}) {
             check(mode, dtype, dtype, Reduce::DataType::DEFAULT);
         }
@@ -84,24 +73,34 @@ TEST_F(ROCM, REDUCE) {
               Reduce::DataType::FLOAT_O16xC32);
         check(mode, dtype::Float32(), dtype::Float16(),
               Reduce::DataType::FLOAT_O16xC32);
-        ASSERT_THROW(check(mode, dtype::Int32(), dtype::Float16(),
-                           Reduce::DataType::FLOAT_O16xC32),
-                     MegDNNError);
-        ASSERT_THROW(check(mode, dtype::Float16(), dtype::Float16(),
-                           Reduce::DataType::FLOAT_IO16xC32),
-                     MegDNNError);
+        ASSERT_THROW(
+                check(mode, dtype::Int32(), dtype::Float16(),
+                      Reduce::DataType::FLOAT_O16xC32),
+                MegDNNError);
+        ASSERT_THROW(
+                check(mode, dtype::Float16(), dtype::Float16(),
+                      Reduce::DataType::FLOAT_IO16xC32),
+                MegDNNError);
 #endif
     }
 
 #if !MEGDNN_DISABLE_FLOAT16
     {
         // very large reduce for I16CO32
-        Reduce::Param param{Mode::SUM_SQR, 1,
-                            Reduce::Param::DataType::FLOAT_O32xC32};
+        Reduce::Param param{Mode::SUM_SQR, 1, Reduce::Param::DataType::FLOAT_O32xC32};
         checker.set_dtype(0, dtype::Float16())
                 .set_dtype(1, dtype::Float32())
                 .set_param(param)
                 .execs({{1, 4194304, 1}, {1, 1, 1}});
+    }
+
+    {
+        // large reduce_mean for O16C32
+        Reduce::Param param{Mode::MEAN, 1, Reduce::Param::DataType::FLOAT_O16xC32};
+        checker.set_dtype(0, dtype::Float16())
+                .set_dtype(1, dtype::Float16())
+                .set_param(param)
+                .execs({{1, 65536, 5}, {1, 1, 5}});
     }
 #endif
 }

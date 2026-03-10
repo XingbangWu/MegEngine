@@ -1,22 +1,11 @@
-/**
- * \file src/core/impl/graph/memory_optimizer.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "./memory_optimizer.h"
 #include "./cg_impl.h"
 
 namespace mgb {
 namespace cg {
 
-MemoryOptimizerHelper::CompSeq::CompSeq(ComputingGraphImpl* owner,
-                                        const VarNodeArray& endpoints)
+MemoryOptimizerHelper::CompSeq::CompSeq(
+        ComputingGraphImpl* owner, const VarNodeArray& endpoints)
         : m_owner_graph(owner) {
     CompSeqExtraInfo extra_info;
     m_seq = owner->topo_sorter().get_comp_seq(extra_info, endpoints);
@@ -31,17 +20,14 @@ void MemoryOptimizerHelper::set_priority(OperatorNodeBase* opr, int pri) {
     val = pri;
 }
 
-void MemoryOptimizerHelper::set_priority_before_opt(
-        const VarNodeArray& endpoints) {
+void MemoryOptimizerHelper::set_priority_before_opt(const VarNodeArray& endpoints) {
     mgb_assert(!m_graph_option_changed, "restore_graph_option() not called");
     mgb_assert(m_saved_priority.empty());
     m_graph_option_changed = true;
 
     CompSeqExtraInfo extra_info;
     const OprNodeArray* seq;
-    MGB_TRY {
-        seq = m_owner_graph->topo_sorter().get_comp_seq(extra_info, endpoints);
-    }
+    MGB_TRY { seq = m_owner_graph->topo_sorter().get_comp_seq(extra_info, endpoints); }
     MGB_FINALLY(m_owner_graph->topo_sorter().restore_opr_prop());
     int pri = std::numeric_limits<int>::min();
 
@@ -53,9 +39,8 @@ void MemoryOptimizerHelper::set_priority_before_opt(
     }
 }
 
-const CompNode::UnorderedMap<OprNodeArray>*
-MemoryOptimizerHelper::split_into_cn2oprseq(const OprNodeArray& oprseq,
-                                            const SubGraphConfig& config) {
+const CompNode::UnorderedMap<OprNodeArray>* MemoryOptimizerHelper::split_into_cn2oprseq(
+        const OprNodeArray& oprseq, const SubGraphConfig& config) {
     auto BAD_OPR_FLAG = config.bad_opr_flag;
     auto BAD_VAR_FLAG = config.bad_var_flag;
 

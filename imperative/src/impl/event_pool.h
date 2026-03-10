@@ -20,6 +20,8 @@ public:
     void free(CompNode::Event* event);
     std::shared_ptr<void> on_comp_node_finalize();
     ~EventPool();
+
+    using CompNodeDepedentObject::is_finalized;
 };
 }  // namespace imperative
 }  // namespace mgb

@@ -1,18 +1,7 @@
-/**
- * \file dnn/test/naive/mesh_indexing.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
+#include "test/common/mesh_indexing.h"
 #include "megdnn/basic_types.h"
 #include "test/common/checker.h"
 #include "test/common/index.h"
-#include "test/common/mesh_indexing.h"
 #include "test/naive/fixture.h"
 
 using namespace megdnn;
@@ -21,8 +10,7 @@ using namespace test;
 TEST_F(NAIVE, MESH_INDEXING) {
     SmallVector<size_t> init_axes;
 
-    auto multi_axis_index_impl = [this,
-                                  &init_axes](const TensorNDArray& tensors) {
+    auto multi_axis_index_impl = [this, &init_axes](const TensorNDArray& tensors) {
         auto opr = handle()->create_operator<IndexingMultiAxisVec>();
         OprProxy<IndexingMultiAxisVec> proxy(init_axes);
         proxy.exec(opr.get(), tensors);
@@ -68,9 +56,8 @@ TEST_F(NAIVE, BATCHED_MESH_INDEXING) {
                 if (i < 2) {
                     layout.add_axis_cont_inplace(0);
                 }
-                void* ptr = static_cast<dt_byte*>(tensor.raw_ptr) +
-                            tensor.layout.stride[0] * n *
-                                    tensor.layout.dtype.size();
+                void* ptr = static_cast<dt_byte*>(tensor.raw_ptr()) +
+                            tensor.layout.stride[0] * n * tensor.layout.dtype.size();
                 new_tensors.emplace_back(ptr, layout);
             }
             proxy.exec(opr.get(), new_tensors);
@@ -98,18 +85,12 @@ TEST_F(NAIVE, BATCHED_MESH_INDEXING) {
     init_axes = {1, 2};
     checker.set_proxy({init_axes})
             .execs({{7, idx_size0, idx_size1}, {7, 10, 20}, {7, 10}, {7, 20}})
-            .execs({{7, idx_size0, idx_size1, 9},
-                    {7, 10, 20, 9},
-                    {7, 10},
-                    {7, 20}});
+            .execs({{7, idx_size0, idx_size1, 9}, {7, 10, 20, 9}, {7, 10}, {7, 20}});
 
     init_axes = {2, 1};
     checker.set_proxy({init_axes})
             .execs({{8, idx_size1, idx_size0}, {8, 20, 10}, {8, 10}, {8, 20}})
-            .execs({{8, idx_size1, idx_size0, 9},
-                    {8, 20, 10, 9},
-                    {8, 10},
-                    {8, 20}});
+            .execs({{8, idx_size1, idx_size0, 9}, {8, 20, 10, 9}, {8, 10}, {8, 20}});
 
     idx_size0 = 5;
     init_axes = {1};
@@ -117,15 +98,13 @@ TEST_F(NAIVE, BATCHED_MESH_INDEXING) {
     index_layout = index_layout.broadcast({2, 3});
     checker.set_proxy({init_axes})
             .execl({TensorLayout{TensorShape{2, idx_size0}, dtype::Float32()},
-                    TensorLayout{TensorShape{2, 3}, dtype::Float32()},
-                    index_layout});
+                    TensorLayout{TensorShape{2, 3}, dtype::Float32()}, index_layout});
 }
 
 TEST_F(NAIVE, MESH_MODIFY_INCREMENT) {
     SmallVector<size_t> init_axes;
 
-    auto multi_axis_index_impl = [this,
-                                  &init_axes](const TensorNDArray& tensors) {
+    auto multi_axis_index_impl = [this, &init_axes](const TensorNDArray& tensors) {
         auto opr = handle()->create_operator<IndexingIncrMultiAxisVec>();
         OprProxy<IndexingIncrMultiAxisVec> proxy(init_axes);
         proxy.exec(opr.get(), tensors);
@@ -171,9 +150,8 @@ TEST_F(NAIVE, BATCHED_MESH_MODIFY_INCREMENT) {
                 if (i < 2) {
                     layout.add_axis_cont_inplace(0);
                 }
-                void* ptr =
-                        static_cast<dt_byte*>(tensor.raw_ptr) +
-                        tensor.layout.dtype.size(tensor.layout.stride[0] * n);
+                void* ptr = static_cast<dt_byte*>(tensor.raw_ptr()) +
+                            tensor.layout.dtype.size(tensor.layout.stride[0] * n);
                 new_tensors.emplace_back(ptr, layout);
             }
             proxy.exec(opr.get(), new_tensors);
@@ -200,18 +178,12 @@ TEST_F(NAIVE, BATCHED_MESH_MODIFY_INCREMENT) {
     init_axes = {1, 2};
     checker.set_proxy({init_axes})
             .execs({{7, idx_size0, idx_size1}, {7, 10, 20}, {7, 10}, {7, 20}})
-            .execs({{7, idx_size0, idx_size1, 9},
-                    {7, 10, 20, 9},
-                    {7, 10},
-                    {7, 20}});
+            .execs({{7, idx_size0, idx_size1, 9}, {7, 10, 20, 9}, {7, 10}, {7, 20}});
 
     init_axes = {2, 1};
     checker.set_proxy({init_axes})
             .execs({{8, idx_size1, idx_size0}, {8, 20, 10}, {8, 10}, {8, 20}})
-            .execs({{8, idx_size1, idx_size0, 9},
-                    {8, 20, 10, 9},
-                    {8, 10},
-                    {8, 20}});
+            .execs({{8, idx_size1, idx_size0, 9}, {8, 20, 10, 9}, {8, 10}, {8, 20}});
 }
 
 TEST_F(NAIVE, MESH_MODIFY_SETTING) {
@@ -284,16 +256,10 @@ TEST_F(NAIVE, BATCHED_MESH_MODIFY_SETTING) {
     init_axes = {1, 2};
     checker.set_proxy({init_axes})
             .execs({{7, idx_size0, idx_size1}, {7, 10, 20}, {7, 10}, {7, 20}})
-            .execs({{7, idx_size0, idx_size1, 9},
-                    {7, 10, 20, 9},
-                    {7, 10},
-                    {7, 20}});
+            .execs({{7, idx_size0, idx_size1, 9}, {7, 10, 20, 9}, {7, 10}, {7, 20}});
 
     init_axes = {2, 1};
     checker.set_proxy({init_axes})
             .execs({{8, idx_size1, idx_size0}, {8, 20, 10}, {8, 10}, {8, 20}})
-            .execs({{8, idx_size1, idx_size0, 9},
-                    {8, 20, 10, 9},
-                    {8, 10},
-                    {8, 20}});
+            .execs({{8, idx_size1, idx_size0, 9}, {8, 20, 10, 9}, {8, 10}, {8, 20}});
 }

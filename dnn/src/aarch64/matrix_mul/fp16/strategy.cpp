@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/aarch64/matrix_mul/fp16/strategy.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "src/aarch64/matrix_mul/fp16/strategy.h"
 #include "src/aarch64/matrix_mul/asm/common.h"
 #include "src/arm_common/simd_macro/marm_neon.h"
@@ -21,8 +10,8 @@ using namespace aarch64::matmul;
 
 namespace {
 
-void interleave_8x1(__fp16* out, const __fp16* in, int ldin, int y0, int ymax,
-                    int k0, int kmax) {
+void interleave_8x1(
+        __fp16* out, const __fp16* in, int ldin, int y0, int ymax, int k0, int kmax) {
     __fp16* outptr = out;
     const __fp16* inptr = in;
     __fp16 zerobuff[24];
@@ -51,8 +40,9 @@ void interleave_8x1(__fp16* out, const __fp16* in, int ldin, int y0, int ymax,
         int x = (kmax - k0);
         for (; x > 7; x -= 8) {
             int skippf = (x & 31);
-            interleave_8x1_8_h(inptr0, inptr1, inptr2, inptr3, inptr4, inptr5,
-                               inptr6, inptr7, outptr, skippf);
+            interleave_8x1_8_h(
+                    inptr0, inptr1, inptr2, inptr3, inptr4, inptr5, inptr6, inptr7,
+                    outptr, skippf);
         }
 
         for (; x > 0; x--) {
@@ -109,8 +99,9 @@ void interleave_8x1(__fp16* out, const __fp16* in, int ldin, int y0, int ymax,
     }
 }
 
-void interleave_24x1(__fp16* out, const __fp16* in, const int ldin, const int y0,
-                    const int ymax, const int k0, const int kmax) {
+void interleave_24x1(
+        __fp16* out, const __fp16* in, const int ldin, const int y0, const int ymax,
+        const int k0, const int kmax) {
     __fp16* outptr = out;
     const __fp16* inptr = in;
     __fp16 zerobuff[24];
@@ -144,9 +135,9 @@ void interleave_24x1(__fp16* out, const __fp16* in, const int ldin, const int y0
             int x = (kmax - k0);
             for (; x > 7; x -= 8) {
                 int skippf = (x & 31);
-                interleave_24x1_8_h_helper(inptr0, inptr1, inptr2, inptr3,
-                                           inptr4, inptr5, inptr6, inptr7,
-                                           outptr_inner, skippf);
+                interleave_24x1_8_h_helper(
+                        inptr0, inptr1, inptr2, inptr3, inptr4, inptr5, inptr6, inptr7,
+                        outptr_inner, skippf);
             }
             for (; x > 0; x--) {
                 *outptr_inner++ = *inptr0++;
@@ -188,9 +179,9 @@ void interleave_24x1(__fp16* out, const __fp16* in, const int ldin, const int y0
             int x = (kmax - k0);
             for (; x > 7; x -= 8) {
                 int skippf = (x & 31);
-                interleave_16x1_8_h_helper(inptr0, inptr1, inptr2, inptr3,
-                                           inptr4, inptr5, inptr6, inptr7,
-                                           outptr_inner, skippf);
+                interleave_16x1_8_h_helper(
+                        inptr0, inptr1, inptr2, inptr3, inptr4, inptr5, inptr6, inptr7,
+                        outptr_inner, skippf);
             }
             for (; x > 0; x--) {
                 *outptr_inner++ = *inptr0++;
@@ -229,8 +220,9 @@ void interleave_24x1(__fp16* out, const __fp16* in, const int ldin, const int y0
         int x = (kmax - k0);
         for (; x > 7; x -= 8) {
             int skippf = (x & 31);
-            interleave_8x1_8_h(inptr0, inptr1, inptr2, inptr3, inptr4, inptr5,
-                               inptr6, inptr7, outptr, skippf);
+            interleave_8x1_8_h(
+                    inptr0, inptr1, inptr2, inptr3, inptr4, inptr5, inptr6, inptr7,
+                    outptr, skippf);
         }
 
         for (; x > 0; x--) {
@@ -287,8 +279,8 @@ void interleave_24x1(__fp16* out, const __fp16* in, const int ldin, const int y0
     }
 }
 
-void transpose_1x8(__fp16* out, const __fp16* in, int ldin, int x0, int xmax,
-                    int k0, int kmax) {
+void transpose_1x8(
+        __fp16* out, const __fp16* in, int ldin, int x0, int xmax, int k0, int kmax) {
     int ksize = kmax - k0;
     int ksize8 = (ksize << 3);
     int ksize4 = (ksize << 2);
@@ -421,8 +413,9 @@ void transpose_1x8(__fp16* out, const __fp16* in, int ldin, int x0, int xmax,
     }
 }
 
-void transpose_1x24(__fp16* out, const __fp16* in, const int ldin, const int x0,
-                    const int xmax, const int k0, const int kmax) {
+void transpose_1x24(
+        __fp16* out, const __fp16* in, const int ldin, const int x0, const int xmax,
+        const int k0, const int kmax) {
     int ksize = kmax - k0;
     int ksize24 = ksize * 24;
     int ksize16 = (ksize << 4);
@@ -644,9 +637,9 @@ void transpose_1x24(__fp16* out, const __fp16* in, const int ldin, const int x0,
 //
 //                            Accumulator
 
-void aarch64_hgemm_assembly_kernel_24x8(const __fp16* a_ptr,
-                                        const __fp16*& b_ptr, int K,
-                                        __fp16* outptr0, int ldout, int type) {
+void aarch64_hgemm_assembly_kernel_24x8(
+        const __fp16* a_ptr, const __fp16*& b_ptr, int K, __fp16* outptr0, int ldout,
+        int type) {
     int oddk = (K & 1);
     int k = ((K + 1) / 2) - 1;
 
@@ -999,9 +992,9 @@ void aarch64_hgemm_assembly_kernel_24x8(const __fp16* a_ptr,
 //  +--+--+ - - - -  +--------+--------+
 //
 //                        Accumulator
-void aarch64_hgemm_assembly_kernel_16x8(const __fp16* a_ptr,
-                                        const __fp16*& b_ptr, int K,
-                                        __fp16* outptr0, int ldout, int type) {
+void aarch64_hgemm_assembly_kernel_16x8(
+        const __fp16* a_ptr, const __fp16*& b_ptr, int K, __fp16* outptr0, int ldout,
+        int type) {
     int oddk = (K & 1);
     int k = ((K + 1) / 2) - 1;
 
@@ -1224,16 +1217,14 @@ void aarch64_hgemm_assembly_kernel_16x8(const __fp16* a_ptr,
 
             "3:\n"
             "str q23, [%[outptr7], #16]\n"
-            : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0), [b1] "+w"(b1),
-              [k] "+r"(k), [b0a] "+w"(b0a), [b1a] "+w"(b1a),
-              [a_ptr] "+r"(a_ptr), [b_ptr] "+r"(b_ptr), [outptr0] "+r"(outptr0),
-              [outptr1] "+r"(outptr1), [outptr2] "+r"(outptr2),
-              [outptr3] "+r"(outptr3), [outptr4] "+r"(outptr4),
-              [outptr5] "+r"(outptr5), [outptr6] "+r"(outptr6),
-              [outptr7] "+r"(outptr7)
+            : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0), [b1] "+w"(b1), [k] "+r"(k),
+              [b0a] "+w"(b0a), [b1a] "+w"(b1a), [a_ptr] "+r"(a_ptr),
+              [b_ptr] "+r"(b_ptr), [outptr0] "+r"(outptr0), [outptr1] "+r"(outptr1),
+              [outptr2] "+r"(outptr2), [outptr3] "+r"(outptr3), [outptr4] "+r"(outptr4),
+              [outptr5] "+r"(outptr5), [outptr6] "+r"(outptr6), [outptr7] "+r"(outptr7)
             : [oddk] "r"(oddk), [type] "r"(type)
-            : "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16",
-              "v17", "v18", "v19", "v20", "v21", "v22", "v23", "cc", "memory");
+            : "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
+              "v19", "v20", "v21", "v22", "v23", "cc", "memory");
 }
 
 // Overview of register layout:
@@ -1264,9 +1255,9 @@ void aarch64_hgemm_assembly_kernel_16x8(const __fp16* a_ptr,
 //  +--+--+ - - - -  +--------+
 //
 //                  Accumulator
-void aarch64_hgemm_assembly_kernel_8x8(const __fp16* a_ptr,
-                                       const __fp16*& b_ptr, int K,
-                                       __fp16* outptr0, int ldout, int type) {
+void aarch64_hgemm_assembly_kernel_8x8(
+        const __fp16* a_ptr, const __fp16*& b_ptr, int K, __fp16* outptr0, int ldout,
+        int type) {
     int oddk = (K & 1);
     int k = ((K + 1) / 2) - 1;
 
@@ -1420,13 +1411,11 @@ void aarch64_hgemm_assembly_kernel_8x8(const __fp16* a_ptr,
             "3:\n"
             : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0), [k] "+r"(k),
               [b0a] "+w"(b0a), [a_ptr] "+r"(a_ptr), [b_ptr] "+r"(b_ptr),
-              [outptr0] "+r"(outptr0), [outptr1] "+r"(outptr1),
-              [outptr2] "+r"(outptr2), [outptr3] "+r"(outptr3),
-              [outptr4] "+r"(outptr4), [outptr5] "+r"(outptr5),
+              [outptr0] "+r"(outptr0), [outptr1] "+r"(outptr1), [outptr2] "+r"(outptr2),
+              [outptr3] "+r"(outptr3), [outptr4] "+r"(outptr4), [outptr5] "+r"(outptr5),
               [outptr6] "+r"(outptr6), [outptr7] "+r"(outptr7)
             : [oddk] "r"(oddk), [type] "r"(type)
-            : "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "cc",
-              "memory");
+            : "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "cc", "memory");
 }
 
 // Overview of register layout:
@@ -1457,10 +1446,9 @@ void aarch64_hgemm_assembly_kernel_8x8(const __fp16* a_ptr,
 //  +--+--+ - - - -  +--------+
 //
 //                  Accumulator
-void aarch64_hgemm_assembly_kernel_4x8(const __fp16* a_ptr,
-                                       const __fp16*& b_ptr, int K,
-                                       __fp16* outptr0, int ldout, int x_remain,
-                                       int type) {
+void aarch64_hgemm_assembly_kernel_4x8(
+        const __fp16* a_ptr, const __fp16*& b_ptr, int K, __fp16* outptr0, int ldout,
+        int x_remain, int type) {
     int oddk = (K & 1);
     int k = ((K + 1) / 2) - 1;
 
@@ -1477,34 +1465,35 @@ void aarch64_hgemm_assembly_kernel_4x8(const __fp16* a_ptr,
     __fp16* outptr6 = outptr5 + ldout;
     __fp16* outptr7 = outptr6 + ldout;
 
-#define LOAD_LINE(reg_index, n)            \
-    "mov x0, %[outptr" n                   \
-    "]\n"                                  \
-    "cmp %w[x_remain], #4\n"               \
-    "b.lt REMAIN_LOAD_LINE_LESS_THAN_4_" n \
-    "\n"                                   \
-    "ldr d" reg_index                      \
-    ", [x0]\n"                             \
-    "b LOAD_LINE_END_" n                   \
-    "\n"                                   \
-                                           \
-    "REMAIN_LOAD_LINE_LESS_THAN_4_" n      \
-    ":\n"                                  \
-    "cmp %w[x_remain], #0\n"               \
-    "beq LOAD_LINE_END_" n                 \
-    "\n"                                   \
-    "ld1 {v" reg_index                     \
-    ".h}[0], [x0], #2\n"                   \
-    "cmp %w[x_remain], #1\n"               \
-    "beq LOAD_LINE_END_" n                 \
-    "\n"                                   \
-    "ld1 {v" reg_index                     \
-    ".h}[1], [x0], #2\n"                   \
-    "cmp %w[x_remain], #2\n"               \
-    "beq LOAD_LINE_END_" n                 \
-    "\n"                                   \
-    "ld1 {v" reg_index                     \
-    ".h}[2], [x0], #2\n"                   \
+#define LOAD_LINE(reg_index, n) \
+    "mov x0, %[outptr" n        \
+    "]\n"                       \
+    "cmp %w[x_remain], #4\n"    \
+    "b.lt 9999" n               \
+    "f"                         \
+    "\n"                        \
+    "ldr d" reg_index           \
+    ", [x0]\n"                  \
+    "b LOAD_LINE_END_" n        \
+    "\n"                        \
+                                \
+    "9999" n                    \
+    ":\n"                       \
+    "cmp %w[x_remain], #0\n"    \
+    "beq LOAD_LINE_END_" n      \
+    "\n"                        \
+    "ld1 {v" reg_index          \
+    ".h}[0], [x0], #2\n"        \
+    "cmp %w[x_remain], #1\n"    \
+    "beq LOAD_LINE_END_" n      \
+    "\n"                        \
+    "ld1 {v" reg_index          \
+    ".h}[1], [x0], #2\n"        \
+    "cmp %w[x_remain], #2\n"    \
+    "beq LOAD_LINE_END_" n      \
+    "\n"                        \
+    "ld1 {v" reg_index          \
+    ".h}[2], [x0], #2\n"        \
     "LOAD_LINE_END_" n ":\n"
 
 #define LOAD_C           \
@@ -1517,35 +1506,40 @@ void aarch64_hgemm_assembly_kernel_4x8(const __fp16* a_ptr,
     LOAD_LINE("14", "6") \
     LOAD_LINE("15", "7")
 
-#define STORE_LINE(reg_index, n)            \
-    "mov x0, %[outptr" n                    \
-    "]\n"                                   \
-    "cmp %w[x_remain], #4\n"                \
-    "b.lt REMAIN_STORE_LINE_LESS_THAN_4_" n \
-    "\n"                                    \
-    "str d" reg_index                       \
-    ", [x0]\n"                              \
-    "b STORE_LINE_END_" n                   \
-    "\n"                                    \
-                                            \
-    "REMAIN_STORE_LINE_LESS_THAN_4_" n      \
-    ":\n"                                   \
-    "cmp %w[x_remain], #0\n"                \
-    "beq STORE_LINE_END_" n                 \
-    "\n"                                    \
-    "st1 {v" reg_index                      \
-    ".h}[0], [x0], #2\n"                    \
-    "cmp %w[x_remain], #1\n"                \
-    "beq STORE_LINE_END_" n                 \
-    "\n"                                    \
-    "st1 {v" reg_index                      \
-    ".h}[1], [x0], #2\n"                    \
-    "cmp %w[x_remain], #2\n"                \
-    "beq STORE_LINE_END_" n                 \
-    "\n"                                    \
-    "st1 {v" reg_index                      \
-    ".h}[2], [x0], #2\n"                    \
-    "STORE_LINE_END_" n ":\n"
+#define STORE_LINE(reg_index, n) \
+    "mov x0, %[outptr" n         \
+    "]\n"                        \
+    "cmp %w[x_remain], #4\n"     \
+    "b.lt 7777" n                \
+    "f"                          \
+    "\n"                         \
+    "str d" reg_index            \
+    ", [x0]\n"                   \
+    "b 8888" n                   \
+    "f"                          \
+    "\n"                         \
+                                 \
+    "7777" n                     \
+    ":\n"                        \
+    "cmp %w[x_remain], #0\n"     \
+    "beq 8888" n                 \
+    "f"                          \
+    "\n"                         \
+    "st1 {v" reg_index           \
+    ".h}[0], [x0], #2\n"         \
+    "cmp %w[x_remain], #1\n"     \
+    "beq 8888" n                 \
+    "f"                          \
+    "\n"                         \
+    "st1 {v" reg_index           \
+    ".h}[1], [x0], #2\n"         \
+    "cmp %w[x_remain], #2\n"     \
+    "beq 8888" n                 \
+    "f"                          \
+    "\n"                         \
+    "st1 {v" reg_index           \
+    ".h}[2], [x0], #2\n"         \
+    "8888" n ":\n"
 
 #define STORE_C           \
     STORE_LINE("8", "0")  \
@@ -1654,9 +1648,8 @@ void aarch64_hgemm_assembly_kernel_4x8(const __fp16* a_ptr,
             "3:\n" STORE_C
             : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0), [k] "+r"(k),
               [b0a] "+w"(b0a), [a_ptr] "+r"(a_ptr), [b_ptr] "+r"(b_ptr),
-              [outptr0] "+r"(outptr0), [outptr1] "+r"(outptr1),
-              [outptr2] "+r"(outptr2), [outptr3] "+r"(outptr3),
-              [outptr4] "+r"(outptr4), [outptr5] "+r"(outptr5),
+              [outptr0] "+r"(outptr0), [outptr1] "+r"(outptr1), [outptr2] "+r"(outptr2),
+              [outptr3] "+r"(outptr3), [outptr4] "+r"(outptr4), [outptr5] "+r"(outptr5),
               [outptr6] "+r"(outptr6), [outptr7] "+r"(outptr7)
             : [oddk] "r"(oddk), [x_remain] "r"(x_remain), [type] "r"(type)
             : "x0", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "cc",
@@ -1692,10 +1685,9 @@ void aarch64_hgemm_assembly_kernel_4x8(const __fp16* a_ptr,
 //
 //                            Accumulator
 //! cannot load %[a0] and %[a0a] at same time!
-void aarch64_hgemm_assembly_kernel_24x4(const __fp16* a_ptr,
-                                        const __fp16*& b_ptr, int K,
-                                        __fp16* outptr0, int ldout,
-                                        int y_remain, int type) {
+void aarch64_hgemm_assembly_kernel_24x4(
+        const __fp16* a_ptr, const __fp16*& b_ptr, int K, __fp16* outptr0, int ldout,
+        int y_remain, int type) {
     int oddk = (K & 1);
     int k = ((K + 1) / 2) - 1;
 
@@ -1730,7 +1722,7 @@ void aarch64_hgemm_assembly_kernel_24x4(const __fp16* a_ptr,
     "LOAD_24x4_C_END:\n"
 
 #define STORE_LINE(v1, v2, v3, n)       \
-    "cbz w0, STORE_24x4_C_END\n"        \
+    "cbz w0, 4444f\n"        \
     "stp q" v1 ", q" v2 ", [%[outptr" n \
     "]]\n"                              \
     "str q" v3 ", [%[outptr" n          \
@@ -1742,158 +1734,155 @@ void aarch64_hgemm_assembly_kernel_24x4(const __fp16* a_ptr,
             STORE_LINE("9", "17", "25", "1")  \
             STORE_LINE("10", "18", "26", "2") \
             STORE_LINE("11", "19", "27", "3") \
-            "STORE_24x4_C_END:\n"
-// clang-format on
+            "4444:\n"
+    // clang-format on
 
-            asm volatile(
-                    ".arch armv8.2-a+fp16\n"
+    asm volatile(
+            ".arch armv8.2-a+fp16\n"
 
-                    // load accumulator C
-                    "cmp %w[type], #0\n"
-                    "beq 5f\n"
-                    LOAD_C
-                    "b 6f\n"
-                    "5:\n"
-                    "eor v8.16b,  v8.16b,  v8.16b\n"
-                    "eor v9.16b,  v9.16b,  v9.16b\n"
-                    "eor v10.16b, v10.16b, v10.16b\n"
-                    "eor v11.16b, v11.16b, v11.16b\n"
+            // load accumulator C
+            "cmp %w[type], #0\n"
+            "beq 5f\n" LOAD_C
+            "b 6f\n"
+            "5:\n"
+            "eor v8.16b,  v8.16b,  v8.16b\n"
+            "eor v9.16b,  v9.16b,  v9.16b\n"
+            "eor v10.16b, v10.16b, v10.16b\n"
+            "eor v11.16b, v11.16b, v11.16b\n"
 
-                    "eor v16.16b, v16.16b, v16.16b\n"
-                    "eor v17.16b, v17.16b, v17.16b\n"
-                    "eor v18.16b, v18.16b, v18.16b\n"
-                    "eor v19.16b, v19.16b, v19.16b\n"
+            "eor v16.16b, v16.16b, v16.16b\n"
+            "eor v17.16b, v17.16b, v17.16b\n"
+            "eor v18.16b, v18.16b, v18.16b\n"
+            "eor v19.16b, v19.16b, v19.16b\n"
 
-                    "eor v24.16b, v24.16b, v24.16b\n"
-                    "eor v25.16b, v25.16b, v25.16b\n"
-                    "eor v26.16b, v26.16b, v26.16b\n"
-                    "eor v27.16b, v27.16b, v27.16b\n"
+            "eor v24.16b, v24.16b, v24.16b\n"
+            "eor v25.16b, v25.16b, v25.16b\n"
+            "eor v26.16b, v26.16b, v26.16b\n"
+            "eor v27.16b, v27.16b, v27.16b\n"
 
-                    "6:\n"
-                    "ldr %d[a0], [%[a_ptr]]\n"
-                    "ldr %q[b0], [%[b_ptr]]\n"
-                    "ldr %q[b1], [%[b_ptr], #16]\n"
-                    "ldr %q[b2], [%[b_ptr], #32]\n"
-                    "ldr %q[b0a], [%[b_ptr], #48]\n"
-                    "ldr %q[b1a], [%[b_ptr], #64]\n"
+            "6:\n"
+            "ldr %d[a0], [%[a_ptr]]\n"
+            "ldr %q[b0], [%[b_ptr]]\n"
+            "ldr %q[b1], [%[b_ptr], #16]\n"
+            "ldr %q[b2], [%[b_ptr], #32]\n"
+            "ldr %q[b0a], [%[b_ptr], #48]\n"
+            "ldr %q[b1a], [%[b_ptr], #64]\n"
 
-                    "cbz %w[k], 4f\n"
+            "cbz %w[k], 4f\n"
 
-                    "1:\n"
-                    "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
-                    "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
-                    "ldr %d[a0a], [%[a_ptr], #8]\n"
-                    "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
-                    "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
-                    "ldr %q[b2a], [%[b_ptr], #80]\n"
-                    "ldr %q[b0], [%[b_ptr], #96]\n"
+            "1:\n"
+            "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
+            "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
+            "ldr %d[a0a], [%[a_ptr], #8]\n"
+            "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
+            "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
+            "ldr %q[b2a], [%[b_ptr], #80]\n"
+            "ldr %q[b0], [%[b_ptr], #96]\n"
 
-                    "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
-                    "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
-                    "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
-                    "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
-                    "add %[b_ptr], %[b_ptr], #96\n"
-                    "ldr %q[b1], [%[b_ptr], #16]\n"
+            "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
+            "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
+            "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
+            "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
+            "add %[b_ptr], %[b_ptr], #96\n"
+            "ldr %q[b1], [%[b_ptr], #16]\n"
 
-                    "fmla v24.8h, %[b2].8h, %[a0].h[0]\n"
-                    "fmla v25.8h, %[b2].8h, %[a0].h[1]\n"
-                    "fmla v26.8h, %[b2].8h, %[a0].h[2]\n"
-                    "fmla v27.8h, %[b2].8h, %[a0].h[3]\n"
-                    "ldr %d[a0], [%[a_ptr], #16]\n"
+            "fmla v24.8h, %[b2].8h, %[a0].h[0]\n"
+            "fmla v25.8h, %[b2].8h, %[a0].h[1]\n"
+            "fmla v26.8h, %[b2].8h, %[a0].h[2]\n"
+            "fmla v27.8h, %[b2].8h, %[a0].h[3]\n"
+            "ldr %d[a0], [%[a_ptr], #16]\n"
 
-                    "fmla v8.8h , %[b0a].8h, %[a0a].h[0]\n"
-                    "fmla v9.8h , %[b0a].8h, %[a0a].h[1]\n"
-                    "ldr %q[b2], [%[b_ptr], #32]\n"
+            "fmla v8.8h , %[b0a].8h, %[a0a].h[0]\n"
+            "fmla v9.8h , %[b0a].8h, %[a0a].h[1]\n"
+            "ldr %q[b2], [%[b_ptr], #32]\n"
 
-                    "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
-                    "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
-                    "ldr %q[b0a], [%[b_ptr], #48]\n"
+            "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
+            "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
+            "ldr %q[b0a], [%[b_ptr], #48]\n"
 
-                    "fmla v16.8h, %[b1a].8h, %[a0a].h[0]\n"
-                    "fmla v17.8h, %[b1a].8h, %[a0a].h[1]\n"
-                    "fmla v18.8h, %[b1a].8h, %[a0a].h[2]\n"
-                    "fmla v19.8h, %[b1a].8h, %[a0a].h[3]\n"
-                    "ldr %q[b1a], [%[b_ptr], #64]\n"
+            "fmla v16.8h, %[b1a].8h, %[a0a].h[0]\n"
+            "fmla v17.8h, %[b1a].8h, %[a0a].h[1]\n"
+            "fmla v18.8h, %[b1a].8h, %[a0a].h[2]\n"
+            "fmla v19.8h, %[b1a].8h, %[a0a].h[3]\n"
+            "ldr %q[b1a], [%[b_ptr], #64]\n"
 
-                    "fmla v24.8h, %[b2a].8h, %[a0a].h[0]\n"
-                    "fmla v25.8h, %[b2a].8h, %[a0a].h[1]\n"
-                    "add %[a_ptr], %[a_ptr], #16\n"
-                    "fmla v26.8h, %[b2a].8h, %[a0a].h[2]\n"
-                    "fmla v27.8h, %[b2a].8h, %[a0a].h[3]\n"
-                    "subs %w[k], %w[k], #1\n"
+            "fmla v24.8h, %[b2a].8h, %[a0a].h[0]\n"
+            "fmla v25.8h, %[b2a].8h, %[a0a].h[1]\n"
+            "add %[a_ptr], %[a_ptr], #16\n"
+            "fmla v26.8h, %[b2a].8h, %[a0a].h[2]\n"
+            "fmla v27.8h, %[b2a].8h, %[a0a].h[3]\n"
+            "subs %w[k], %w[k], #1\n"
 
-                    "bne 1b\n"
-                    "4:\n"
-                    // Jump to odd tail if necessary.
-                    "cbnz %w[oddk], 2f\n"
+            "bne 1b\n"
+            "4:\n"
+            // Jump to odd tail if necessary.
+            "cbnz %w[oddk], 2f\n"
 
-                    // Even tail
-                    "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
-                    "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
-                    "ldr %d[a0a], [%[a_ptr], #8]\n"
-                    "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
-                    "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
-                    "ldr %q[b2a], [%[b_ptr], #80]\n"
+            // Even tail
+            "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
+            "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
+            "ldr %d[a0a], [%[a_ptr], #8]\n"
+            "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
+            "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
+            "ldr %q[b2a], [%[b_ptr], #80]\n"
 
-                    "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
-                    "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
-                    "add %[b_ptr], %[b_ptr], #96\n"
-                    "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
-                    "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
-                    "add %[a_ptr], %[a_ptr], #16\n"
+            "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
+            "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
+            "add %[b_ptr], %[b_ptr], #96\n"
+            "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
+            "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
+            "add %[a_ptr], %[a_ptr], #16\n"
 
-                    "fmla v24.8h, %[b2].8h, %[a0].h[0]\n"
-                    "fmla v25.8h, %[b2].8h, %[a0].h[1]\n"
-                    "fmla v26.8h, %[b2].8h, %[a0].h[2]\n"
-                    "fmla v27.8h, %[b2].8h, %[a0].h[3]\n"
+            "fmla v24.8h, %[b2].8h, %[a0].h[0]\n"
+            "fmla v25.8h, %[b2].8h, %[a0].h[1]\n"
+            "fmla v26.8h, %[b2].8h, %[a0].h[2]\n"
+            "fmla v27.8h, %[b2].8h, %[a0].h[3]\n"
 
-                    "fmla v8.8h, %[b0a].8h, %[a0a].h[0]\n"
-                    "fmla v9.8h, %[b0a].8h, %[a0a].h[1]\n"
-                    "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
-                    "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
+            "fmla v8.8h, %[b0a].8h, %[a0a].h[0]\n"
+            "fmla v9.8h, %[b0a].8h, %[a0a].h[1]\n"
+            "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
+            "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
 
-                    "fmla v16.8h, %[b1a].8h, %[a0a].h[0]\n"
-                    "fmla v17.8h, %[b1a].8h, %[a0a].h[1]\n"
-                    "fmla v18.8h, %[b1a].8h, %[a0a].h[2]\n"
-                    "fmla v19.8h, %[b1a].8h, %[a0a].h[3]\n"
+            "fmla v16.8h, %[b1a].8h, %[a0a].h[0]\n"
+            "fmla v17.8h, %[b1a].8h, %[a0a].h[1]\n"
+            "fmla v18.8h, %[b1a].8h, %[a0a].h[2]\n"
+            "fmla v19.8h, %[b1a].8h, %[a0a].h[3]\n"
 
-                    "fmla v24.8h, %[b2a].8h, %[a0a].h[0]\n"
-                    "fmla v25.8h, %[b2a].8h, %[a0a].h[1]\n"
-                    "fmla v26.8h, %[b2a].8h, %[a0a].h[2]\n"
-                    "fmla v27.8h, %[b2a].8h, %[a0a].h[3]\n"
-                    "b 3f\n"
+            "fmla v24.8h, %[b2a].8h, %[a0a].h[0]\n"
+            "fmla v25.8h, %[b2a].8h, %[a0a].h[1]\n"
+            "fmla v26.8h, %[b2a].8h, %[a0a].h[2]\n"
+            "fmla v27.8h, %[b2a].8h, %[a0a].h[3]\n"
+            "b 3f\n"
 
-                    // Odd tail
-                    "2:\n"
-                    "add %[a_ptr], %[a_ptr], #8\n"
-                    "add %[b_ptr], %[b_ptr], #48\n"
+            // Odd tail
+            "2:\n"
+            "add %[a_ptr], %[a_ptr], #8\n"
+            "add %[b_ptr], %[b_ptr], #48\n"
 
-                    "fmla v8.8h, %[b0].8h, %[a0].h[0]\n"
-                    "fmla v9.8h, %[b0].8h, %[a0].h[1]\n"
-                    "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
-                    "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
+            "fmla v8.8h, %[b0].8h, %[a0].h[0]\n"
+            "fmla v9.8h, %[b0].8h, %[a0].h[1]\n"
+            "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
+            "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
 
-                    "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
-                    "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
-                    "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
-                    "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
+            "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
+            "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
+            "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
+            "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
 
-                    "fmla v24.8h, %[b2].8h, %[a0].h[0]\n"
-                    "fmla v25.8h, %[b2].8h, %[a0].h[1]\n"
-                    "fmla v26.8h, %[b2].8h, %[a0].h[2]\n"
-                    "fmla v27.8h, %[b2].8h, %[a0].h[3]\n"
+            "fmla v24.8h, %[b2].8h, %[a0].h[0]\n"
+            "fmla v25.8h, %[b2].8h, %[a0].h[1]\n"
+            "fmla v26.8h, %[b2].8h, %[a0].h[2]\n"
+            "fmla v27.8h, %[b2].8h, %[a0].h[3]\n"
 
-                    "3:\n" STORE_C
-                    : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0),
-                      [b1] "+w"(b1), [b2] "+w"(b2), [k] "+r"(k),
-                      [b0a] "+w"(b0a), [b1a] "+w"(b1a), [b2a] "+w"(b2a),
-                      [a_ptr] "+r"(a_ptr), [b_ptr] "+r"(b_ptr),
-                      [outptr0] "+r"(outptr0), [outptr1] "+r"(outptr1),
-                      [outptr2] "+r"(outptr2), [outptr3] "+r"(outptr3)
-                    :
-                    [oddk] "r"(oddk), [y_remain] "r"(y_remain), [type] "r"(type)
-                    : "w0", "v8", "v9", "v10", "v11", "v16", "v17", "v18",
-                      "v19", "v24", "v25", "v26", "v27", "cc", "memory");
+            "3:\n" STORE_C
+            : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0), [b1] "+w"(b1),
+              [b2] "+w"(b2), [k] "+r"(k), [b0a] "+w"(b0a), [b1a] "+w"(b1a),
+              [b2a] "+w"(b2a), [a_ptr] "+r"(a_ptr), [b_ptr] "+r"(b_ptr),
+              [outptr0] "+r"(outptr0), [outptr1] "+r"(outptr1), [outptr2] "+r"(outptr2),
+              [outptr3] "+r"(outptr3)
+            : [oddk] "r"(oddk), [y_remain] "r"(y_remain), [type] "r"(type)
+            : "w0", "v8", "v9", "v10", "v11", "v16", "v17", "v18", "v19", "v24", "v25",
+              "v26", "v27", "cc", "memory");
 #undef LOAD_LINE
 #undef LOAD_C
 #undef STORE_LINE
@@ -1924,10 +1913,9 @@ void aarch64_hgemm_assembly_kernel_24x4(const __fp16* a_ptr,
 //  +--+--+ - - - -  +--------+--------+
 //
 //                       Accumulator
-void aarch64_hgemm_assembly_kernel_16x4(const __fp16* a_ptr,
-                                        const __fp16*& b_ptr, int K,
-                                        __fp16* outptr0, int ldout,
-                                        int y_remain, int type) {
+void aarch64_hgemm_assembly_kernel_16x4(
+        const __fp16* a_ptr, const __fp16*& b_ptr, int K, __fp16* outptr0, int ldout,
+        int y_remain, int type) {
     int oddk = (K & 1);
     int k = ((K + 1) / 2) - 1;
 
@@ -1942,7 +1930,7 @@ void aarch64_hgemm_assembly_kernel_16x4(const __fp16* a_ptr,
     __fp16* outptr2 = outptr1 + ldout;
     __fp16* outptr3 = outptr2 + ldout;
 
-// clang-format off
+    // clang-format off
 
 #define LOAD_LINE(v1, v2, n)            \
     "cbz w0, LOAD_16x4_C_END\n"         \
@@ -1958,7 +1946,7 @@ void aarch64_hgemm_assembly_kernel_16x4(const __fp16* a_ptr,
     "LOAD_16x4_C_END:\n"
 
 #define STORE_LINE(v1, v2, n)           \
-    "cbz w0, STORE_16x4_C_END\n"        \
+    "cbz w0, 3333f\n"        \
     "stp q" v1 ", q" v2 ", [%[outptr" n \
     "]]\n"                              \
     "subs w0, w0, #1\n"
@@ -1968,125 +1956,123 @@ void aarch64_hgemm_assembly_kernel_16x4(const __fp16* a_ptr,
             STORE_LINE("9", "17", "1")   \
             STORE_LINE("10", "18", "2")  \
             STORE_LINE("11", "19", "3")  \
-            "STORE_16x4_C_END:\n"
+            "3333:\n"
 
-// clang-format on
+    // clang-format on
 
-            asm volatile(
-                    ".arch armv8.2-a+fp16\n"
+    asm volatile(
+            ".arch armv8.2-a+fp16\n"
 
-                    // load accumulator C
-                    "cmp %w[type], #0\n"
-                    "beq 5f\n" LOAD_C
-                    "b 6f\n"
+            // load accumulator C
+            "cmp %w[type], #0\n"
+            "beq 5f\n" LOAD_C
+            "b 6f\n"
 
-                    "5:\n"
-                    "eor v8.16b,  v8.16b,  v8.16b\n"
-                    "eor v9.16b,  v9.16b,  v9.16b\n"
-                    "eor v10.16b, v10.16b, v10.16b\n"
-                    "eor v11.16b, v11.16b, v11.16b\n"
+            "5:\n"
+            "eor v8.16b,  v8.16b,  v8.16b\n"
+            "eor v9.16b,  v9.16b,  v9.16b\n"
+            "eor v10.16b, v10.16b, v10.16b\n"
+            "eor v11.16b, v11.16b, v11.16b\n"
 
-                    "eor v16.16b, v16.16b, v16.16b\n"
-                    "eor v17.16b, v17.16b, v17.16b\n"
-                    "eor v18.16b, v18.16b, v18.16b\n"
-                    "eor v19.16b, v19.16b, v19.16b\n"
+            "eor v16.16b, v16.16b, v16.16b\n"
+            "eor v17.16b, v17.16b, v17.16b\n"
+            "eor v18.16b, v18.16b, v18.16b\n"
+            "eor v19.16b, v19.16b, v19.16b\n"
 
-                    "6:\n"
-                    "ldr %d[a0], [%[a_ptr]]\n"
-                    "ldr %q[b0], [%[b_ptr]]\n"
-                    "ldr %q[b1], [%[b_ptr], #16]\n"
-                    "ldr %q[b0a], [%[b_ptr], #32]\n"
-                    "ldr %q[b1a], [%[b_ptr], #48]\n"
+            "6:\n"
+            "ldr %d[a0], [%[a_ptr]]\n"
+            "ldr %q[b0], [%[b_ptr]]\n"
+            "ldr %q[b1], [%[b_ptr], #16]\n"
+            "ldr %q[b0a], [%[b_ptr], #32]\n"
+            "ldr %q[b1a], [%[b_ptr], #48]\n"
 
-                    "cbz %w[k], 4f\n"
+            "cbz %w[k], 4f\n"
 
-                    "1:\n"
-                    "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
-                    "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
-                    "ldr %d[a0a], [%[a_ptr], #8]\n"
-                    "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
-                    "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
-                    "ldr %q[b0], [%[b_ptr], #64]\n"
+            "1:\n"
+            "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
+            "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
+            "ldr %d[a0a], [%[a_ptr], #8]\n"
+            "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
+            "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
+            "ldr %q[b0], [%[b_ptr], #64]\n"
 
-                    "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
-                    "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
-                    "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
-                    "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
-                    "add %[b_ptr], %[b_ptr], #64\n"
-                    "ldr %q[b1], [%[b_ptr], #16]\n"
+            "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
+            "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
+            "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
+            "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
+            "add %[b_ptr], %[b_ptr], #64\n"
+            "ldr %q[b1], [%[b_ptr], #16]\n"
 
-                    "fmla v8.8h , %[b0a].8h, %[a0a].h[0]\n"
-                    "fmla v9.8h , %[b0a].8h, %[a0a].h[1]\n"
-                    "ldr %d[a0], [%[a_ptr], #16]\n"
-                    "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
-                    "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
-                    "ldr %q[b0a], [%[b_ptr], #32]\n"
+            "fmla v8.8h , %[b0a].8h, %[a0a].h[0]\n"
+            "fmla v9.8h , %[b0a].8h, %[a0a].h[1]\n"
+            "ldr %d[a0], [%[a_ptr], #16]\n"
+            "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
+            "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
+            "ldr %q[b0a], [%[b_ptr], #32]\n"
 
-                    "fmla v16.8h, %[b1a].8h, %[a0a].h[0]\n"
-                    "fmla v17.8h, %[b1a].8h, %[a0a].h[1]\n"
-                    "fmla v18.8h, %[b1a].8h, %[a0a].h[2]\n"
-                    "fmla v19.8h, %[b1a].8h, %[a0a].h[3]\n"
-                    "ldr %q[b1a], [%[b_ptr], #48]\n"
+            "fmla v16.8h, %[b1a].8h, %[a0a].h[0]\n"
+            "fmla v17.8h, %[b1a].8h, %[a0a].h[1]\n"
+            "fmla v18.8h, %[b1a].8h, %[a0a].h[2]\n"
+            "fmla v19.8h, %[b1a].8h, %[a0a].h[3]\n"
+            "ldr %q[b1a], [%[b_ptr], #48]\n"
 
-                    "add %[a_ptr], %[a_ptr], #16\n"
-                    "subs %w[k], %w[k], #1\n"
+            "add %[a_ptr], %[a_ptr], #16\n"
+            "subs %w[k], %w[k], #1\n"
 
-                    "bne 1b\n"
-                    "4:\n"
-                    // Jump to odd tail if necessary.
-                    "cbnz %w[oddk], 2f\n"
+            "bne 1b\n"
+            "4:\n"
+            // Jump to odd tail if necessary.
+            "cbnz %w[oddk], 2f\n"
 
-                    // Even tail
-                    "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
-                    "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
-                    "ldr %d[a0a], [%[a_ptr], #8]\n"
-                    "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
-                    "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
+            // Even tail
+            "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
+            "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
+            "ldr %d[a0a], [%[a_ptr], #8]\n"
+            "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
+            "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
 
-                    "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
-                    "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
-                    "add %[b_ptr], %[b_ptr], #64\n"
-                    "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
-                    "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
-                    "add %[a_ptr], %[a_ptr], #16\n"
+            "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
+            "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
+            "add %[b_ptr], %[b_ptr], #64\n"
+            "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
+            "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
+            "add %[a_ptr], %[a_ptr], #16\n"
 
-                    "fmla v8.8h, %[b0a].8h, %[a0a].h[0]\n"
-                    "fmla v9.8h, %[b0a].8h, %[a0a].h[1]\n"
-                    "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
-                    "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
+            "fmla v8.8h, %[b0a].8h, %[a0a].h[0]\n"
+            "fmla v9.8h, %[b0a].8h, %[a0a].h[1]\n"
+            "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
+            "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
 
-                    "fmla v16.8h, %[b1a].8h, %[a0a].h[0]\n"
-                    "fmla v17.8h, %[b1a].8h, %[a0a].h[1]\n"
-                    "fmla v18.8h, %[b1a].8h, %[a0a].h[2]\n"
-                    "fmla v19.8h, %[b1a].8h, %[a0a].h[3]\n"
+            "fmla v16.8h, %[b1a].8h, %[a0a].h[0]\n"
+            "fmla v17.8h, %[b1a].8h, %[a0a].h[1]\n"
+            "fmla v18.8h, %[b1a].8h, %[a0a].h[2]\n"
+            "fmla v19.8h, %[b1a].8h, %[a0a].h[3]\n"
 
-                    "b 3f\n"
+            "b 3f\n"
 
-                    // Odd tail
-                    "2:\n"
-                    "add %[a_ptr], %[a_ptr], #8\n"
-                    "add %[b_ptr], %[b_ptr], #32\n"
+            // Odd tail
+            "2:\n"
+            "add %[a_ptr], %[a_ptr], #8\n"
+            "add %[b_ptr], %[b_ptr], #32\n"
 
-                    "fmla v8.8h, %[b0].8h, %[a0].h[0]\n"
-                    "fmla v9.8h, %[b0].8h, %[a0].h[1]\n"
-                    "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
-                    "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
+            "fmla v8.8h, %[b0].8h, %[a0].h[0]\n"
+            "fmla v9.8h, %[b0].8h, %[a0].h[1]\n"
+            "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
+            "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
 
-                    "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
-                    "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
-                    "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
-                    "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
+            "fmla v16.8h, %[b1].8h, %[a0].h[0]\n"
+            "fmla v17.8h, %[b1].8h, %[a0].h[1]\n"
+            "fmla v18.8h, %[b1].8h, %[a0].h[2]\n"
+            "fmla v19.8h, %[b1].8h, %[a0].h[3]\n"
 
-                    "3:\n" STORE_C
-                    : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0),
-                      [b1] "+w"(b1), [k] "+r"(k), [b0a] "+w"(b0a),
-                      [b1a] "+w"(b1a), [a_ptr] "+r"(a_ptr), [b_ptr] "+r"(b_ptr),
-                      [outptr0] "+r"(outptr0), [outptr1] "+r"(outptr1),
-                      [outptr2] "+r"(outptr2), [outptr3] "+r"(outptr3)
-                    :
-                    [oddk] "r"(oddk), [y_remain] "r"(y_remain), [type] "r"(type)
-                    : "w0", "v8", "v9", "v10", "v11", "v16", "v17", "v18",
-                      "v19", "cc", "memory");
+            "3:\n" STORE_C
+            : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0), [b1] "+w"(b1), [k] "+r"(k),
+              [b0a] "+w"(b0a), [b1a] "+w"(b1a), [a_ptr] "+r"(a_ptr),
+              [b_ptr] "+r"(b_ptr), [outptr0] "+r"(outptr0), [outptr1] "+r"(outptr1),
+              [outptr2] "+r"(outptr2), [outptr3] "+r"(outptr3)
+            : [oddk] "r"(oddk), [y_remain] "r"(y_remain), [type] "r"(type)
+            : "w0", "v8", "v9", "v10", "v11", "v16", "v17", "v18", "v19", "cc",
+              "memory");
 #undef LOAD_LINE
 #undef LOAD_C
 #undef STORE_LINE
@@ -2117,10 +2103,9 @@ void aarch64_hgemm_assembly_kernel_16x4(const __fp16* a_ptr,
 //  +--+--+ - - - -  +--------+
 //
 //                  Accumulator
-void aarch64_hgemm_assembly_kernel_8x4(const __fp16* a_ptr,
-                                       const __fp16*& b_ptr, int K,
-                                       __fp16* outptr0, int ldout, int y_remain,
-                                       int type) {
+void aarch64_hgemm_assembly_kernel_8x4(
+        const __fp16* a_ptr, const __fp16*& b_ptr, int K, __fp16* outptr0, int ldout,
+        int y_remain, int type) {
     int oddk = (K & 1);
     int k = ((K + 1) / 2) - 1;
 
@@ -2149,7 +2134,7 @@ void aarch64_hgemm_assembly_kernel_8x4(const __fp16* a_ptr,
     "LOAD_8x4_C_END:\n"
 
 #define STORE_LINE(v1, n)       \
-    "cbz w0, STORE_8x4_C_END\n" \
+    "cbz w0, 2222f\n" \
     "str q" v1 ", [%[outptr" n  \
     "]]\n"                      \
     "subs w0, w0, #1\n"
@@ -2160,90 +2145,88 @@ void aarch64_hgemm_assembly_kernel_8x4(const __fp16* a_ptr,
     STORE_LINE("9", "1")     \
     STORE_LINE("10", "2")    \
     STORE_LINE("11", "3")    \
-    "STORE_8x4_C_END:\n"
-// clang-format on
+    "2222:\n"
+    // clang-format on
 
-            asm volatile(
-                    ".arch armv8.2-a+fp16\n"
+    asm volatile(
+            ".arch armv8.2-a+fp16\n"
 
-                    // load accumulator C
-                    "cmp %w[type], #0\n"
-                    "beq 5f\n" LOAD_C
-                    "b 6f\n"
-                    "5:\n"
-                    "eor v8.16b,  v8.16b,  v8.16b\n"
-                    "eor v9.16b,  v9.16b,  v9.16b\n"
-                    "eor v10.16b, v10.16b, v10.16b\n"
-                    "eor v11.16b, v11.16b, v11.16b\n"
+            // load accumulator C
+            "cmp %w[type], #0\n"
+            "beq 5f\n" LOAD_C
+            "b 6f\n"
+            "5:\n"
+            "eor v8.16b,  v8.16b,  v8.16b\n"
+            "eor v9.16b,  v9.16b,  v9.16b\n"
+            "eor v10.16b, v10.16b, v10.16b\n"
+            "eor v11.16b, v11.16b, v11.16b\n"
 
-                    "6:\n"
-                    "ldr %d[a0], [%[a_ptr]]\n"
-                    "ldr %q[b0], [%[b_ptr]]\n"
-                    "ldr %q[b0a], [%[b_ptr], #16]\n"
+            "6:\n"
+            "ldr %d[a0], [%[a_ptr]]\n"
+            "ldr %q[b0], [%[b_ptr]]\n"
+            "ldr %q[b0a], [%[b_ptr], #16]\n"
 
-                    "cbz %w[k], 4f\n"
+            "cbz %w[k], 4f\n"
 
-                    "1:\n"
-                    "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
-                    "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
-                    "ldr %d[a0a], [%[a_ptr], #8]\n"
-                    "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
-                    "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
-                    "ldr %q[b0], [%[b_ptr], #32]\n"
+            "1:\n"
+            "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
+            "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
+            "ldr %d[a0a], [%[a_ptr], #8]\n"
+            "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
+            "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
+            "ldr %q[b0], [%[b_ptr], #32]\n"
 
-                    "add %[b_ptr], %[b_ptr], #32\n"
-                    "ldr %d[a0], [%[a_ptr], #16]\n"
+            "add %[b_ptr], %[b_ptr], #32\n"
+            "ldr %d[a0], [%[a_ptr], #16]\n"
 
-                    "fmla v8.8h , %[b0a].8h, %[a0a].h[0]\n"
-                    "fmla v9.8h , %[b0a].8h, %[a0a].h[1]\n"
-                    "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
-                    "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
-                    "ldr %q[b0a], [%[b_ptr], #16]\n"
+            "fmla v8.8h , %[b0a].8h, %[a0a].h[0]\n"
+            "fmla v9.8h , %[b0a].8h, %[a0a].h[1]\n"
+            "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
+            "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
+            "ldr %q[b0a], [%[b_ptr], #16]\n"
 
-                    "add %[a_ptr], %[a_ptr], #16\n"
-                    "subs %w[k], %w[k], #1\n"
+            "add %[a_ptr], %[a_ptr], #16\n"
+            "subs %w[k], %w[k], #1\n"
 
-                    "bne 1b\n"
-                    "4:\n"
-                    // Jump to odd tail if necessary.
-                    "cbnz %w[oddk], 2f\n"
+            "bne 1b\n"
+            "4:\n"
+            // Jump to odd tail if necessary.
+            "cbnz %w[oddk], 2f\n"
 
-                    // Even tail
-                    "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
-                    "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
-                    "ldr %d[a0a], [%[a_ptr], #8]\n"
-                    "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
-                    "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
+            // Even tail
+            "fmla v8.8h , %[b0].8h, %[a0].h[0]\n"
+            "fmla v9.8h , %[b0].8h, %[a0].h[1]\n"
+            "ldr %d[a0a], [%[a_ptr], #8]\n"
+            "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
+            "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
 
-                    "add %[b_ptr], %[b_ptr], #32\n"
-                    "add %[a_ptr], %[a_ptr], #16\n"
+            "add %[b_ptr], %[b_ptr], #32\n"
+            "add %[a_ptr], %[a_ptr], #16\n"
 
-                    "fmla v8.8h, %[b0a].8h, %[a0a].h[0]\n"
-                    "fmla v9.8h, %[b0a].8h, %[a0a].h[1]\n"
-                    "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
-                    "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
+            "fmla v8.8h, %[b0a].8h, %[a0a].h[0]\n"
+            "fmla v9.8h, %[b0a].8h, %[a0a].h[1]\n"
+            "fmla v10.8h, %[b0a].8h, %[a0a].h[2]\n"
+            "fmla v11.8h, %[b0a].8h, %[a0a].h[3]\n"
 
-                    "b 3f\n"
+            "b 3f\n"
 
-                    // Odd tail
-                    "2:\n"
-                    "add %[a_ptr], %[a_ptr], #8\n"
-                    "add %[b_ptr], %[b_ptr], #16\n"
+            // Odd tail
+            "2:\n"
+            "add %[a_ptr], %[a_ptr], #8\n"
+            "add %[b_ptr], %[b_ptr], #16\n"
 
-                    "fmla v8.8h, %[b0].8h, %[a0].h[0]\n"
-                    "fmla v9.8h, %[b0].8h, %[a0].h[1]\n"
-                    "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
-                    "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
+            "fmla v8.8h, %[b0].8h, %[a0].h[0]\n"
+            "fmla v9.8h, %[b0].8h, %[a0].h[1]\n"
+            "fmla v10.8h, %[b0].8h, %[a0].h[2]\n"
+            "fmla v11.8h, %[b0].8h, %[a0].h[3]\n"
 
-                    "3:\n" STORE_C
-                    : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0),
-                      [k] "+r"(k), [b0a] "+w"(b0a), [a_ptr] "+r"(a_ptr),
-                      [b_ptr] "+r"(b_ptr), [outptr0] "+r"(outptr0),
-                      [outptr1] "+r"(outptr1), [outptr2] "+r"(outptr2),
-                      [outptr3] "+r"(outptr3)
-                    :
-                    [oddk] "r"(oddk), [y_remain] "r"(y_remain), [type] "r"(type)
-                    : "w0", "v8", "v9", "v10", "v11", "cc", "memory");
+            "3:\n" STORE_C
+            : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0), [k] "+r"(k),
+              [b0a] "+w"(b0a), [a_ptr] "+r"(a_ptr), [b_ptr] "+r"(b_ptr),
+              [outptr0] "+r"(outptr0), [outptr1] "+r"(outptr1), [outptr2] "+r"(outptr2),
+              [outptr3] "+r"(outptr3)
+            : [oddk] "r"(oddk), [y_remain] "r"(y_remain), [type] "r"(type)
+            : "w0", "v8", "v9", "v10", "v11", "cc", "memory");
 #undef LOAD_LINE
 #undef LOAD_C
 #undef STORE_LINE
@@ -2274,10 +2257,9 @@ void aarch64_hgemm_assembly_kernel_8x4(const __fp16* a_ptr,
 //  +--+--+ - - - -  +--------+
 //
 //                  Accumulator
-void aarch64_hgemm_assembly_kernel_4x4(const __fp16* a_ptr,
-                                       const __fp16*& b_ptr, int K,
-                                       __fp16* outptr0, int ldout, int x_remain,
-                                       int y_remain, int type) {
+void aarch64_hgemm_assembly_kernel_4x4(
+        const __fp16* a_ptr, const __fp16*& b_ptr, int K, __fp16* outptr0, int ldout,
+        int x_remain, int y_remain, int type) {
     int oddk = (K & 1);
     int k = ((K + 1) / 2) - 1;
 
@@ -2290,167 +2272,165 @@ void aarch64_hgemm_assembly_kernel_4x4(const __fp16* a_ptr,
     __fp16* outptr2 = outptr1 + ldout;
     __fp16* outptr3 = outptr2 + ldout;
 
-#define LOAD_LINE(reg_index, n)                \
-    "cbz w1, LOAD_4x4_C_END\n"                 \
-    "mov x0, %[outptr" n                       \
-    "]\n"                                      \
-    "cmp %w[x_remain], #4\n"                   \
-    "b.lt REMAIN_LOAD_4x4_LINE_LESS_THAN_4_" n \
-    "\n"                                       \
-    "ldr d" reg_index                          \
-    ", [x0]\n"                                 \
-    "b LOAD_4x4_LINE_END_" n                   \
-    "\n"                                       \
-                                               \
-    "REMAIN_LOAD_4x4_LINE_LESS_THAN_4_" n      \
-    ":\n"                                      \
-    "cmp %w[x_remain], #0\n"                   \
-    "beq LOAD_4x4_LINE_END_" n                 \
-    "\n"                                       \
-    "ld1 {v" reg_index                         \
-    ".h}[0], [x0], #2\n"                       \
-    "cmp %w[x_remain], #1\n"                   \
-    "beq LOAD_4x4_LINE_END_" n                 \
-    "\n"                                       \
-    "ld1 {v" reg_index                         \
-    ".h}[1], [x0], #2\n"                       \
-    "cmp %w[x_remain], #2\n"                   \
-    "beq LOAD_4x4_LINE_END_" n                 \
-    "\n"                                       \
-    "ld1 {v" reg_index                         \
-    ".h}[2], [x0], #2\n"                       \
-    "LOAD_4x4_LINE_END_" n                     \
-    ":\n"                                      \
+#define LOAD_LINE(reg_index, n) \
+    "cbz w1, LOAD_4x4_C_END\n"  \
+    "mov x0, %[outptr" n        \
+    "]\n"                       \
+    "cmp %w[x_remain], #4\n"    \
+    "b.lt 55555" n              \
+    "f"                         \
+    "\n"                        \
+    "ldr d" reg_index           \
+    ", [x0]\n"                  \
+    "b LOAD_4x4_LINE_END_" n    \
+    "\n"                        \
+                                \
+    "55555" n                   \
+    ":\n"                       \
+    "cmp %w[x_remain], #0\n"    \
+    "beq LOAD_4x4_LINE_END_" n  \
+    "\n"                        \
+    "ld1 {v" reg_index          \
+    ".h}[0], [x0], #2\n"        \
+    "cmp %w[x_remain], #1\n"    \
+    "beq LOAD_4x4_LINE_END_" n  \
+    "\n"                        \
+    "ld1 {v" reg_index          \
+    ".h}[1], [x0], #2\n"        \
+    "cmp %w[x_remain], #2\n"    \
+    "beq LOAD_4x4_LINE_END_" n  \
+    "\n"                        \
+    "ld1 {v" reg_index          \
+    ".h}[2], [x0], #2\n"        \
+    "LOAD_4x4_LINE_END_" n      \
+    ":\n"                       \
     "subs w1, w1, #1\n"
 
-#define LOAD_C               \
-    "mov w1, %w[y_remain]\n" \
-    LOAD_LINE("8", "0")      \
-    LOAD_LINE("9", "1")      \
-    LOAD_LINE("10", "2")     \
-    LOAD_LINE("11", "3")     \
-    "LOAD_4x4_C_END:\n"
+#define LOAD_C                                                       \
+    "mov w1, %w[y_remain]\n" LOAD_LINE("8", "0") LOAD_LINE("9", "1") \
+            LOAD_LINE("10", "2") LOAD_LINE("11", "3") "LOAD_4x4_C_END:\n"
 
-#define STORE_LINE(reg_index, n)                \
-    "cbz w1, STORE_4x4_C_END\n"                 \
-    "mov x0, %[outptr" n                        \
-    "]\n"                                       \
-    "cmp %w[x_remain], #4\n"                    \
-    "b.lt REMAIN_STORE_4x4_LINE_LESS_THAN_4_" n \
-    "\n"                                        \
-    "str d" reg_index                           \
-    ", [x0]\n"                                  \
-    "b STORE_4x4_LINE_END_" n                   \
-    "\n"                                        \
-                                                \
-    "REMAIN_STORE_4x4_LINE_LESS_THAN_4_" n      \
-    ":\n"                                       \
-    "cmp %w[x_remain], #0\n"                    \
-    "beq STORE_4x4_LINE_END_" n                 \
-    "\n"                                        \
-    "st1 {v" reg_index                          \
-    ".h}[0], [x0], #2\n"                        \
-    "cmp %w[x_remain], #1\n"                    \
-    "beq STORE_4x4_LINE_END_" n                 \
-    "\n"                                        \
-    "st1 {v" reg_index                          \
-    ".h}[1], [x0], #2\n"                        \
-    "cmp %w[x_remain], #2\n"                    \
-    "beq STORE_4x4_LINE_END_" n                 \
-    "\n"                                        \
-    "st1 {v" reg_index                          \
-    ".h}[2], [x0], #2\n"                        \
-    "STORE_4x4_LINE_END_" n                     \
-    ":\n"                                       \
+#define STORE_LINE(reg_index, n) \
+    "cbz w1, 1111f\n"            \
+    "mov x0, %[outptr" n         \
+    "]\n"                        \
+    "cmp %w[x_remain], #4\n"     \
+    "b.lt 44444" n               \
+    "f"                          \
+    "\n"                         \
+    "str d" reg_index            \
+    ", [x0]\n"                   \
+    "b 6666" n                   \
+    "f"                          \
+    "\n"                         \
+                                 \
+    "44444" n                    \
+    ":\n"                        \
+    "cmp %w[x_remain], #0\n"     \
+    "beq 6666" n                 \
+    "f"                          \
+    "\n"                         \
+    "st1 {v" reg_index           \
+    ".h}[0], [x0], #2\n"         \
+    "cmp %w[x_remain], #1\n"     \
+    "beq 6666" n                 \
+    "f"                          \
+    "\n"                         \
+    "st1 {v" reg_index           \
+    ".h}[1], [x0], #2\n"         \
+    "cmp %w[x_remain], #2\n"     \
+    "beq 6666" n                 \
+    "f"                          \
+    "\n"                         \
+    "st1 {v" reg_index           \
+    ".h}[2], [x0], #2\n"         \
+    "6666" n                     \
+    ":\n"                        \
     "subs w1, w1, #1\n"
 
-#define STORE_C "mov w1, %w[y_remain]\n" \
-            STORE_LINE("8", "0")         \
-            STORE_LINE("9", "1")         \
-            STORE_LINE("10", "2")        \
-            STORE_LINE("11", "3")        \
-            "STORE_4x4_C_END:\n"
+#define STORE_C                                                        \
+    "mov w1, %w[y_remain]\n" STORE_LINE("8", "0") STORE_LINE("9", "1") \
+            STORE_LINE("10", "2") STORE_LINE("11", "3") "1111:\n"
 
-            asm volatile(
-                    ".arch armv8.2-a+fp16\n"
+    asm volatile(
+            ".arch armv8.2-a+fp16\n"
 
-                    // load accumulator C
-                    "cmp %w[type], #0\n"
-                    "beq 5f\n" LOAD_C
-                    "b 6f\n"
+            // load accumulator C
+            "cmp %w[type], #0\n"
+            "beq 5f\n" LOAD_C
+            "b 6f\n"
 
-                    "5:\n"
-                    "eor v8.8b,  v8.8b,  v8.8b\n"
-                    "eor v9.8b,  v9.8b,  v9.8b\n"
-                    "eor v10.8b, v10.8b, v10.8b\n"
-                    "eor v11.8b, v11.8b, v11.8b\n"
+            "5:\n"
+            "eor v8.8b,  v8.8b,  v8.8b\n"
+            "eor v9.8b,  v9.8b,  v9.8b\n"
+            "eor v10.8b, v10.8b, v10.8b\n"
+            "eor v11.8b, v11.8b, v11.8b\n"
 
-                    "6:\n"
-                    "ldr %d[a0], [%[a_ptr]]\n"
+            "6:\n"
+            "ldr %d[a0], [%[a_ptr]]\n"
 
-                    "cbz %w[k], 4f\n"
+            "cbz %w[k], 4f\n"
 
-                    "1:\n"
-                    "ldp %d[b0], %d[b0a], [%[b_ptr]]\n"
-                    "fmla v8.4h , %[b0].4h, %[a0].h[0]\n"
-                    "fmla v9.4h , %[b0].4h, %[a0].h[1]\n"
-                    "ldr %d[a0a], [%[a_ptr], #8]\n"
-                    "fmla v10.4h, %[b0].4h, %[a0].h[2]\n"
-                    "fmla v11.4h, %[b0].4h, %[a0].h[3]\n"
+            "1:\n"
+            "ldp %d[b0], %d[b0a], [%[b_ptr]]\n"
+            "fmla v8.4h , %[b0].4h, %[a0].h[0]\n"
+            "fmla v9.4h , %[b0].4h, %[a0].h[1]\n"
+            "ldr %d[a0a], [%[a_ptr], #8]\n"
+            "fmla v10.4h, %[b0].4h, %[a0].h[2]\n"
+            "fmla v11.4h, %[b0].4h, %[a0].h[3]\n"
 
-                    "add %[b_ptr], %[b_ptr], #16\n"
-                    "ldr %d[a0], [%[a_ptr], #16]\n"
+            "add %[b_ptr], %[b_ptr], #16\n"
+            "ldr %d[a0], [%[a_ptr], #16]\n"
 
-                    "fmla v8.4h , %[b0a].4h, %[a0a].h[0]\n"
-                    "fmla v9.4h , %[b0a].4h, %[a0a].h[1]\n"
-                    "fmla v10.4h, %[b0a].4h, %[a0a].h[2]\n"
-                    "fmla v11.4h, %[b0a].4h, %[a0a].h[3]\n"
+            "fmla v8.4h , %[b0a].4h, %[a0a].h[0]\n"
+            "fmla v9.4h , %[b0a].4h, %[a0a].h[1]\n"
+            "fmla v10.4h, %[b0a].4h, %[a0a].h[2]\n"
+            "fmla v11.4h, %[b0a].4h, %[a0a].h[3]\n"
 
-                    "add %[a_ptr], %[a_ptr], #16\n"
-                    "subs %w[k], %w[k], #1\n"
+            "add %[a_ptr], %[a_ptr], #16\n"
+            "subs %w[k], %w[k], #1\n"
 
-                    "bne 1b\n"
-                    "4:\n"
-                    // Jump to odd tail if necessary.
-                    "cbnz %w[oddk], 2f\n"
+            "bne 1b\n"
+            "4:\n"
+            // Jump to odd tail if necessary.
+            "cbnz %w[oddk], 2f\n"
 
-                    // Even tail
-                    "ldp %d[b0], %d[b0a], [%[b_ptr]]\n"
-                    "fmla v8.4h , %[b0].4h, %[a0].h[0]\n"
-                    "fmla v9.4h , %[b0].4h, %[a0].h[1]\n"
-                    "ldr %d[a0a], [%[a_ptr], #8]\n"
-                    "fmla v10.4h, %[b0].4h, %[a0].h[2]\n"
-                    "fmla v11.4h, %[b0].4h, %[a0].h[3]\n"
+            // Even tail
+            "ldp %d[b0], %d[b0a], [%[b_ptr]]\n"
+            "fmla v8.4h , %[b0].4h, %[a0].h[0]\n"
+            "fmla v9.4h , %[b0].4h, %[a0].h[1]\n"
+            "ldr %d[a0a], [%[a_ptr], #8]\n"
+            "fmla v10.4h, %[b0].4h, %[a0].h[2]\n"
+            "fmla v11.4h, %[b0].4h, %[a0].h[3]\n"
 
-                    "add %[b_ptr], %[b_ptr], #16\n"
-                    "add %[a_ptr], %[a_ptr], #16\n"
+            "add %[b_ptr], %[b_ptr], #16\n"
+            "add %[a_ptr], %[a_ptr], #16\n"
 
-                    "fmla v8.4h, %[b0a].4h, %[a0a].h[0]\n"
-                    "fmla v9.4h, %[b0a].4h, %[a0a].h[1]\n"
-                    "fmla v10.4h, %[b0a].4h, %[a0a].h[2]\n"
-                    "fmla v11.4h, %[b0a].4h, %[a0a].h[3]\n"
-                    "b 3f\n"
+            "fmla v8.4h, %[b0a].4h, %[a0a].h[0]\n"
+            "fmla v9.4h, %[b0a].4h, %[a0a].h[1]\n"
+            "fmla v10.4h, %[b0a].4h, %[a0a].h[2]\n"
+            "fmla v11.4h, %[b0a].4h, %[a0a].h[3]\n"
+            "b 3f\n"
 
-                    // Odd tail
-                    "2:\n"
-                    "ldr %d[b0], [%[b_ptr]]\n"
-                    "add %[a_ptr], %[a_ptr], #8\n"
-                    "add %[b_ptr], %[b_ptr], #8\n"
+            // Odd tail
+            "2:\n"
+            "ldr %d[b0], [%[b_ptr]]\n"
+            "add %[a_ptr], %[a_ptr], #8\n"
+            "add %[b_ptr], %[b_ptr], #8\n"
 
-                    "fmla v8.4h, %[b0].4h, %[a0].h[0]\n"
-                    "fmla v9.4h, %[b0].4h, %[a0].h[1]\n"
-                    "fmla v10.4h, %[b0].4h, %[a0].h[2]\n"
-                    "fmla v11.4h, %[b0].4h, %[a0].h[3]\n"
+            "fmla v8.4h, %[b0].4h, %[a0].h[0]\n"
+            "fmla v9.4h, %[b0].4h, %[a0].h[1]\n"
+            "fmla v10.4h, %[b0].4h, %[a0].h[2]\n"
+            "fmla v11.4h, %[b0].4h, %[a0].h[3]\n"
 
-                    "3:\n" STORE_C
-                    : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0),
-                      [k] "+r"(k), [b0a] "+w"(b0a), [a_ptr] "+r"(a_ptr),
-                      [b_ptr] "+r"(b_ptr), [outptr0] "+r"(outptr0),
-                      [outptr1] "+r"(outptr1), [outptr2] "+r"(outptr2),
-                      [outptr3] "+r"(outptr3)
-                    : [oddk] "r"(oddk), [x_remain] "r"(x_remain),
-                      [y_remain] "r"(y_remain), [type] "r"(type)
-                    : "x0", "w1", "v8", "v9", "v10", "v11", "cc", "memory");
+            "3:\n" STORE_C
+            : [a0] "+w"(a0), [a0a] "+w"(a0a), [b0] "+w"(b0), [k] "+r"(k),
+              [b0a] "+w"(b0a), [a_ptr] "+r"(a_ptr), [b_ptr] "+r"(b_ptr),
+              [outptr0] "+r"(outptr0), [outptr1] "+r"(outptr1), [outptr2] "+r"(outptr2),
+              [outptr3] "+r"(outptr3)
+            : [oddk] "r"(oddk), [x_remain] "r"(x_remain), [y_remain] "r"(y_remain),
+              [type] "r"(type)
+            : "x0", "w1", "v8", "v9", "v10", "v11", "cc", "memory");
 
 #undef LOAD_LINE
 #undef LOAD_C
@@ -2458,9 +2438,9 @@ void aarch64_hgemm_assembly_kernel_4x4(const __fp16* a_ptr,
 #undef STORE_C
 }
 
-void aarch64_hgemm_asimd_8x24(const __fp16* Apanel, const __fp16* Bpanel,
-                              __fp16* out, int ldout, int x0, int xmax, int y0,
-                              int ymax, int K, bool is_first_k) {
+void aarch64_hgemm_asimd_8x24(
+        const __fp16* Apanel, const __fp16* Bpanel, __fp16* out, int ldout, int x0,
+        int xmax, int y0, int ymax, int K, bool is_first_k) {
     const __fp16* a_ptr = Apanel;
     const int A_interleave = 8;
     const int B_transpose1xW = 24;
@@ -2479,28 +2459,25 @@ void aarch64_hgemm_asimd_8x24(const __fp16* Apanel, const __fp16* Bpanel,
 
         for (; x + B_transpose1xW <= xmax; x += B_transpose1xW) {
             a_ptr = a_ptr0;
-            aarch64_hgemm_assembly_kernel_24x8(a_ptr, b_ptr, K, outptr0, ldout,
-                                               type);
+            aarch64_hgemm_assembly_kernel_24x8(a_ptr, b_ptr, K, outptr0, ldout, type);
             outptr0 += B_transpose1xW;
         }
 
         for (; x + 16 <= xmax; x += 16) {
             a_ptr = a_ptr0;
-            aarch64_hgemm_assembly_kernel_16x8(a_ptr, b_ptr, K, outptr0, ldout,
-                                               type);
+            aarch64_hgemm_assembly_kernel_16x8(a_ptr, b_ptr, K, outptr0, ldout, type);
             outptr0 += 16;
         }
         for (; x + 8 <= xmax; x += 8) {
             a_ptr = a_ptr0;
-            aarch64_hgemm_assembly_kernel_8x8(a_ptr, b_ptr, K, outptr0, ldout,
-                                              type);
+            aarch64_hgemm_assembly_kernel_8x8(a_ptr, b_ptr, K, outptr0, ldout, type);
             outptr0 += 8;
         }
         for (; x < xmax; x += 4) {
             int x_remain = xmax - x;
             a_ptr = a_ptr0;
-            aarch64_hgemm_assembly_kernel_4x8(a_ptr, b_ptr, K, outptr0, ldout,
-                                              x_remain, type);
+            aarch64_hgemm_assembly_kernel_4x8(
+                    a_ptr, b_ptr, K, outptr0, ldout, x_remain, type);
             outptr0 += 4;
         }
         a_ptr = a_ptr0 + K8;
@@ -2515,27 +2492,27 @@ void aarch64_hgemm_asimd_8x24(const __fp16* Apanel, const __fp16* Bpanel,
         int x = x0;
         for (; x + B_transpose1xW <= xmax; x += B_transpose1xW) {
             a_ptr = a_ptr0;
-            aarch64_hgemm_assembly_kernel_24x4(a_ptr, b_ptr, K, outptr0, ldout,
-                                               ymax - y, type);
+            aarch64_hgemm_assembly_kernel_24x4(
+                    a_ptr, b_ptr, K, outptr0, ldout, ymax - y, type);
             outptr0 += B_transpose1xW;
         }
 
         for (; x + 16 <= xmax; x += 16) {
             a_ptr = a_ptr0;
-            aarch64_hgemm_assembly_kernel_16x4(a_ptr, b_ptr, K, outptr0, ldout,
-                                               ymax - y, type);
+            aarch64_hgemm_assembly_kernel_16x4(
+                    a_ptr, b_ptr, K, outptr0, ldout, ymax - y, type);
             outptr0 += 16;
         }
         for (; x + 8 <= xmax; x += 8) {
             a_ptr = a_ptr0;
-            aarch64_hgemm_assembly_kernel_8x4(a_ptr, b_ptr, K, outptr0, ldout,
-                                              ymax - y, type);
+            aarch64_hgemm_assembly_kernel_8x4(
+                    a_ptr, b_ptr, K, outptr0, ldout, ymax - y, type);
             outptr0 += 8;
         }
         for (; x < xmax; x += 4) {
             a_ptr = a_ptr0;
-            aarch64_hgemm_assembly_kernel_4x4(a_ptr, b_ptr, K, outptr0, ldout,
-                                              xmax - x, ymax - y, type);
+            aarch64_hgemm_assembly_kernel_4x4(
+                    a_ptr, b_ptr, K, outptr0, ldout, xmax - x, ymax - y, type);
             outptr0 += 4;
         }
         a_ptr = a_ptr0 + K4;
@@ -2545,45 +2522,48 @@ void aarch64_hgemm_asimd_8x24(const __fp16* Apanel, const __fp16* Bpanel,
 
 MEGDNN_REG_GEMM_STRATEGY_IMPL(hgemm_8x24);
 
-void hgemm_8x24::pack_A(dt_float16* out, const dt_float16* in, int ldin, int y0,
-                        int ymax, int k0, int kmax, bool transpose_A) const {
+void hgemm_8x24::pack_A(
+        dt_float16* out, const dt_float16* in, int ldin, int y0, int ymax, int k0,
+        int kmax, bool transpose_A) const {
     if (transpose_A) {
-        transpose_1x8(reinterpret_cast<__fp16*>(out),
-                      reinterpret_cast<const __fp16*>(in), ldin, y0, ymax, k0,
-                      kmax);
+        transpose_1x8(
+                reinterpret_cast<__fp16*>(out), reinterpret_cast<const __fp16*>(in),
+                ldin, y0, ymax, k0, kmax);
     } else {
-        interleave_8x1(reinterpret_cast<__fp16*>(out),
-                       reinterpret_cast<const __fp16*>(in), ldin, y0, ymax, k0,
-                       kmax);
+        interleave_8x1(
+                reinterpret_cast<__fp16*>(out), reinterpret_cast<const __fp16*>(in),
+                ldin, y0, ymax, k0, kmax);
     }
 }
 
-void hgemm_8x24::pack_B(dt_float16* out, const dt_float16* in, int ldin, int x0,
-                        int xmax, int k0, int kmax, bool transpose_B) const {
+void hgemm_8x24::pack_B(
+        dt_float16* out, const dt_float16* in, int ldin, int x0, int xmax, int k0,
+        int kmax, bool transpose_B) const {
     if (transpose_B) {
-        interleave_24x1(reinterpret_cast<__fp16*>(out),
-                        reinterpret_cast<const __fp16*>(in), ldin, x0, xmax, k0,
-                        kmax);
+        interleave_24x1(
+                reinterpret_cast<__fp16*>(out), reinterpret_cast<const __fp16*>(in),
+                ldin, x0, xmax, k0, kmax);
     } else {
-        transpose_1x24(reinterpret_cast<__fp16*>(out),
-                       reinterpret_cast<const __fp16*>(in), ldin, x0, xmax, k0,
-                       kmax);
+        transpose_1x24(
+                reinterpret_cast<__fp16*>(out), reinterpret_cast<const __fp16*>(in),
+                ldin, x0, xmax, k0, kmax);
     }
 }
 
-void hgemm_8x24::kern(const dt_float16* packA, const dt_float16* packB,
-                      size_t M, size_t N, size_t K, dt_float16* C, size_t LDC,
-                      bool is_first_k, const dt_float16*, dt_float16*) const {
-    megdnn_assert(A_dtype.enumv() == B_dtype.enumv() &&
-                  A_dtype.enumv() == C_dtype.enumv() &&
-                  A_dtype.enumv() == DTypeEnum::Float16);
+void hgemm_8x24::kern(
+        const dt_float16* packA, const dt_float16* packB, size_t M, size_t N, size_t K,
+        dt_float16* C, size_t LDC, bool is_first_k, const dt_float16*,
+        dt_float16*) const {
+    megdnn_assert(
+            A_dtype.enumv() == B_dtype.enumv() && A_dtype.enumv() == C_dtype.enumv() &&
+            A_dtype.enumv() == DTypeEnum::Float16);
     MEGDNN_MARK_USED_VAR(A_dtype);
     MEGDNN_MARK_USED_VAR(B_dtype);
     MEGDNN_MARK_USED_VAR(C_dtype);
-    aarch64_hgemm_asimd_8x24(reinterpret_cast<const __fp16*>(packA),
-                             reinterpret_cast<const __fp16*>(packB),
-                             reinterpret_cast<__fp16*>(C), LDC, 0, N, 0, M, K,
-                             is_first_k);
+    aarch64_hgemm_asimd_8x24(
+            reinterpret_cast<const __fp16*>(packA),
+            reinterpret_cast<const __fp16*>(packB), reinterpret_cast<__fp16*>(C), LDC,
+            0, N, 0, M, K, is_first_k);
 }
 #endif
 // vim: syntax=cpp.doxygen

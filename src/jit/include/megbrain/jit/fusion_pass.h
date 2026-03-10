@@ -1,14 +1,3 @@
-/**
- * \file src/jit/include/megbrain/jit/fusion_pass.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/gopt/framework.h"
@@ -39,9 +28,69 @@ class JITFusionPass final : public Pass {
     JITFeatureBits m_feature_bits;
 
 public:
-    JITFusionPass(bool after_grad = true, int8_t jit_opt_level = 1);
+    using JITConfig = cg::ComputingGraph::Options::GraphOpt::JITConfig;
+
+    /*
+     * Explanation of how graph_opt_level, jit_opt_level and jit_config
+     * control the behavior of JIT optimization:
+     *
+     * The design of this API is restricted by the historical burden of
+     * jit_opt_level and we have to support the old interface jit_opt_level and
+     * the new interface jit_config at the same time.
+     *
+     * How JITFusionPass decides its behavior:
+     * (1) When graph_opt_level is 3, it sets jit_opt_level to 1
+     * (2) When the user-defined jit_opt_level is greater than 1, it overwrites
+     *     the previous value of jit_opt_level
+     * (3) We get a default jit_config from jit_opt_level:
+     *     jit_opt_level = 0: JIT optimization OFF
+     *     jit_opt_level = 1: dimshuffle ON, reduce OFF
+     *     jit_opt_level = 2: dimshuffle OFF, reduce ON
+     * (4) The user-defined jit_config provides more precise control and
+     *     overwrites the default settings defined by jit_opt_level
+     *
+     * Situations in which JIT optimization is ON:
+     * (1) graph_opt_level = 3
+     * (2) graph_opt_level = 2, jit_opt_level > 0
+     * (3) graph_opt_level = 2, jit_opt_level = 0, jit_config is set
+     * (4) graph_opt_level = 0, jit_opt_level > 0 (deprecated usage)
+     *
+     * Situations in which JIT optimization is OFF:
+     * (1) graph_opt_level = 2, jit_opt_level = 0, jit_config is unset
+     * (2) graph_opt_level = 1
+     * (3) graph_opt_level = 0, jit_opt_level = 0
+     */
+    JITFusionPass(
+            bool after_grad = true, int jit_opt_level = 0,
+            const JITConfig& jit_config = {});
     const char* name() const override;
     void apply(OptState& opt) const override;
+
+    //! define jit backend string to support config jit backend by API
+    //! env: MGB_JIT_BACKEND with high priority than API
+    static std::string jit_backend_str;
+
+    /*!
+     * \brief set jit backend string
+     * \param[backend_str] backend_str backend string
+     */
+    static void set_jit_backend_str(const std::string& backend_str) {
+        jit_backend_str = backend_str;
+    }
+
+    /*!
+     * \brief get jit backend string
+     * \return backend string
+     */
+    static std::string get_jit_backend_str() {
+        std::string ret = jit_backend_str;
+        auto user_env = ::std::getenv(ssprintf("%c%cB_JIT_BACKEND", 'M', 'G').c_str());
+        if (user_env) {
+            ret = user_env;
+        }
+
+        return ret;
+    };
 };
 
 }  // namespace gopt

@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/common/add_update.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megdnn/oprs.h"
 
 #include "src/common/add_update_helper.h"
@@ -16,13 +5,13 @@
 
 namespace megdnn {
 
-void AddUpdateForward::check_exec(const TensorLayout& dst,
-                                  const TensorLayout& delta) {
+void AddUpdateForward::check_exec(const TensorLayout& dst, const TensorLayout& delta) {
     // delta can not be broadcasted to dst if dst.total_nr_elems() <
     // delta.total_nr_elems()
-    megdnn_assert(dst.dtype == delta.dtype &&
-                  dst.total_nr_elems() >= delta.total_nr_elems() &&
-                  dst.is_non_overlapping_strong());
+    megdnn_assert(
+            dst.dtype == delta.dtype &&
+            dst.total_nr_elems() >= delta.total_nr_elems() &&
+            dst.is_non_overlapping_strong());
     if (dst.dtype.category() == DTypeCategory::INT) {
         auto check_fv = [](float fv) {
             int iv = fv;

@@ -1,21 +1,10 @@
-/**
- * \file dnn/test/common/powc.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "test/common/powc.h"
 #include "test/common/checker.h"
 
 using namespace megdnn;
 using namespace test;
 
-void test::run_powc_test(Handle* handle, DType dtype) {
+void test::run_powc_test(Handle* handle, DType dtype, bool test_non_continuity) {
     Checker<PowC> checker{handle};
     checker.set_dtype(0, dtype);
 
@@ -30,10 +19,10 @@ void test::run_powc_test(Handle* handle, DType dtype) {
 
     dt_val_max /= 4;
 
-    for (float exp : {0.f, 1.f / 3.f, 1.f / 3.f + 0.01f, .5f, 1.f, 1.2f, 2.f,
-                      3.f, 4.f, 7.f, 8.f}) {
-        float rng_max = exp ? std::pow(dt_val_max, std::min(1.f / exp, 1.f))
-                            : dt_val_max;
+    for (float exp :
+         {0.f, 1.f / 3.f, 1.f / 3.f + 0.01f, .5f, 1.f, 1.2f, 2.f, 3.f, 4.f, 7.f, 8.f}) {
+        float rng_max =
+                exp ? std::pow(dt_val_max, std::min(1.f / exp, 1.f)) : dt_val_max;
         bool allow_neg;
         {
             auto d = exp - std::floor(exp);
@@ -67,16 +56,17 @@ void test::run_powc_test(Handle* handle, DType dtype) {
         }
 
         // non contig
-        TensorLayout layout{{4, 9}, dtype};
-        layout.stride[0] *= 3;
-        layout.stride[1] *= 2;
-        checker.execl({layout, {}});
-        if (::testing::Test::HasFailure()) {
-            printf("failed for %g noncontig\n", -exp);
-            return;
+        if (test_non_continuity) {
+            TensorLayout layout{{4, 9}, dtype};
+            layout.stride[0] *= 3;
+            layout.stride[1] *= 2;
+            checker.execl({layout, {}});
+            if (::testing::Test::HasFailure()) {
+                printf("failed for %g noncontig\n", -exp);
+                return;
+            }
         }
     }
 }
 
 // vim: syntax=cpp.doxygen
-

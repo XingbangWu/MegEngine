@@ -3,13 +3,14 @@
 
 import argparse
 import collections
-import textwrap
-import os
 import hashlib
-import struct
 import io
+import os
+import struct
+import textwrap
 
-from gen_param_defs import member_defs, ParamDef, IndentWriterBase
+from gen_param_defs import IndentWriterBase, ParamDef, member_defs
+
 
 def _cname_to_fbname(cname):
     return {
@@ -22,10 +23,18 @@ def _cname_to_fbname(cname):
         "bool": "bool",
     }[cname]
 
+
 def scramble_enum_member_name(name):
+    s = name.find("<<")
+    if s != -1:
+        name = name[0 : name.find("=") + 1] + " " + name[s + 2 :]
     if name in ("MIN", "MAX"):
         return name + "_"
+    o_name = name.split(" ")[0].split("=")[0]
+    if o_name in ("MIN", "MAX"):
+        return name.replace(o_name, o_name + "_")
     return name
+
 
 class FlatBuffersWriter(IndentWriterBase):
     _skip_current_param = False
@@ -52,19 +61,21 @@ class FlatBuffersWriter(IndentWriterBase):
             name = p + e
             e = self._enums[(p, e)]
             self._write_doc(e.name)
-            self._write("enum %s%s : uint {", p, e.name, indent=1)
-            for member in e.members:
+            attribute = "(bit_flags)" if e.combined else ""
+            self._write("enum %s%s : uint %s {", p, e.name, attribute, indent=1)
+            for idx, member in enumerate(e.members):
                 self._write_doc(member)
                 self._write("%s,", scramble_enum_member_name(str(member)))
             self._write("}\n", indent=-1)
 
     def _write_doc(self, doc):
-        if not isinstance(doc, member_defs.Doc) or not doc.doc: return
+        if not isinstance(doc, member_defs.Doc) or not doc.doc:
+            return
         doc_lines = []
         if doc.no_reformat:
             doc_lines = doc.raw_lines
         else:
-            doc = doc.doc.replace('\n', ' ')
+            doc = doc.doc.replace("\n", " ")
             text_width = 80 - len(self._cur_indent) - 4
             doc_lines = textwrap.wrap(doc, text_width)
         for line in doc_lines:
@@ -73,9 +84,6 @@ class FlatBuffersWriter(IndentWriterBase):
     def _on_param_begin(self, p):
         self._last_param = p
         self._cur_const_val = {}
-        if p.is_legacy:
-            self._skip_current_param = True
-            return
         self._write_doc(p.name)
         self._write("table %s {", p.name, indent=1)
 
@@ -93,8 +101,13 @@ class FlatBuffersWriter(IndentWriterBase):
             return
         self._write_doc(e.name)
         self._used_enum.add(key)
-        self._write("%s:%s%s = %s;", e.name_field, p.name, e.name,
-                    scramble_enum_member_name(str(e.members[e.default])))
+        if e.combined:
+            default = e.compose_combined_enum(e.default)
+        else:
+            default = scramble_enum_member_name(
+                str(e.members[e.default]).split(" ")[0].split("=")[0]
+            )
+        self._write("%s:%s%s = %s;", e.name_field, p.name, e.name, default)
 
     def _resolve_const(self, v):
         while v in self._cur_const_val:
@@ -105,8 +118,12 @@ class FlatBuffersWriter(IndentWriterBase):
         if self._skip_current_param:
             return
         self._write_doc(f.name)
-        self._write("%s:%s = %s;", f.name, _cname_to_fbname(f.dtype.cname),
-                    self._get_fb_default(self._resolve_const(f.default)))
+        self._write(
+            "%s:%s = %s;",
+            f.name,
+            _cname_to_fbname(f.dtype.cname),
+            self._get_fb_default(self._resolve_const(f.default)),
+        )
 
     def _on_const_field(self, f):
         self._cur_const_val[str(f.name)] = str(f.default)
@@ -116,18 +133,23 @@ class FlatBuffersWriter(IndentWriterBase):
             return
         self._used_enum.add((e.src_class, e.src_name))
         enum_name = e.src_class + e.src_name
-        self._write(
-            "%s:%s = %s;", e.name_field, enum_name,
-            scramble_enum_member_name(str(e.src_enum.members[e.get_default()])))
+        s = e.src_enum
+        if s.combined:
+            default = s.compose_combined_enum(e.get_default())
+        else:
+            default = scramble_enum_member_name(
+                str(s.members[e.get_default()]).split(" ")[0].split("=")[0]
+            )
+        self._write("%s:%s = %s;", e.name_field, enum_name, default)
 
     def _get_fb_default(self, cppdefault):
         if not isinstance(cppdefault, str):
             return cppdefault
 
         d = cppdefault
-        if d.endswith('f'): # 1.f
+        if d.endswith("f"):  # 1.f
             return d[:-1]
-        if d.endswith('ull'):
+        if d.endswith("ull"):
             return d[:-3]
         if d.startswith("DTypeEnum::"):
             return d[11:]
@@ -136,21 +158,23 @@ class FlatBuffersWriter(IndentWriterBase):
 
 def main():
     parser = argparse.ArgumentParser(
-        'generate FlatBuffers schema of operator param from description file')
-    parser.add_argument('input')
-    parser.add_argument('output')
+        "generate FlatBuffers schema of operator param from description file"
+    )
+    parser.add_argument("input")
+    parser.add_argument("output")
     args = parser.parse_args()
 
     with open(args.input) as fin:
         inputs = fin.read()
-        exec(inputs, {'pdef': ParamDef, 'Doc': member_defs.Doc})
+        exec(inputs, {"pdef": ParamDef, "Doc": member_defs.Doc})
         input_hash = hashlib.sha256()
-        input_hash.update(inputs.encode(encoding='UTF-8'))
+        input_hash.update(inputs.encode(encoding="UTF-8"))
         input_hash = input_hash.hexdigest()
 
     writer = FlatBuffersWriter()
-    with open(args.output, 'w') as fout:
+    with open(args.output, "w") as fout:
         writer.set_input_hash(input_hash)(fout, ParamDef.all_param_defs)
+
 
 if __name__ == "__main__":
     main()

@@ -1,14 +1,3 @@
-/**
- * \file src/tensorrt/test/helper.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "megbrain/test/helper.h"
@@ -40,8 +29,7 @@ public:
     }
 
     //! set input rng generator, which is default generator of float32
-    TrtReplaceChecker& set_rng_gen(size_t idx,
-                                   HostTensorGeneratorBase* rng_gen) {
+    TrtReplaceChecker& set_rng_gen(size_t idx, HostTensorGeneratorBase* rng_gen) {
         m_idx2rng_gen[idx] = rng_gen;
         return *this;
     }
@@ -58,7 +46,6 @@ public:
         return *this;
     }
 
-
     /*!
      * \brief run and check correctness
      *
@@ -74,7 +61,7 @@ private:
     //! first item is output; following are input grads
     std::tuple<HostTensorND, HostTensorND> m_output_val;
     ThinHashMap<size_t, DType> m_idx2dtype;
-    ThinHashMap<size_t, HostTensorGeneratorBase*> m_idx2rng_gen; 
+    ThinHashMap<size_t, HostTensorGeneratorBase*> m_idx2rng_gen;
     ThinHashSet<size_t> m_mark_inp_const;
     std::shared_ptr<ComputingGraph> m_graph;
     std::unique_ptr<cg::AsyncExecutable> m_func;

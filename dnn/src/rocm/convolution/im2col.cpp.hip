@@ -1,11 +1,3 @@
-/**
- * \file src/rocm/convolution/im2col.cpp.hip
- *
- * This file is part of MegDNN, a deep neural network run-time library
- * developed by Megvii.
- *
- * \copyright Copyright (c) 2014-2019 Megvii Inc. All rights reserved.
- */
 #include "./im2col.h.hip"
 #include "megdnn/dtype.h"
 #include "src/rocm/utils.h.hip"

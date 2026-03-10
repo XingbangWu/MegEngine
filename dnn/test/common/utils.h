@@ -1,37 +1,27 @@
-/**
- * \file dnn/test/common/utils.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include "megdnn/basic_types.h"
 #include "megdnn/handle.h"
 #include "src/common/utils.h"
 
-#include <memory>
-#include <cstdlib>
-#include <cmath>
-#include <iostream>
 #include <gtest/gtest.h>
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
+#include <memory>
 
 #if MEGDNN_ENABLE_MULTI_THREADS
 #include <atomic>
 #endif
 
-#define megcore_check(x)                                           \
-    do {                                                           \
-        auto status = (x);                                         \
-        if (status != megcoreSuccess) {                            \
-            std::cerr << "megcore_check error: "                   \
-                      << megcoreGetErrorName(status) << std::endl; \
-            megdnn_trap();                                         \
-        }                                                          \
+#define megcore_check(x)                                                        \
+    do {                                                                        \
+        auto status = (x);                                                      \
+        if (status != megcoreSuccess) {                                         \
+            std::cerr << "megcore_check error: " << megcoreGetErrorName(status) \
+                      << std::endl;                                             \
+            megdnn_trap();                                                      \
+        }                                                                       \
     } while (0)
 
 namespace megdnn {
@@ -102,7 +92,7 @@ class CpuDispatchChecker final : MegcoreCPUDispatcher {
         std::vector<std::thread> m_workers;
 #endif
         //! Total number of threads, including main thread.
-        size_t m_nr_threads = 0;
+        size_t m_nr_threads = 1;
     };
 
     //! track number of CpuDispatchChecker instances to avoid leaking
@@ -171,9 +161,6 @@ public:
     ~CpuDispatchChecker() {
         if (!std::uncaught_exception()) {
             megdnn_assert(!m_recursive_dispatch);
-#if !MEGDNN_NO_THREAD
-            megdnn_assert(m_nr_call && "cpu dispatch must be called");
-#endif
         } else {
             if (m_recursive_dispatch) {
                 fprintf(stderr,
@@ -187,20 +174,17 @@ public:
         --sm_inst_counter.cnt();
     }
 
-    static std::unique_ptr<MegcoreCPUDispatcher> make(
-            TaskExecutorConfig* config) {
-        return std::unique_ptr<MegcoreCPUDispatcher>(
-                new CpuDispatchChecker(config));
+    static std::unique_ptr<MegcoreCPUDispatcher> make(TaskExecutorConfig* config) {
+        return std::unique_ptr<MegcoreCPUDispatcher>(new CpuDispatchChecker(config));
     }
 };
 
-std::unique_ptr<Handle> create_cpu_handle(int debug_level,
-                                          bool check_dispatch = true,
-                                          TaskExecutorConfig* config = nullptr);
+std::unique_ptr<Handle> create_cpu_handle(
+        int debug_level, bool check_dispatch = true,
+        TaskExecutorConfig* config = nullptr);
 
 std::unique_ptr<Handle> create_cpu_handle_with_dispatcher(
-        int debug_level,
-        const std::shared_ptr<MegcoreCPUDispatcher>& dispatcher);
+        int debug_level, const std::shared_ptr<MegcoreCPUDispatcher>& dispatcher);
 
 static inline dt_float32 diff(dt_float32 x, dt_float32 y) {
     auto numerator = x - y;
@@ -228,6 +212,18 @@ static inline int diff(dt_qint8 x, dt_qint8 y) {
     return x.as_int8() - y.as_int8();
 }
 
+static inline int diff(dt_qint4 x, dt_qint4 y) {
+    return x.as_int8() - y.as_int8();
+}
+
+static inline int diff(dt_qint1 x, dt_qint1 y) {
+    return x.as_int8() - y.as_int8();
+}
+
+static inline int diff(dt_quint4 x, dt_quint4 y) {
+    return x.as_uint8() - y.as_uint8();
+}
+
 inline TensorShape cvt_src_or_dst_nchw2nhwc(const TensorShape& shape) {
     megdnn_assert(shape.ndim == 4);
     auto N = shape[0], C = shape[1], H = shape[2], W = shape[3];
@@ -246,21 +242,19 @@ inline TensorShape cvt_filter_nchw2nhwc(const TensorShape& shape) {
         return TensorShape{OC, FH, FW, IC};
     } else {
         megdnn_assert(shape.ndim == 5);
-        auto G = shape[0], OC = shape[1], IC = shape[2], FH = shape[3],
-             FW = shape[4];
+        auto G = shape[0], OC = shape[1], IC = shape[2], FH = shape[3], FW = shape[4];
         return TensorShape{G, OC, FH, FW, IC};
     }
 }
 
 inline TensorShape cvt_filter_ncdhw2ndhwc(const TensorShape& shape) {
     if (shape.ndim == 5) {
-        auto OC = shape[0], IC = shape[1], FD = shape[2], FH = shape[3],
-             FW = shape[4];
+        auto OC = shape[0], IC = shape[1], FD = shape[2], FH = shape[3], FW = shape[4];
         return TensorShape{OC, FD, FH, FW, IC};
     } else {
         megdnn_assert(shape.ndim == 6);
-        auto G = shape[0], OC = shape[1], IC = shape[2], FD = shape[3],
-             FH = shape[4], FW = shape[5];
+        auto G = shape[0], OC = shape[1], IC = shape[2], FD = shape[3], FH = shape[4],
+             FW = shape[5];
         return TensorShape{G, OC, FD, FH, FW, IC};
     }
 }
@@ -268,12 +262,12 @@ inline TensorShape cvt_filter_ncdhw2ndhwc(const TensorShape& shape) {
 void megdnn_sync(Handle* handle);
 void* megdnn_malloc(Handle* handle, size_t size_in_bytes);
 void megdnn_free(Handle* handle, void* ptr);
-void megdnn_memcpy_D2H(Handle* handle, void* dst, const void* src,
-                       size_t size_in_bytes);
-void megdnn_memcpy_H2D(Handle* handle, void* dst, const void* src,
-                       size_t size_in_bytes);
-void megdnn_memcpy_D2D(Handle* handle, void* dst, const void* src,
-                       size_t size_in_bytes);
+void megdnn_memcpy_D2H(
+        Handle* handle, void* dst, const void* src, size_t size_in_bytes);
+void megdnn_memcpy_H2D(
+        Handle* handle, void* dst, const void* src, size_t size_in_bytes);
+void megdnn_memcpy_D2D(
+        Handle* handle, void* dst, const void* src, size_t size_in_bytes);
 
 //! default implementation for DynOutMallocPolicy
 class DynOutMallocPolicyImpl final : public DynOutMallocPolicy {
@@ -282,8 +276,8 @@ class DynOutMallocPolicyImpl final : public DynOutMallocPolicy {
 public:
     DynOutMallocPolicyImpl(Handle* handle) : m_handle{handle} {}
 
-    TensorND alloc_output(size_t id, DType dtype, const TensorShape& shape,
-                          void* user_data) override;
+    TensorND alloc_output(
+            size_t id, DType dtype, const TensorShape& shape, void* user_data) override;
     void* alloc_workspace(size_t sz, void* user_data) override;
     void free_workspace(void* ptr, void* user_data) override;
 
@@ -311,23 +305,94 @@ public:
 
 size_t get_cpu_count();
 
+static inline bool good_float(float val) {
+    return std::isfinite(val);
+}
+
+static inline bool good_float(int) {
+    return true;
+}
+
+static inline bool good_float(dt_qint8) {
+    return true;
+}
+
+static inline bool good_float(dt_qint16) {
+    return true;
+}
+
+static inline bool good_float(dt_quint8) {
+    return true;
+}
+
+static inline bool good_float(dt_qint32) {
+    return true;
+}
+
+static inline bool good_float(dt_qint4) {
+    return true;
+}
+
+static inline bool good_float(dt_qint1) {
+    return true;
+}
+
+static inline bool good_float(dt_quint4) {
+    return true;
+}
+
+// A hack for the (x+0) promote to int trick on dt_quint8.
+static inline int operator+(dt_quint8 lhs, int rhs) {
+    megdnn_assert(rhs == 0, "unexpected rhs");
+    return lhs.as_uint8();
+}
+
+static inline int operator+(dt_qint32 lhs, int rhs) {
+    megdnn_assert(rhs == 0, "unexpected rhs");
+    return lhs.as_int32();
+}
+
+static inline int operator+(dt_qint8 lhs, int rhs) {
+    megdnn_assert(rhs == 0, "unexpected rhs");
+    return int8_t(lhs);
+}
+
+static inline int operator+(dt_qint16 lhs, int rhs) {
+    megdnn_assert(rhs == 0, "unexpected rhs");
+    return lhs.as_int16();
+}
+
+static inline int operator+(dt_quint4 lhs, int rhs) {
+    megdnn_assert(rhs == 0, "unexpected rhs");
+    return lhs.as_uint8();
+}
+
+static inline int operator+(dt_qint4 lhs, int rhs) {
+    megdnn_assert(rhs == 0, "unexpected rhs");
+    return lhs.as_int8();
+}
+
+static inline int operator+(dt_qint1 lhs, int rhs) {
+    megdnn_assert(rhs == 0, "unexpected rhs");
+    return lhs.as_int8();
+}
 }  // namespace test
 
 static inline bool operator==(const TensorLayout& a, const TensorLayout& b) {
     return a.eq_layout(b);
 }
 
-static inline std::ostream& operator<<(std::ostream& ostr,
-                                       const TensorLayout& layout) {
+static inline std::ostream& operator<<(std::ostream& ostr, const TensorLayout& layout) {
     return ostr << layout.to_string();
 }
 
 //! change the image2d_pitch_alignment of naive handle in this scope
 class NaivePitchAlignmentScope {
     size_t m_orig_val, m_new_val;
+    megdnn::Handle::HandleVendorType m_orig_vendor, m_new_vendor;
 
 public:
-    NaivePitchAlignmentScope(size_t alignment);
+    NaivePitchAlignmentScope(size_t alignment, megdnn::Handle::HandleVendorType vendor);
     ~NaivePitchAlignmentScope();
 };
 

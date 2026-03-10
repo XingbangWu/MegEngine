@@ -1,14 +1,3 @@
-/**
- * \file dnn/src/arm_common/elemwise_helper/kimpl/typecvt.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or
- * implied.
- */
 #pragma once
 
 #include "src/arm_common/elemwise_helper/kimpl/op_base.h"
@@ -28,8 +17,8 @@ struct TypeCvtOp<dt_qint32, dt_qint8> : UnaryOpBase<dt_qint32, dt_qint8> {
         vst1_s8(reinterpret_cast<int8_t*>(dst), operator()(vsrc));
     }
     void operator()(const int32x4_t& vsrc, dt_qint8* dst) const {
-        vst1_lane_s32(reinterpret_cast<int32_t*>(dst),
-                      (int32x2_t)(operator()(vsrc)), 0);
+        vst1_lane_s32(
+                reinterpret_cast<int32_t*>(dst), (int32x2_t)(operator()(vsrc)), 0);
     }
     void operator()(const src_ctype& src, dst_ctype* dst) const {
         *dst = operator()(src);
@@ -76,8 +65,8 @@ struct TypeCvtOp<dt_qint32, dt_quint8> : UnaryOpBase<dt_qint32, dt_quint8> {
         auto vitem0 = vmulq_f32(vcvtq_f32_s32(vsrc.val[0]), this->vscale);
         auto vitem1 = vmulq_f32(vcvtq_f32_s32(vsrc.val[1]), this->vscale);
 
-        return QConverter::convert<uint8x8_t, float32x4x2_t>({{vitem0, vitem1}},
-                                                             this->vzp);
+        return QConverter::convert<uint8x8_t, float32x4x2_t>(
+                {{vitem0, vitem1}}, this->vzp);
     }
 };
 

@@ -1,20 +1,10 @@
-/**
- * \file dnn/src/rocm/convolution/helper.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include "./opr_impl.h"
-#include "src/rocm/miopen_wrapper.h"
-#include "src/rocm/handle.h"
-#include "src/common/utils.h"
 #include "src/common/algo_chooser.h"
+#include "src/common/utils.h"
+#include "src/rocm/handle.h"
+#include "src/rocm/miopen_wrapper.h"
 
 #include <unordered_map>
 
@@ -24,8 +14,8 @@ namespace convolution {
 
 struct MIOpenCacheKey {
     int64_t miopen_handle;
-    uint32_t batch, IC, IH, IW, OC, OH, OW, FH, FW, SH, SW, PH, PW, DH, DW,
-            group, ocpg, icpg, dtype_enum;
+    uint32_t batch, IC, IH, IW, OC, OH, OW, FH, FW, SH, SW, PH, PW, DH, DW, group, ocpg,
+            icpg, dtype_enum;
     int exhaustive_search;
     std::string to_string_binary() const;
 };
@@ -67,14 +57,15 @@ WorkspaceBundle matmul_get_workspace_bundle(const ForwardSizeArgs& args);
  * Flip conv filter pointed by \p raw_ptr, store result in workspace, and
  * change \p raw_ptr to workspace.
  * */
-void flip_filter(const ForwardSizeArgs& args, const Workspace& workspace,
-                 void*& raw_ptr);
+void flip_filter(
+        const ForwardSizeArgs& args, const Workspace& workspace, RefPtr& ref_ptr);
 
 struct MIOpenForwardDescs {
     TensorDesc src_desc, filter_desc, dst_desc;
     ConvDesc conv_desc;
-    void set(const TensorLayout& src, const CanonizedFilterMeta& filter,
-             const TensorLayout& dst, const param::Convolution& param) {
+    void set(
+            const TensorLayout& src, const CanonizedFilterMeta& filter,
+            const TensorLayout& dst, const param::Convolution& param) {
         src_desc.set(src, param.format);
         auto&& group = filter.group;
         auto&& ocpg = filter.ocpg;
@@ -93,8 +84,9 @@ struct MIOpenForwardDescs {
 struct MIOpenBwdDataDescs {
     TensorDesc diff_desc, filter_desc, grad_desc;
     ConvDesc conv_desc;
-    void set(const CanonizedFilterMeta& filter, const TensorLayout& diff,
-             const TensorLayout& grad, const param::Convolution& param) {
+    void set(
+            const CanonizedFilterMeta& filter, const TensorLayout& diff,
+            const TensorLayout& grad, const param::Convolution& param) {
         auto&& group = filter.group;
         auto&& ocpg = filter.ocpg;
         auto&& icpg = filter.icpg;
@@ -113,8 +105,9 @@ struct MIOpenBwdDataDescs {
 struct MIOpenBwdFilterDescs {
     TensorDesc diff_desc, src_desc, grad_desc;
     ConvDesc conv_desc;
-    void set(const TensorLayout& src, const TensorLayout& diff,
-             const CanonizedFilterMeta& grad, const param::Convolution& param) {
+    void set(
+            const TensorLayout& src, const TensorLayout& diff,
+            const CanonizedFilterMeta& grad, const param::Convolution& param) {
         src_desc.set(src, param.format);
         diff_desc.set(diff, param.format);
         auto&& group = grad.group;
@@ -132,8 +125,8 @@ struct MIOpenBwdFilterDescs {
 
 //! TODO:miopen does not support non xcorr convolution for now, expecting
 //! support in future.
-} // namespace convolution
-} // namespace rocm
-} // namespace megdnn
+}  // namespace convolution
+}  // namespace rocm
+}  // namespace megdnn
 
 // vim: syntax=cpp.doxygen

@@ -1,14 +1,3 @@
-/**
- * \file dnn/test/cuda/deformable_conv.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megdnn/oprs/nn.h"
 #include "src/cuda/utils.h"
 #include "test/common/checker.h"
@@ -20,10 +9,10 @@ using namespace megdnn;
 using namespace test;
 
 namespace {
-void calc_output_shape(const size_t& ih, const size_t& iw, const size_t& fh,
-                       const size_t& fw, const size_t& ph, const size_t& pw,
-                       const size_t& sh, const size_t& sw, const size_t& dh,
-                       const size_t& dw, size_t& oh, size_t& ow) {
+void calc_output_shape(
+        const size_t& ih, const size_t& iw, const size_t& fh, const size_t& fw,
+        const size_t& ph, const size_t& pw, const size_t& sh, const size_t& sw,
+        const size_t& dh, const size_t& dw, size_t& oh, size_t& ow) {
     auto kh = 1 + (fh - 1) * dh;
     auto kw = 1 + (fw - 1) * dw;
 
@@ -90,9 +79,9 @@ TEST_F(CUDA, DEFORMABLE_CONV_FWD) {
                             for (auto icpg : std::vector<int>{1, 3})
                                 for (auto ocpg : std::vector<int>{1, 3}) {
                                     auto dhw = shw;
-                                    run_test(hw, hw, fhw, fhw, phw, phw, shw,
-                                             shw, dhw, dhw, g * icpg, g * ocpg,
-                                             batch, g, g);
+                                    run_test(
+                                            hw, hw, fhw, fhw, phw, phw, shw, shw, dhw,
+                                            dhw, g * icpg, g * ocpg, batch, g, g);
                                 }
 }
 
@@ -153,9 +142,9 @@ TEST_F(CUDA, DEFORMABLE_CONV_BWD_FILTER) {
                             for (auto icpg : std::vector<int>{1, 5})
                                 for (auto ocpg : std::vector<int>{1, 5}) {
                                     auto dhw = shw;
-                                    run_test(hw, hw, fhw, fhw, phw, phw, shw,
-                                             shw, dhw, dhw, g * icpg, g * ocpg,
-                                             batch, g, g);
+                                    run_test(
+                                            hw, hw, fhw, fhw, phw, phw, shw, shw, dhw,
+                                            dhw, g * icpg, g * ocpg, batch, g, g);
                                 }
 }
 
@@ -224,9 +213,9 @@ TEST_F(CUDA, DEFORMABLE_CONV_BWD_DATA) {
                             for (auto icpg : std::vector<int>{1, 3})
                                 for (auto ocpg : std::vector<int>{1, 3}) {
                                     auto dhw = shw;
-                                    run_test(hw, hw, fhw, fhw, phw, phw, shw,
-                                             shw, dhw, dhw, g * icpg, g * ocpg,
-                                             batch, g, g);
+                                    run_test(
+                                            hw, hw, fhw, fhw, phw, phw, shw, shw, dhw,
+                                            dhw, g * icpg, g * ocpg, batch, g, g);
                                 }
 }
 
@@ -243,11 +232,10 @@ TEST_F(CUDA, BENCHMARK_DEFORMABLE_CONV_FORWARD) {
     UniformFloatRNG mask_rng{-10, 10};
     UniformFloatRNG out_grad_rng{-10, 10};
 
-    auto run_bench = [&](size_t batch, size_t ic, size_t oc, size_t ih,
-                         size_t iw, size_t fh, size_t fw, size_t ph, size_t pw,
-                         size_t sh, size_t sw, size_t dh, size_t dw,
-                         size_t group, size_t deformable_group,
-                         size_t nr_times) {
+    auto run_bench = [&](size_t batch, size_t ic, size_t oc, size_t ih, size_t iw,
+                         size_t fh, size_t fw, size_t ph, size_t pw, size_t sh,
+                         size_t sw, size_t dh, size_t dw, size_t group,
+                         size_t deformable_group, size_t nr_times) {
         size_t oh, ow;
 
         param.pad_h = ph;
@@ -272,10 +260,9 @@ TEST_F(CUDA, BENCHMARK_DEFORMABLE_CONV_FORWARD) {
         TensorShape im{batch, ic, ih, iw}, filter{oc, ic, fh, fw},
                 offset{batch, 2 * deformable_group * fh * fw, oh, ow},
                 mask{batch, deformable_group * fh * fw, oh, ow};
-        auto time_in_ms =
-                bencher.execs({im, filter, offset, mask, {}}) / nr_times;
-        auto ops = 2.0 * group * (oc / group) * (oh * ow * batch) *
-                   (ic / group) * fh * fw / (time_in_ms * 1e-3) * 1e-12;
+        auto time_in_ms = bencher.execs({im, filter, offset, mask, {}}) / nr_times;
+        auto ops = 2.0 * group * (oc / group) * (oh * ow * batch) * (ic / group) * fh *
+                   fw / (time_in_ms * 1e-3) * 1e-12;
         printf("deformable conv forward performance: %fTops\n", ops);
     };
     run_bench(64, 64, 256, 56, 56, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 100);
@@ -293,11 +280,10 @@ TEST_F(CUDA, BENCHMARK_DEFORMABLE_CONV_BWD_FILTER) {
     UniformFloatRNG mask_rng{-10, 10};
     UniformFloatRNG out_grad_rng{-10, 10};
 
-    auto run_bench = [&](size_t batch, size_t icpg, size_t ocpg, size_t ih,
-                         size_t iw, size_t fh, size_t fw, size_t ph, size_t pw,
-                         size_t sh, size_t sw, size_t dh, size_t dw,
-                         size_t group, size_t deformable_group,
-                         size_t nr_times) {
+    auto run_bench = [&](size_t batch, size_t icpg, size_t ocpg, size_t ih, size_t iw,
+                         size_t fh, size_t fw, size_t ph, size_t pw, size_t sh,
+                         size_t sw, size_t dh, size_t dw, size_t group,
+                         size_t deformable_group, size_t nr_times) {
         size_t oh, ow;
         size_t ic = icpg * group, oc = ocpg * group;
 
@@ -325,10 +311,9 @@ TEST_F(CUDA, BENCHMARK_DEFORMABLE_CONV_BWD_FILTER) {
                 mask{batch, deformable_group * fh * fw, oh, ow},
                 out_grad{batch, oc, oh, ow}, filter_grad{oc, ic, fh, fw};
         auto time_in_ms =
-                bencher.execs({im, offset, mask, out_grad, filter_grad}) /
-                nr_times;
-        auto ops = 2.0 * group * (oc / group) * (oh * ow * batch) *
-                   (ic / group) * fh * fw / (time_in_ms * 1e-3) * 1e-12;
+                bencher.execs({im, offset, mask, out_grad, filter_grad}) / nr_times;
+        auto ops = 2.0 * group * (oc / group) * (oh * ow * batch) * (ic / group) * fh *
+                   fw / (time_in_ms * 1e-3) * 1e-12;
         printf("deformable conv bwd filter performance: %fTops\n", ops);
     };
     run_bench(64, 64, 256, 56, 56, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 100);
@@ -347,12 +332,10 @@ TEST_F(CUDA, BENCHMARK_DEFORMABLE_CONV_BWD_DATA) {
     UniformFloatRNG mask_rng{-10, 10};
     UniformFloatRNG out_grad_rng{-10, 10};
 
-    auto run_bench = [&](size_t batch, size_t ic, size_t oc, size_t ih,
-                         size_t iw, size_t fh, size_t fw, size_t ph, size_t pw,
-                         size_t sh, size_t sw, size_t dh, size_t dw,
-                         size_t group, size_t deformable_group,
-                         size_t nr_times) {
-
+    auto run_bench = [&](size_t batch, size_t ic, size_t oc, size_t ih, size_t iw,
+                         size_t fh, size_t fw, size_t ph, size_t pw, size_t sh,
+                         size_t sw, size_t dh, size_t dw, size_t group,
+                         size_t deformable_group, size_t nr_times) {
         size_t oh, ow;
         param.pad_h = ph;
         param.pad_w = pw;
@@ -379,11 +362,12 @@ TEST_F(CUDA, BENCHMARK_DEFORMABLE_CONV_BWD_DATA) {
                 out_grad{batch, oc, oh, ow}, im_grad{batch, ic, ih, iw},
                 offset_grad{batch, 2 * deformable_group * fh * fw, oh, ow},
                 mask_grad{batch, deformable_group * fh * fw, oh, ow};
-        auto time_in_ms = bencher.execs({im, filter, offset, mask, out_grad,
-                                         im_grad, offset_grad, mask_grad}) /
+        auto time_in_ms = bencher.execs(
+                                  {im, filter, offset, mask, out_grad, im_grad,
+                                   offset_grad, mask_grad}) /
                           nr_times;
-        auto ops = 2.0 * group * (oc / group) * oh * ow * batch * (ic / group) *
-                   fh * fw / (time_in_ms * 1e-3) * 1e-12;
+        auto ops = 2.0 * group * (oc / group) * oh * ow * batch * (ic / group) * fh *
+                   fw / (time_in_ms * 1e-3) * 1e-12;
         printf("deformable conv bwd data performance: %fTops\n", ops);
     };
     run_bench(64, 64, 256, 56, 56, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 100);

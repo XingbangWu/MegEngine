@@ -105,6 +105,32 @@ union OperatorParam {
     param.NvOf = 71,
     param.DctChannelSelect = 72,
     param.FakeQuant = 73,
+    param.TQT = 74,
+    param.Correlation = 75,
+    param.LSQ = 76,
+    param.GammaRNG = 77,
+    param.PoissonRNG = 78,
+    param.PermutationRNG = 79,
+    param.BetaRNG = 80,
+    param.SlidingWindowTranspose = 81,
+    param.Padding = 82,
+    param.ShuffleRNG = 83,
+    param.CheckNonFinite = 84,
+    param.LayerNorm = 85,
+    param.Dropout = 86,
+    param.RNNCell = 87,
+    param.RNN = 88,
+    param.LSTM = 89,
+    param.Softmax = 90,
+    param.Diag = 91,
+    param.GroupNorm = 92,
+    param.Fill = 93,
+    param.GeneralNorm=94,
+    param.MultiHeadAttn=95,
+    param.Resize3D = 96,
+    param.Cross = 97,
+    param.ExponentialRNG = 98,
+    param.MultinomialRNG=99,
 }
 
 table Operator {
@@ -123,6 +149,14 @@ table Operator {
     blobs:[Blob];
     /// Operator may want to save more than one OperatorParam
     additional_params:[OperatorParam];
+    name:string;
+}
+
+table Metadata {
+    is_valid:bool;
+    graph_modified:bool;
+    user_info:string;
+    optimize_options:ulong;
 }
 
 struct OutputVar {
@@ -138,6 +172,7 @@ table Graph {
     nr_shared_tensor:uint;
     oprs:[Operator];
     output_vars_idx:[OutputVar];
+    metadata:Metadata;
 }
 
 root_type Graph;

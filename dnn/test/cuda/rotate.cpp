@@ -1,14 +1,3 @@
-/**
- * \file dnn/test/cuda/rotate.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include <gtest/gtest.h>
 
 #include "megdnn.h"
@@ -32,18 +21,15 @@ TEST_F(CUDA, ROTATE) {
     Rotate::Param cur_param;
     for (bool clockwise : {false, true}) {
         cur_param.clockwise = clockwise;
-        args.emplace_back(cur_param, TensorShape{65535, 3, 4, 1},
-                          dtype::Int32());
-        args.emplace_back(cur_param, TensorShape{65540, 3, 4, 3},
-                          dtype::Int32());
+        args.emplace_back(cur_param, TensorShape{65535, 3, 4, 1}, dtype::Int32());
+        args.emplace_back(cur_param, TensorShape{65540, 3, 4, 3}, dtype::Int32());
     }
     for (auto&& arg : args) {
-        checker.set_dtype(0, arg.dtype)
-            .set_dtype(1, arg.dtype)
-            .execs({arg.src, {}});
+        checker.set_dtype(0, arg.dtype).set_dtype(1, arg.dtype).execs({arg.src, {}});
     }
 }
 
+#if MEGDNN_WITH_BENCHMARK
 TEST_F(CUDA, BENCHMARK_ROTATE) {
     auto run = [&](const TensorShapeArray& shapes) {
         Benchmarker<Rotate> benchmarker(handle_cuda());
@@ -78,6 +64,7 @@ TEST_F(CUDA, BENCHMARK_ROTATE) {
 
     run(shapes);
 }
+#endif
 
 }  // namespace rotate
 }  // namespace test

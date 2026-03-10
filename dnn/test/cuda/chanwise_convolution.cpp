@@ -1,25 +1,15 @@
-/**
- * \file dnn/test/cuda/chanwise_convolution.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megdnn/oprs/nn.h"
 
-#include "test/cuda/fixture.h"
-#include "test/cuda/benchmark.h"
-#include "test/common/tensor.h"
-#include "test/common/workspace_wrapper.h"
+#include "cuda.h"
+#include "megcore_cuda.h"
+#include "test/common/benchmarker.h"
 #include "test/common/checker.h"
 #include "test/common/convolution.h"
-#include "test/common/benchmarker.h"
-#include "megcore_cuda.h"
-#include "cuda.h"
+#include "test/common/tensor.h"
+#include "test/common/workspace_wrapper.h"
+#include "test/cuda/benchmark.h"
+#include "test/cuda/fixture.h"
+#include "test/cuda/utils.h"
 
 #include <cuda_profiler_api.h>
 #include <cuda_runtime_api.h>
@@ -38,57 +28,59 @@ bool check_need_full_bench() {
 }
 #endif
 
-Convolution::Param gconv_param(Convolution::Param p) {
+Convolution::Param gconv_param(Convolution::Param p, bool io16xc32 = false) {
     p.sparse = Convolution::Param::Sparse::GROUP;
+    if (io16xc32)
+        p.compute_mode = Convolution::Param::ComputeMode::FLOAT32;
     return p;
 }
 
-template<int P0, int P1, int P2>
+template <int P0, int P1, int P2>
 class BenchmarkEnv {
     Handle *handle, *handle_cpu;
     std::unique_ptr<GaussianRNG> rng;
     TensorLayout lsrc, lflt0, lflt1, ldst;
-    std::unique_ptr<Tensor<>> src0, src1,
-        flt0, flt0_cpu, flt1, flt1_cpu, dst0, dst1;
+    std::unique_ptr<Tensor<>> src0, src1, flt0, flt0_cpu, flt1, flt1_cpu, dst0, dst1;
     cudaEvent_t cuda_ev[3];
     cudaStream_t cuda_stream;
     size_t pad_h, pad_w;
 
-    template<typename T>
+    template <typename T>
     static std::tuple<T, T, T> shuffle(std::tuple<T, T, T> data) {
         return std::make_tuple(
                 std::get<P0>(data), std::get<P1>(data), std::get<P2>(data));
     }
 
 public:
-    BenchmarkEnv(Handle *handle, Handle *handle_cpu) {
+    BenchmarkEnv(Handle* handle, Handle* handle_cpu) {
         this->handle = handle;
         this->handle_cpu = handle_cpu;
         rng = handle->create_operator<GaussianRNG>();
         // make cpu handle used
         handle_cpu->create_operator<Sleep>()->exec();
 
-        for (int i = 0; i < 3; ++ i)
+        for (int i = 0; i < 3; ++i)
             cudaEventCreate(&cuda_ev[i]);
         megcoreGetCUDAStream(handle->megcore_computing_handle(), &cuda_stream);
     }
 
     ~BenchmarkEnv() {
-        for (int i = 0; i < 3; ++ i)
+        for (int i = 0; i < 3; ++i)
             cudaEventDestroy(cuda_ev[i]);
     }
 
-    void alloc(size_t N, size_t IC, size_t IH, size_t IW,
-            size_t CHL_MUL, size_t FH, size_t FW, size_t PH, size_t PW) {
+    void alloc(
+            size_t N, size_t IC, size_t IH, size_t IW, size_t CHL_MUL, size_t FH,
+            size_t FW, size_t PH, size_t PW) {
         pad_h = PH;
         pad_w = PW;
-        auto mkly = [](const TensorShape &s) {
+        auto mkly = [](const TensorShape& s) {
             return TensorLayout{s, dtype::Float32()};
         };
         lsrc = mkly({N, IC, IH, IW});
-        lflt0 = mkly({CHL_MUL*IC, IC, FH, FW});
+        lflt0 = mkly({CHL_MUL * IC, IC, FH, FW});
         lflt1 = mkly({IC, CHL_MUL, 1, FH, FW});
-        ldst = mkly({N, IC*CHL_MUL, IH-FH+1+PH*2, IW-FW+1+PW*2});
+        ldst = mkly({N, IC * CHL_MUL, IH - FH + 1 + PH * 2, IW - FW + 1 + PW * 2});
         src0.reset(new Tensor<>(handle, lsrc));
         src1.reset(new Tensor<>(handle, lsrc));
         flt0.reset(new Tensor<>(handle, lflt0));
@@ -101,59 +93,52 @@ public:
 
     void fill_src() {
         rng->exec(src0->tensornd(), {});
-        megdnn_memcpy_D2D(handle, src1->ptr(), src0->ptr(),
-                lsrc.span().dist_byte());
+        megdnn_memcpy_D2D(handle, src1->ptr(), src0->ptr(), lsrc.span().dist_byte());
     }
 
     void fill_flt() {
         rng->exec(flt1->tensornd(), {});
-        megdnn_memcpy_D2H(handle,
-                flt1_cpu->ptr(), flt1->ptr(), lflt1.span().dist_byte());
+        megdnn_memcpy_D2H(
+                handle, flt1_cpu->ptr(), flt1->ptr(), lflt1.span().dist_byte());
 
-        const size_t IC = lflt1[0], CHL_MUL = lflt1[1],
-               FSIZE = lflt1[3] * lflt1[4];
+        const size_t IC = lflt1[0], CHL_MUL = lflt1[1], FSIZE = lflt1[3] * lflt1[4];
 
         // fill flt0 from flt1
         float* src = flt1_cpu->ptr();
         float* dst = flt0_cpu->ptr();
         memset(dst, 0, lflt0.span().dist_byte());
-        for (size_t i = 0; i < IC; ++ i) {
-            for (size_t j = 0; j < CHL_MUL; ++ j) {
+        for (size_t i = 0; i < IC; ++i) {
+            for (size_t j = 0; j < CHL_MUL; ++j) {
                 memcpy(dst + ((i * CHL_MUL + j) * IC + i) * FSIZE,
-                        src + (i * CHL_MUL + j) * FSIZE,
-                        FSIZE * sizeof(float));
+                       src + (i * CHL_MUL + j) * FSIZE, FSIZE * sizeof(float));
             }
         }
 
-        megdnn_memcpy_H2D(handle,
-                flt0->ptr(), dst, lflt0.span().dist_byte());
+        megdnn_memcpy_H2D(handle, flt0->ptr(), dst, lflt0.span().dist_byte());
     }
 
     void fill_dst() {
         rng->exec(dst0->tensornd(), {});
-        megdnn_memcpy_D2D(handle, dst1->ptr(), dst0->ptr(),
-                ldst.span().dist_byte());
+        megdnn_memcpy_D2D(handle, dst1->ptr(), dst0->ptr(), ldst.span().dist_byte());
     }
 
-    template<class Opr>
-    void exec(Opr *opr0, Opr *opr1) {
+    template <class Opr>
+    void exec(Opr* opr0, Opr* opr1) {
         opr0->param().pad_h = pad_h;
         opr0->param().pad_w = pad_w;
         opr1->param() = opr0->param();
         opr1->param().sparse = param::Convolution::Sparse::GROUP;
 
         TensorND a0, b0, c0, a1, b1, c1;
-        std::tie(a0, b0, c0) = shuffle(std::make_tuple(
-                    src0->tensornd(), flt0->tensornd(), dst0->tensornd()));
-        std::tie(a1, b1, c1) = shuffle(std::make_tuple(
-                    src1->tensornd(), flt1->tensornd(), dst1->tensornd()));
-        WorkspaceWrapper wk(handle,
+        std::tie(a0, b0, c0) = shuffle(
+                std::make_tuple(src0->tensornd(), flt0->tensornd(), dst0->tensornd()));
+        std::tie(a1, b1, c1) = shuffle(
+                std::make_tuple(src1->tensornd(), flt1->tensornd(), dst1->tensornd()));
+        WorkspaceWrapper wk(
+                handle,
                 std::max(
-                    opr0->get_workspace_in_bytes(
-                        a0.layout, b0.layout, c0.layout),
-                    opr1->get_workspace_in_bytes(
-                        a1.layout, b1.layout, c1.layout)
-                    ));
+                        opr0->get_workspace_in_bytes(a0.layout, b0.layout, c0.layout),
+                        opr1->get_workspace_in_bytes(a1.layout, b1.layout, c1.layout)));
         cudaProfilerStart();
         cudaEventRecord(cuda_ev[0], cuda_stream);
         opr0->exec(a0, b0, c0, wk.workspace());
@@ -163,16 +148,15 @@ public:
         cudaProfilerStop();
 
         if (getenv("MEGDNN_CHANWISE_CONV_VERBOSE") ||
-                getenv("MEGDNN_CHANWISE_CONV_FULLBENCH")) {
+            getenv("MEGDNN_CHANWISE_CONV_FULLBENCH")) {
             cudaStreamSynchronize(cuda_stream);
             float t0 = -1, t1 = -1;
             cudaEventElapsedTime(&t0, cuda_ev[0], cuda_ev[1]);
             cudaEventElapsedTime(&t1, cuda_ev[1], cuda_ev[2]);
             printf("%s;%s;%s: cudnn/megdnn: %.3fms/%.3fms=%.3f\n",
-                    lsrc.TensorShape::to_string().c_str(),
-                    lflt1.TensorShape::to_string().c_str(),
-                    ldst.TensorShape::to_string().c_str(),
-                    t0, t1, t0 / t1);
+                   lsrc.TensorShape::to_string().c_str(),
+                   lflt1.TensorShape::to_string().c_str(),
+                   ldst.TensorShape::to_string().c_str(), t0, t1, t0 / t1);
         }
     }
 
@@ -184,16 +168,16 @@ public:
         opr1->param().sparse = param::Convolution::Sparse::GROUP;
 
         TensorND a0, b0, c0, a1, b1, c1;
-        std::tie(a0, b0, c0) = shuffle(std::make_tuple(
-                    src0->tensornd(), flt0->tensornd(), dst0->tensornd()));
-        std::tie(a1, b1, c1) = shuffle(std::make_tuple(
-                    src1->tensornd(), flt1->tensornd(), dst1->tensornd()));
+        std::tie(a0, b0, c0) = shuffle(
+                std::make_tuple(src0->tensornd(), flt0->tensornd(), dst0->tensornd()));
+        std::tie(a1, b1, c1) = shuffle(
+                std::make_tuple(src1->tensornd(), flt1->tensornd(), dst1->tensornd()));
         WorkspaceWrapper wk(
-                handle,
-                std::max(opr0->get_workspace_in_bytes(a0.layout, b0.layout,
-                                                      c0.layout, nullptr),
-                         opr1->get_workspace_in_bytes(a1.layout, b1.layout,
-                                                      c1.layout, nullptr)));
+                handle, std::max(
+                                opr0->get_workspace_in_bytes(
+                                        a0.layout, b0.layout, c0.layout, nullptr),
+                                opr1->get_workspace_in_bytes(
+                                        a1.layout, b1.layout, c1.layout, nullptr)));
         cudaProfilerStart();
         cudaEventRecord(cuda_ev[0], cuda_stream);
         opr0->exec(a0, b0, c0, nullptr, wk.workspace());
@@ -203,69 +187,61 @@ public:
         cudaProfilerStop();
 
         if (getenv("MEGDNN_CHANWISE_CONV_VERBOSE") ||
-                getenv("MEGDNN_CHANWISE_CONV_FULLBENCH")) {
+            getenv("MEGDNN_CHANWISE_CONV_FULLBENCH")) {
             cudaStreamSynchronize(cuda_stream);
             float t0 = -1, t1 = -1;
             cudaEventElapsedTime(&t0, cuda_ev[0], cuda_ev[1]);
             cudaEventElapsedTime(&t1, cuda_ev[1], cuda_ev[2]);
             printf("%s;%s;%s: cudnn/megdnn: %.3fms/%.3fms=%.3f\n",
-                    lsrc.TensorShape::to_string().c_str(),
-                    lflt1.TensorShape::to_string().c_str(),
-                    ldst.TensorShape::to_string().c_str(),
-                    t0, t1, t0 / t1);
+                   lsrc.TensorShape::to_string().c_str(),
+                   lflt1.TensorShape::to_string().c_str(),
+                   ldst.TensorShape::to_string().c_str(), t0, t1, t0 / t1);
         }
     }
 
     void cmp_dst() {
         Tensor<> dst0_cpu(handle_cpu, ldst), dst1_cpu(handle_cpu, ldst);
-        megdnn_memcpy_D2H(handle,
-                dst0_cpu.ptr(), dst0->ptr(), ldst.span().dist_byte());
-        megdnn_memcpy_D2H(handle,
-                dst1_cpu.ptr(), dst1->ptr(), ldst.span().dist_byte());
+        megdnn_memcpy_D2H(handle, dst0_cpu.ptr(), dst0->ptr(), ldst.span().dist_byte());
+        megdnn_memcpy_D2H(handle, dst1_cpu.ptr(), dst1->ptr(), ldst.span().dist_byte());
         dst0_cpu.check_with(dst1_cpu);
     }
 
     void cmp_src() {
         Tensor<> src0_cpu(handle_cpu, lsrc), src1_cpu(handle_cpu, lsrc);
-        megdnn_memcpy_D2H(handle,
-                src0_cpu.ptr(), src0->ptr(), lsrc.span().dist_byte());
-        megdnn_memcpy_D2H(handle,
-                src1_cpu.ptr(), src1->ptr(), lsrc.span().dist_byte());
+        megdnn_memcpy_D2H(handle, src0_cpu.ptr(), src0->ptr(), lsrc.span().dist_byte());
+        megdnn_memcpy_D2H(handle, src1_cpu.ptr(), src1->ptr(), lsrc.span().dist_byte());
         src0_cpu.check_with(src1_cpu);
     }
 
     void cmp_flt() {
         Tensor<> flt0_cpu(handle_cpu, lflt0), flt1_cpu(handle_cpu, lflt1);
-        float *p0 = flt0_cpu.ptr();
-        float *p1 = flt1_cpu.ptr();
+        float* p0 = flt0_cpu.ptr();
+        float* p1 = flt1_cpu.ptr();
         megdnn_memcpy_D2H(handle, p0, flt0->ptr(), lflt0.span().dist_byte());
         megdnn_memcpy_D2H(handle, p1, flt1->ptr(), lflt1.span().dist_byte());
 
-        size_t IC = lflt1[0], CHL_MUL = lflt1[1],
-               FSIZE = lflt1[3] * lflt1[4];
+        size_t IC = lflt1[0], CHL_MUL = lflt1[1], FSIZE = lflt1[3] * lflt1[4];
 
         double tot_err = 0, tot_err_num = 0;
-        for (size_t i = 0; i < IC; ++ i) {
-            for (size_t j = 0; j < CHL_MUL; ++ j) {
+        for (size_t i = 0; i < IC; ++i) {
+            for (size_t j = 0; j < CHL_MUL; ++j) {
                 auto t0 = p0 + ((i * CHL_MUL + j) * IC + i) * FSIZE,
                      t1 = p1 + (i * CHL_MUL + j) * FSIZE;
-                for (size_t k = 0; k < FSIZE; ++ k) {
+                for (size_t k = 0; k < FSIZE; ++k) {
                     auto err = std::abs(diff(t0[k], t1[k]));
                     tot_err += err;
                     tot_err_num += 1;
-                    ASSERT_LT(err, 1e-2) << "failed at " <<
-                        i << " " << j << " " << k <<
-                        " vals=" << t0[k] << "," << t1[k];
+                    ASSERT_LT(err, 1e-2) << "failed at " << i << " " << j << " " << k
+                                         << " vals=" << t0[k] << "," << t1[k];
                 }
             }
         }
-        auto avg_err = tot_err /  tot_err_num;
+        auto avg_err = tot_err / tot_err_num;
         ASSERT_LT(avg_err, 1e-4);
-
     }
 };
 
-} // anonymous namespace
+}  // anonymous namespace
 
 constexpr auto M = Convolution::Mode::CROSS_CORRELATION;
 
@@ -273,10 +249,14 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_FORWARD) {
     Checker<Convolution> checker(handle_cuda());
     bool require_algo = false;
     checker.set_before_exec_callback(AlgoChecker<ConvolutionForward>(
-            ConvBiasForward::algo_name<ConvBiasForward::DirectParam>(
-                    "CHANNEL_WISE", {})
-                    .c_str(),
+            ExecutionPolicyAlgoName{
+                    "DEFAULT",
+                    {{ConvBiasForward::algo_name<ConvBiasForward::DirectParam>(
+                              "CHANNEL_WISE", {})
+                              .c_str(),
+                      {}}}},
             &require_algo));
+
     for (auto dtype : std::vector<DType>{dtype::Float32(), dtype::Float16()}) {
         checker.set_dtype(0, dtype).set_dtype(1, dtype).set_dtype(2, dtype);
         if (dtype.enumv() == DTypeEnum::Float16)
@@ -306,8 +286,12 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_FORWARD_SMALL) {
     Checker<Convolution> checker(handle_cuda());
     bool require_algo = false;
     checker.set_before_exec_callback(AlgoChecker<ConvolutionForward>(
-            ConvBiasForward::algo_name<ConvBiasForward::DirectParam>(
-                    "CHANNEL_WISE_SMALL", {}).c_str(),
+            ExecutionPolicyAlgoName{
+                    "DEFAULT",
+                    {{ConvBiasForward::algo_name<ConvBiasForward::DirectParam>(
+                              "CHANNEL_WISE_SMALL", {})
+                              .c_str(),
+                      {}}}},
             &require_algo));
     for (auto dtype : std::vector<DType> {
              dtype::Float32(),
@@ -329,15 +313,15 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_FORWARD_SMALL) {
         checker.set_param(gconv_param({M, 1, 1, 1, 1}))
                 .execs({{2, 3, 3, 16}, {3, 1, 1, 3, 3}, {}})
                 .execs({{2, 3, 8, 3}, {3, 1, 1, 3, 3}, {}});
-
     }
 }
 
 TEST_F(CUDA, CHANWISE_CONVOLUTION_BACKWARD_DATA) {
     Checker<ConvolutionBackwardData> checker(handle_cuda());
     bool require_algo = false;
-    checker.set_before_exec_callback(AlgoChecker<ConvolutionBackwardData>(
-            "CHANNEL_WISE", &require_algo));
+    checker.set_before_exec_callback(
+            AlgoChecker<ConvolutionBackwardData>("CHANNEL_WISE", &require_algo));
+
     for (auto dtype : std::vector<DType>{dtype::Float32(), dtype::Float16()}) {
         checker.set_dtype(0, dtype).set_dtype(1, dtype).set_dtype(2, dtype);
         if (dtype.enumv() == DTypeEnum::Float16)
@@ -369,12 +353,11 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_BACKWARD_DATA_SMALL) {
     Checker<ConvolutionBackwardData> checker(handle_cuda());
     bool require_algo = false;
     checker.set_before_exec_callback(
-            AlgoChecker<ConvolutionBackwardData>(
-                "CHANNEL_WISE_SMALL", &require_algo));
+            AlgoChecker<ConvolutionBackwardData>("CHANNEL_WISE_SMALL", &require_algo));
     for (auto dtype : std::vector<DType> {
-            dtype::Float32(),
+             dtype::Float32(),
 #if CUDA_VERSION >= 9000
-            dtype::Float16()
+                     dtype::Float16()
 #endif
          }) {
         checker.set_dtype(0, dtype).set_dtype(1, dtype).set_dtype(2, dtype);
@@ -383,8 +366,8 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_BACKWARD_DATA_SMALL) {
             checker.set_epsilon(2e-2);
 
         for (uint32_t f : {1, 3, 5, 7}) {
-            checker.set_param(gconv_param({M, f/2, f/2, 1, 1}))
-                .execs({{3, 1, 1, f, f}, {2, 3, 16, 16}, {2, 3, 16, 16}});
+            checker.set_param(gconv_param({M, f / 2, f / 2, 1, 1}))
+                    .execs({{3, 1, 1, f, f}, {2, 3, 16, 16}, {2, 3, 16, 16}});
         }
         checker.set_param(gconv_param({M, 1, 1, 1, 1}))
                 .execs({{3, 1, 1, 3, 3}, {2, 3, 3, 16}, {2, 3, 3, 16}})
@@ -395,11 +378,15 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_BACKWARD_DATA_SMALL) {
 TEST_F(CUDA, CHANWISE_CONVOLUTION_BACKWARD_FILTER) {
     Checker<ConvolutionBackwardFilter> checker(handle_cuda());
     bool require_algo = false;
-    checker.set_before_exec_callback(AlgoChecker<ConvolutionBackwardFilter>(
-                "CHANNEL_WISE", &require_algo));
+    checker.set_before_exec_callback(
+            AlgoChecker<ConvolutionBackwardFilter>("CHANNEL_WISE", &require_algo));
     UniformFloatRNG rng(-0.1, 0.1);
     for (auto dtype : std::vector<DType>{dtype::Float32(), dtype::Float16()}) {
-        checker.set_dtype(0, dtype).set_dtype(1, dtype).set_dtype(2, dtype).set_rng(0, &rng).set_rng(1, &rng);
+        checker.set_dtype(0, dtype)
+                .set_dtype(1, dtype)
+                .set_dtype(2, dtype)
+                .set_rng(0, &rng)
+                .set_rng(1, &rng);
         if (dtype.enumv() == DTypeEnum::Float16)
             checker.set_epsilon(2e-1);
         // simple case
@@ -417,14 +404,223 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_BACKWARD_FILTER) {
         }
         // clang-format on
 
-    // padding larger than kern
-        checker.set_param(gconv_param({M, 20, 30, 4, 5})).
-            execs({{32, 6, 2, 3}, {32, 12, 10, 12}, {6, 2, 1, 4, 5}});
-    // unused filter items
-        checker.set_param(gconv_param({M, 2, 3, 2, 3})).
-            execs({{32, 6, 1, 1}, {32, 12, 1, 1}, {6, 2, 1, 5, 7}});
+        // padding larger than kern
+        checker.set_param(gconv_param({M, 20, 30, 4, 5}))
+                .execs({{32, 6, 2, 3}, {32, 12, 10, 12}, {6, 2, 1, 4, 5}});
+        // unused filter items
+        checker.set_param(gconv_param({M, 2, 3, 2, 3}))
+                .execs({{32, 6, 1, 1}, {32, 12, 1, 1}, {6, 2, 1, 5, 7}});
     }
 }
+
+namespace {
+template <typename Op>
+struct AlgoCheckerMaker {
+    static auto make(const char* name, bool* require_algo) {
+        return AlgoChecker<Op>(name, require_algo);
+    }
+};
+
+template <>
+struct AlgoCheckerMaker<ConvolutionForward> {
+    static auto make(const char* name, bool* require_algo) {
+        return AlgoChecker<ConvolutionForward>(
+                ExecutionPolicyAlgoName{
+                        "DEFAULT",
+                        {{ConvBiasForward::algo_name<ConvBiasForward::DirectParam>(
+                                  name, {})
+                                  .c_str(),
+                          {}}}},
+                require_algo);
+    }
+};
+
+template <typename Op>
+void check_chanwise(DType io_type, DType comp_type, Handle* handle, const char* name) {
+    Checker<Op> checker(handle);
+    bool require_algo = false;
+    checker.set_before_exec_callback(AlgoCheckerMaker<Op>::make(name, &require_algo));
+    checker.set_dtype(0, io_type).set_dtype(1, io_type).set_dtype(2, io_type);
+    bool io16xc32 = false;
+    if (io_type == dtype::Float16()) {
+        if (comp_type == dtype::Float16()) {
+            checker.set_epsilon(1e-1);
+        } else {
+            io16xc32 = true;
+        }
+    }
+    // dispatch testcase by operation
+    if (std::is_same<Op, ConvolutionForward>::value) {
+        // align 8
+        checker.set_param(gconv_param({M, 7, 7, 1, 1}, io16xc32))
+                .execs({{8, 2, 16, 16}, {2, 1, 1, 15, 15}, {}});
+        // align 1
+        checker.set_param(gconv_param({M, 7, 7, 1, 1}, io16xc32))
+                .execs({{8, 2, 15, 15}, {2, 1, 1, 15, 15}, {}});
+        // align 2
+        checker.set_param(gconv_param({M, 7, 7, 1, 1}, io16xc32))
+                .execs({{8, 2, 14, 14}, {2, 1, 1, 15, 15}, {}});
+        // custom padding
+        checker.set_param(gconv_param({M, 3, 3, 1, 1}, io16xc32))
+                .execs({{8, 2, 16, 16}, {2, 1, 1, 15, 15}, {}});
+        // custom stride
+        checker.set_param(gconv_param({M, 7, 7, 2, 2}, io16xc32))
+                .execs({{8, 2, 16, 16}, {2, 1, 1, 15, 15}, {}});
+    } else if (std::is_same<Op, ConvolutionBackwardData>::value) {
+        // align 8
+        checker.set_param(gconv_param({M, 7, 7, 1, 1}, io16xc32))
+                .execs({{2, 1, 1, 15, 15}, {8, 2, 16, 16}, {8, 2, 16, 16}});
+        // align 1
+        checker.set_param(gconv_param({M, 7, 7, 1, 1}, io16xc32))
+                .execs({{2, 1, 1, 15, 15}, {8, 2, 15, 15}, {8, 2, 15, 15}});
+        // align 2
+        checker.set_param(gconv_param({M, 7, 7, 1, 1}, io16xc32))
+                .execs({{2, 1, 1, 15, 15}, {8, 2, 14, 14}, {8, 2, 14, 14}});
+        // custom padding
+        checker.set_param(gconv_param({M, 3, 3, 1, 1}, io16xc32))
+                .execs({{2, 1, 1, 15, 15}, {8, 2, 8, 8}, {8, 2, 16, 16}});
+        // custom stride
+        checker.set_param(gconv_param({M, 7, 7, 2, 2}, io16xc32))
+                .execs({{2, 1, 1, 15, 15}, {8, 2, 7, 7}, {8, 2, 14, 14}});
+    } else if (std::is_same<Op, ConvolutionBackwardFilter>::value) {
+        // align 8
+        checker.set_param(gconv_param({M, 7, 7, 1, 1}, io16xc32))
+                .execs({{8, 2, 16, 16}, {8, 2, 16, 16}, {2, 1, 1, 15, 15}});
+        // align 1
+        checker.set_param(gconv_param({M, 7, 7, 1, 1}, io16xc32))
+                .execs({{8, 2, 15, 15}, {8, 2, 15, 15}, {2, 1, 1, 15, 15}});
+        // align 2
+        checker.set_param(gconv_param({M, 7, 7, 1, 1}, io16xc32))
+                .execs({{8, 2, 14, 14}, {8, 2, 14, 14}, {2, 1, 1, 15, 15}});
+        // custom padding
+        checker.set_param(gconv_param({M, 3, 3, 1, 1}, io16xc32))
+                .execs({{8, 2, 16, 16}, {8, 2, 8, 8}, {2, 1, 1, 15, 15}});
+        // custom stride
+        checker.set_param(gconv_param({M, 7, 7, 2, 2}, io16xc32))
+                .execs({{8, 2, 14, 14}, {8, 2, 7, 7}, {2, 1, 1, 15, 15}});
+    }
+}
+}  // namespace
+
+#define MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_FMA_KERNEL(cb) \
+    cb(1, 128, 128, 8, 32, 64, 8);                          \
+    cb(2, 128, 64, 8, 64, 32, 8);                           \
+    cb(3, 128, 32, 8, 64, 32, 8);                           \
+    cb(4, 64, 128, 8, 32, 64, 8);                           \
+    cb(5, 32, 128, 8, 32, 64, 8);                           \
+    cb(6, 64, 64, 8, 32, 64, 8);                            \
+    cb(7, 32, 64, 8, 32, 64, 8);                            \
+    cb(8, 32, 32, 8, 32, 32, 8);                            \
+    cb(9, 64, 32, 8, 64, 32, 8);
+
+#define cb(tag, tbm, tbn, tbk, wm, wn, wk)                                       \
+    TEST_F(CUDA, CHANWISE_CONVOLUTION_FORWARD_CUTLASS_FMA_##tag) {               \
+        require_compute_capability(6, 1);                                        \
+        check_chanwise<ConvolutionForward>(                                      \
+                dtype::Float32(), dtype::Float32(), handle_cuda(),               \
+                "FLOAT32_NCHW_FMA_IMPLICIT_BATCHED_GEMM_" #tbm "X" #tbn "X" #tbk \
+                "_" #wm "X" #wn "X" #wk "_2stage");                              \
+    }
+
+MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_FMA_KERNEL(cb)
+
+#undef cb
+
+#define cb(tag, tbm, tbn, tbk, wm, wn, wk)                                       \
+    TEST_F(CUDA, CHANWISE_CONVOLUTION_BACKWARD_DATA_CUTLASS_FMA_##tag) {         \
+        require_compute_capability(6, 1);                                        \
+        check_chanwise<ConvolutionBackwardData>(                                 \
+                dtype::Float32(), dtype::Float32(), handle_cuda(),               \
+                "FLOAT32_NCHW_FMA_IMPLICIT_BATCHED_GEMM_" #tbm "X" #tbn "X" #tbk \
+                "_" #wm "X" #wn "X" #wk "_2stage");                              \
+    }
+
+MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_FMA_KERNEL(cb)
+
+#undef cb
+
+#define cb(tag, tbm, tbn, tbk, wm, wn, wk)                                       \
+    TEST_F(CUDA, CHANWISE_CONVOLUTION_BACKWARD_FILTER_CUTLASS_FMA_##tag) {       \
+        require_compute_capability(6, 1);                                        \
+        check_chanwise<ConvolutionBackwardFilter>(                               \
+                dtype::Float32(), dtype::Float32(), handle_cuda(),               \
+                "FLOAT32_NCHW_FMA_IMPLICIT_BATCHED_GEMM_" #tbm "X" #tbn "X" #tbk \
+                "_" #wm "X" #wn "X" #wk "_2stage");                              \
+    }
+
+MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_FMA_KERNEL(cb)
+
+#undef cb
+
+#undef MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_FMA_KERNEL
+
+#if CUDA_VERSION == 11080
+#define MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_HMMA_KERNEL(cb) \
+    cb(1, 128, 256, 32, 64, 64, 32);                         \
+    cb(2, 128, 64, 32, 32, 32, 32);                          \
+    cb(3, 64, 128, 32, 32, 32, 32);                          \
+    cb(4, 64, 64, 32, 32, 32, 32);
+#elif CUDA_VERSION >= 10010
+#define MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_HMMA_KERNEL(cb) \
+    cb(1, 128, 128, 32, 32, 32, 32);                         \
+    cb(2, 128, 256, 32, 64, 64, 32);                         \
+    cb(3, 128, 64, 32, 32, 32, 32);                          \
+    cb(4, 64, 128, 32, 32, 32, 32);                          \
+    cb(5, 64, 64, 32, 32, 32, 32);
+#else
+// hmma instruction need cuda version >= 10.2, disable hmma testcases in this path
+#define MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_HMMA_KERNEL(cb)
+#endif
+
+// check both ioc16 and io16xc32
+#define cb(tag, tbm, tbn, tbk, wm, wn, wk)                                        \
+    TEST_F(CUDA, CHANWISE_CONVOLUTION_FORWARD_CUTLASS_HMMA_##tag) {               \
+        require_compute_capability(7, 0);                                         \
+        check_chanwise<ConvolutionForward>(                                       \
+                dtype::Float16(), dtype::Float16(), handle_cuda(),                \
+                "FLOAT16_NCHW_HMMA_IMPLICIT_BATCHED_GEMM_" #tbm "X" #tbn "X" #tbk \
+                "_" #wm "X" #wn "X" #wk "_2stage");                               \
+        check_chanwise<ConvolutionForward>(                                       \
+                dtype::Float16(), dtype::Float32(), handle_cuda(),                \
+                "FLOAT16_NCHW_HMMA_IMPLICIT_BATCHED_GEMM_" #tbm "X" #tbn "X" #tbk \
+                "_" #wm "X" #wn "X" #wk "_2stage");                               \
+    }
+
+MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_HMMA_KERNEL(cb)
+
+#undef cb
+
+#define cb(tag, tbm, tbn, tbk, wm, wn, wk)                                        \
+    TEST_F(CUDA, CHANWISE_CONVOLUTION_BACKWARD_DATA_CUTLASS_HMMA_##tag) {         \
+        require_compute_capability(7, 0);                                         \
+        check_chanwise<ConvolutionBackwardData>(                                  \
+                dtype::Float16(), dtype::Float16(), handle_cuda(),                \
+                "FLOAT16_NCHW_HMMA_IMPLICIT_BATCHED_GEMM_" #tbm "X" #tbn "X" #tbk \
+                "_" #wm "X" #wn "X" #wk "_mma8X8X4_2stage");                      \
+        check_chanwise<ConvolutionBackwardData>(                                  \
+                dtype::Float16(), dtype::Float32(), handle_cuda(),                \
+                "FLOAT16_NCHW_HMMA_IMPLICIT_BATCHED_GEMM_" #tbm "X" #tbn "X" #tbk \
+                "_" #wm "X" #wn "X" #wk "_mma8X8X4_2stage");                      \
+    }
+
+MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_HMMA_KERNEL(cb)
+
+#undef cb
+
+#define cb(tag, tbm, tbn, tbk, wm, wn, wk)                                        \
+    TEST_F(CUDA, CHANWISE_CONVOLUTION_BACKWARD_FILTER_CUTLASS_HMMA_##tag) {       \
+        require_compute_capability(7, 0);                                         \
+        check_chanwise<ConvolutionBackwardData>(                                  \
+                dtype::Float16(), dtype::Float32(), handle_cuda(),                \
+                "FLOAT16_NCHW_HMMA_IMPLICIT_BATCHED_GEMM_" #tbm "X" #tbn "X" #tbk \
+                "_" #wm "X" #wn "X" #wk "_mma8X8X4_2stage");                      \
+    }
+
+MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_HMMA_KERNEL(cb)
+
+#undef cb
+
+#undef MEGDNN_FOREACH_CUTLASS_CHANWISE_CONV_FWD_HMMA_KERNEL
 
 #if MEGDNN_WITH_BENCHMARK
 TEST_F(CUDA, CHANWISE_CONVOLUTION_FORWARD_BENCH_CHECK) {
@@ -434,8 +630,8 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_FORWARD_BENCH_CHECK) {
     auto conv1 = handle->create_operator<ConvolutionForward>();
     BenchmarkEnv<0, 1, 2> benv(handle, handle_cpu);
 
-    auto run = [&](size_t N, size_t IC, size_t IH, size_t IW,
-            size_t CHL_MUL, size_t FH, size_t FW, size_t PH, size_t PW) {
+    auto run = [&](size_t N, size_t IC, size_t IH, size_t IW, size_t CHL_MUL, size_t FH,
+                   size_t FW, size_t PH, size_t PW) {
         benv.alloc(N, IC, IH, IW, CHL_MUL, FH, FW, PH, PW);
         benv.fill_src();
         benv.fill_flt();
@@ -458,8 +654,8 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_BWD_DATA_BENCH_CHECK) {
     auto conv1 = handle->create_operator<ConvolutionBackwardData>();
     BenchmarkEnv<1, 2, 0> benv(handle, handle_cpu);
 
-    auto run = [&](size_t N, size_t IC, size_t IH, size_t IW,
-            size_t CHL_MUL, size_t FH, size_t FW, size_t PH, size_t PW) {
+    auto run = [&](size_t N, size_t IC, size_t IH, size_t IW, size_t CHL_MUL, size_t FH,
+                   size_t FW, size_t PH, size_t PW) {
         benv.alloc(N, IC, IH, IW, CHL_MUL, FH, FW, PH, PW);
         benv.fill_dst();
         benv.fill_flt();
@@ -482,8 +678,8 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_BWD_FILTER_BENCH_CHECK) {
     auto conv1 = handle->create_operator<ConvolutionBackwardFilter>();
     BenchmarkEnv<0, 2, 1> benv(handle, handle_cpu);
 
-    auto run = [&](size_t N, size_t IC, size_t IH, size_t IW,
-            size_t CHL_MUL, size_t FH, size_t FW, size_t PH, size_t PW) {
+    auto run = [&](size_t N, size_t IC, size_t IH, size_t IW, size_t CHL_MUL, size_t FH,
+                   size_t FW, size_t PH, size_t PW) {
         benv.alloc(N, IC, IH, IW, CHL_MUL, FH, FW, PH, PW);
         benv.fill_src();
         benv.fill_dst();
@@ -492,7 +688,7 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_BWD_FILTER_BENCH_CHECK) {
     };
 
     run(64, 60, 50, 50, 1, 3, 3, 1, 1);
-    if (check_need_full_bench()){
+    if (check_need_full_bench()) {
         run(64, 728, 18, 18, 2, 5, 5, 2, 2);
         run(64, 64, 150, 150, 2, 3, 3, 1, 1);
         run(1, 2048, 4, 4, 2, 3, 3, 1, 1);
@@ -512,9 +708,8 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_BENCH_ALL_ALGO_FWD) {
     checker.set_param(param);
     checker.set_proxy(proxy);
 
-    auto run = [&](size_t N, size_t C, size_t IH, size_t IW, size_t FH,
-                   size_t FW) {
-        checker.proxy()->target_algo_info.reset();
+    auto run = [&](size_t N, size_t C, size_t IH, size_t IW, size_t FH, size_t FW) {
+        checker.proxy()->target_execution_policy = {};
         checker.execs({{N, C, IH, IW}, {C, 1, 1, FH, FW}, {}});
     };
 
@@ -536,12 +731,10 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_BENCH_ALL_ALGO_BWD_DATA) {
     checker.set_param(param);
     checker.set_proxy(proxy);
 
-    auto run = [&](size_t N, size_t C, size_t IH, size_t IW, size_t FH,
-                   size_t FW) {
-        checker.proxy()->target_algo_info.reset();
-        checker.execs({{C, 1, 1, FH, FW},
-                       {N, C, IH - FH + 1, IW - FW + 1},
-                       {N, C, IH, IW}});
+    auto run = [&](size_t N, size_t C, size_t IH, size_t IW, size_t FH, size_t FW) {
+        checker.proxy()->target_execution_policy.algo.reset();
+        checker.execs(
+                {{C, 1, 1, FH, FW}, {N, C, IH - FH + 1, IW - FW + 1}, {N, C, IH, IW}});
     };
 
     run(128, 64, 90, 80, 3, 3);
@@ -562,12 +755,10 @@ TEST_F(CUDA, CHANWISE_CONVOLUTION_BENCH_ALL_ALGO_BWD_FILTER) {
     checker.set_param(param);
     checker.set_proxy(proxy);
 
-    auto run = [&](size_t N, size_t C, size_t IH, size_t IW, size_t FH,
-                   size_t FW) {
-        checker.proxy()->target_algo_info.reset();
-        checker.execs({{N, C, IH, IW},
-                       {N, C, IH - FH + 1, IW - FW + 1},
-                       {C, 1, 1, FH, FW}});
+    auto run = [&](size_t N, size_t C, size_t IH, size_t IW, size_t FH, size_t FW) {
+        checker.proxy()->target_execution_policy.algo.reset();
+        checker.execs(
+                {{N, C, IH, IW}, {N, C, IH - FH + 1, IW - FW + 1}, {C, 1, 1, FH, FW}});
     };
 
     run(128, 64, 90, 80, 3, 3);
@@ -588,8 +779,7 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_ALL_ALGO_FORWARD) {
     param.sparse = Convolution::Param::Sparse::GROUP;
     NormalRNG rng;
 
-    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f,
-                   size_t s) {
+    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f, size_t s) {
         param.pad_h = f / 2;
         param.pad_w = f / 2;
         param.stride_h = s;
@@ -601,11 +791,11 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_ALL_ALGO_FORWARD) {
         TensorLayout dst_layout;
         auto opr = handle_cuda()->create_operator<Convolution>();
         opr->param() = param;
-        opr->deduce_layout({src, dtype::Float32()}, {filter, dtype::Float32()},
-                           dst_layout);
-        float bandwith = static_cast<float>(src.total_nr_elems() +
-                                            filter.total_nr_elems() +
-                                            dst_layout.total_nr_elems()) /
+        opr->deduce_layout(
+                {src, dtype::Float32()}, {filter, dtype::Float32()}, dst_layout);
+        float bandwith = static_cast<float>(
+                                 src.total_nr_elems() + filter.total_nr_elems() +
+                                 dst_layout.total_nr_elems()) /
                          (1024 * 1024 * 1024) * 1e3;
 
         bencher.set_param(param)
@@ -614,7 +804,7 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_ALL_ALGO_FORWARD) {
                 .set_dtype(2, dtype::Float32())
                 .set_rng(0, &rng)
                 .set_rng(1, &rng);
-        bencher.proxy()->target_algo_info.reset();
+        bencher.proxy()->target_execution_policy = {};
         auto time_in_ms_fp32 = bencher.execs({src, filter, {}}) / RUNS;
 
         bencher.set_param(param)
@@ -623,10 +813,10 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_ALL_ALGO_FORWARD) {
                 .set_dtype(2, dtype::Float16())
                 .set_rng(0, &rng)
                 .set_rng(1, &rng);
-        bencher.proxy()->target_algo_info.reset();
+        bencher.proxy()->target_execution_policy = {};
         auto time_in_ms_fp16 = bencher.execs({src, filter, {}}) / RUNS;
 
-        bencher.proxy()->target_algo_info.reset();
+        bencher.proxy()->target_execution_policy.algo.reset();
         param.compute_mode = param::Convolution::ComputeMode::FLOAT32;
         bencher.set_param(param);
         auto time_in_ms_pseudo_fp16 = bencher.execs({src, filter, {}}) / RUNS;
@@ -636,15 +826,12 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_ALL_ALGO_FORWARD) {
                "pseudo float16: %.2fms %.2fGB/s "
                "speedup: "
                "%0.2f (fp16/fp32) %.2f (fp16/pseudo fp16)\n",
-               s, src.to_string().c_str(), filter.to_string().c_str(),
-               time_in_ms_fp32, bandwith * 4 / time_in_ms_fp32, time_in_ms_fp16,
+               s, src.to_string().c_str(), filter.to_string().c_str(), time_in_ms_fp32,
+               bandwith * 4 / time_in_ms_fp32, time_in_ms_fp16,
                bandwith * 2 / time_in_ms_fp16, time_in_ms_pseudo_fp16,
-               bandwith * 2 / time_in_ms_pseudo_fp16,
-               time_in_ms_fp32 / time_in_ms_fp16,
+               bandwith * 2 / time_in_ms_pseudo_fp16, time_in_ms_fp32 / time_in_ms_fp16,
                time_in_ms_pseudo_fp16 / time_in_ms_fp16);
-
     };
-
 
     // clang-format off
     for (size_t s : {1, 2})
@@ -677,18 +864,20 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_FLOAT) {
     CUBenchmarker<ConvolutionForward> bencher(handle_cuda());
     size_t RUNS = 1;
     bencher.set_display(false).set_times(RUNS);
-    bencher.set_before_exec_callback(AlgoChecker<ConvolutionForward>(
-            ConvBiasForward::algo_name<ConvBiasForward::DirectParam>(
-                    "CHANNEL_WISE", {})
-                    .c_str()));
+    bencher.set_before_exec_callback(
+            AlgoChecker<ConvolutionForward>(ExecutionPolicyAlgoName{
+                    "DEFAULT",
+                    {{ConvBiasForward::algo_name<ConvBiasForward::DirectParam>(
+                              "CHANNEL_WISE", {})
+                              .c_str(),
+                      {}}}}));
 
     Convolution::Param param;
     param.format = ConvBias::Param::Format::NCHW;
     param.sparse = Convolution::Param::Sparse::GROUP;
     NormalRNG rng;
 
-    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f,
-                   size_t s) {
+    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f, size_t s) {
         param.pad_h = f / 2;
         param.pad_w = f / 2;
         param.stride_h = s;
@@ -700,11 +889,11 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_FLOAT) {
         TensorLayout dst_layout;
         auto opr = handle_cuda()->create_operator<Convolution>();
         opr->param() = param;
-        opr->deduce_layout({src, dtype::Float32()}, {filter, dtype::Float32()},
-                           dst_layout);
-        float bandwith = static_cast<float>(src.total_nr_elems() +
-                                            filter.total_nr_elems() +
-                                            dst_layout.total_nr_elems()) /
+        opr->deduce_layout(
+                {src, dtype::Float32()}, {filter, dtype::Float32()}, dst_layout);
+        float bandwith = static_cast<float>(
+                                 src.total_nr_elems() + filter.total_nr_elems() +
+                                 dst_layout.total_nr_elems()) /
                          (1024 * 1024 * 1024) * 1e3;
 
         bencher.set_param(param)
@@ -727,13 +916,10 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_FLOAT) {
                "float16: %.2fms %.2fGB/s "
                "speedup: "
                "%0.2f (fp16/fp32)\n",
-               s, src.to_string().c_str(), filter.to_string().c_str(),
-               time_in_ms_fp32, bandwith * 4 / time_in_ms_fp32, time_in_ms_fp16,
-               bandwith * 2 / time_in_ms_fp16,
-               time_in_ms_fp32 / time_in_ms_fp16);
-
+               s, src.to_string().c_str(), filter.to_string().c_str(), time_in_ms_fp32,
+               bandwith * 4 / time_in_ms_fp32, time_in_ms_fp16,
+               bandwith * 2 / time_in_ms_fp16, time_in_ms_fp32 / time_in_ms_fp16);
     };
-
 
     // clang-format off
     for (size_t s : {1})
@@ -744,7 +930,6 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_FLOAT) {
     for (size_t iw : {8, 16, 32, 128, 256})
         run(batch, c, ih, iw, f, s);
     // clang-format on
-
 }
 
 TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_FLOAT_SMALL) {
@@ -757,8 +942,7 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_FLOAT_SMALL) {
     param.sparse = Convolution::Param::Sparse::GROUP;
     NormalRNG rng;
 
-    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f,
-                   size_t s) {
+    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f, size_t s) {
         param.pad_h = f / 2;
         param.pad_w = f / 2;
         param.stride_h = s;
@@ -770,11 +954,11 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_FLOAT_SMALL) {
         TensorLayout dst_layout;
         auto opr = handle_cuda()->create_operator<Convolution>();
         opr->param() = param;
-        opr->deduce_layout({src, dtype::Float32()}, {filter, dtype::Float32()},
-                           dst_layout);
-        float bandwith = static_cast<float>(src.total_nr_elems() +
-                                            filter.total_nr_elems() +
-                                            dst_layout.total_nr_elems()) /
+        opr->deduce_layout(
+                {src, dtype::Float32()}, {filter, dtype::Float32()}, dst_layout);
+        float bandwith = static_cast<float>(
+                                 src.total_nr_elems() + filter.total_nr_elems() +
+                                 dst_layout.total_nr_elems()) /
                          (1024 * 1024 * 1024) * 1e3;
 
         bencher.set_param(param)
@@ -783,17 +967,23 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_FLOAT_SMALL) {
                 .set_dtype(2, dtype::Float32())
                 .set_rng(0, &rng)
                 .set_rng(1, &rng)
-                .set_before_exec_callback(AlgoChecker<ConvolutionForward>(
-                        ConvBiasForward::algo_name<
-                                ConvBiasForward::DirectParam>("CHANNEL_WISE",
-                                                              {})
-                                .c_str()));
+                .set_before_exec_callback(AlgoChecker<
+                                          ConvolutionForward>(ExecutionPolicyAlgoName{
+                        "DEFAULT",
+                        {{ConvBiasForward::algo_name<ConvBiasForward::DirectParam>(
+                                  "CHANNEL_WISE", {})
+                                  .c_str(),
+                          {}}}}));
         auto time_in_ms_fp32_normal = bencher.execs({src, filter, {}}) / RUNS;
 
-        bencher.set_before_exec_callback(AlgoChecker<ConvolutionForward>(
-                ConvBiasForward::algo_name<ConvBiasForward::DirectParam>(
-                        "CHANNEL_WISE", {})
-                        .c_str()));
+        bencher.set_before_exec_callback(
+                AlgoChecker<ConvolutionForward>(ExecutionPolicyAlgoName{
+                        "DEFAULT",
+                        {{ConvBiasForward::algo_name<ConvBiasForward::DirectParam>(
+                                  "CHANNEL_WISE", {})
+                                  .c_str(),
+                          {}}}}));
+
         auto time_in_ms_fp32_small = bencher.execs({src, filter, {}}) / RUNS;
 
         bencher.set_param(param)
@@ -816,7 +1006,6 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_FLOAT_SMALL) {
                time_in_ms_fp32_small / time_in_ms_fp16_small);
     };
 
-
     // clang-format off
     for (size_t s : {1})
     for (size_t f : {3, 5})
@@ -836,7 +1025,6 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_FLOAT_SMALL) {
     run(128, 384, 14, 14, 3, 1);
     run(128, 192, 28, 28, 3, 1);
     run(128, 576, 14, 14, 3, 1);
-
 }
 
 TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_CUDNN_DNN) {
@@ -849,8 +1037,7 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_CUDNN_DNN) {
     param.sparse = ConvBias::Param::Sparse::GROUP;
     NormalRNG rng;
 
-    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f,
-                   size_t s) {
+    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f, size_t s) {
         param.pad_h = f / 2;
         param.pad_w = f / 2;
         param.stride_h = s;
@@ -863,11 +1050,11 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_CUDNN_DNN) {
         TensorLayout dst_layout;
         auto opr = handle_cuda()->create_operator<ConvBias>();
         opr->param() = param;
-        opr->deduce_layout({src, dtype::Float32()}, {filter, dtype::Float32()},
-                           {bias, dtype::Float32()}, {}, dst_layout);
+        opr->deduce_layout(
+                {src, dtype::Float32()}, {filter, dtype::Float32()},
+                {bias, dtype::Float32()}, {}, dst_layout);
         float computation_mops =
-                static_cast<float>(dst_layout.total_nr_elems() * f * f * 2) *
-                1e-6;
+                static_cast<float>(dst_layout.total_nr_elems() * f * f * 2) * 1e-6;
 
         bencher.set_param(param)
                 .set_dtype(0, dtype::Float32())
@@ -887,8 +1074,7 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_CUDNN_DNN) {
                 .set_rng(1, &rng);
         bencher.set_before_exec_callback(AlgoChecker<ConvBiasForward>(
                 ".+CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM.+"));
-        auto time_in_ms_cudnn =
-                bencher.execs({src, filter, bias, {}, {}}) / RUNS;
+        auto time_in_ms_cudnn = bencher.execs({src, filter, bias, {}, {}}) / RUNS;
 
         printf("stride=%zu src=%s, filter=%s, dst=%s, dnn: %.2fms %.2fGB/s "
                "cudnn: %.2fms %.2fGB/s "
@@ -897,8 +1083,7 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_CUDNN_DNN) {
                s, src.to_string().c_str(), filter.to_string().c_str(),
                dst_layout.to_string().c_str(), time_in_ms_dnn,
                computation_mops / time_in_ms_dnn, time_in_ms_cudnn,
-               computation_mops / time_in_ms_cudnn,
-               time_in_ms_cudnn / time_in_ms_dnn);
+               computation_mops / time_in_ms_cudnn, time_in_ms_cudnn / time_in_ms_dnn);
     };
 
     // clang-format off
@@ -931,8 +1116,7 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BACKWARD_DATA_FLOAT_SMALL) {
     param.sparse = Convolution::Param::Sparse::GROUP;
     NormalRNG rng;
 
-    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f,
-                   size_t s) {
+    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f, size_t s) {
         param.pad_h = f / 2;
         param.pad_w = f / 2;
         param.stride_h = s;
@@ -940,9 +1124,9 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BACKWARD_DATA_FLOAT_SMALL) {
         param.compute_mode = param::Convolution::ComputeMode::DEFAULT;
 
         TensorShape src = {batch, c, ih, iw}, filter = {c, 1, 1, f, f};
-        float bandwith = static_cast<float>(src.total_nr_elems() +
-                                            filter.total_nr_elems() +
-                                            src.total_nr_elems()) /
+        float bandwith = static_cast<float>(
+                                 src.total_nr_elems() + filter.total_nr_elems() +
+                                 src.total_nr_elems()) /
                          (1024 * 1024 * 1024) * 1e3;
 
         bencher.set_param(param)
@@ -952,11 +1136,11 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BACKWARD_DATA_FLOAT_SMALL) {
                 .set_rng(0, &rng)
                 .set_rng(1, &rng)
                 .set_before_exec_callback(
-                   AlgoChecker<ConvolutionBackwardData>("CHANNEL_WISE"));
+                        AlgoChecker<ConvolutionBackwardData>("CHANNEL_WISE"));
         auto time_in_ms_fp32_normal = bencher.execs({filter, src, src}) / RUNS;
 
         bencher.set_before_exec_callback(
-                   AlgoChecker<ConvolutionBackwardData>("CHANNEL_WISE_SMALL"));
+                AlgoChecker<ConvolutionBackwardData>("CHANNEL_WISE_SMALL"));
         auto time_in_ms_fp32_small = bencher.execs({filter, src, src}) / RUNS;
 
         bencher.set_param(param)
@@ -979,7 +1163,6 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BACKWARD_DATA_FLOAT_SMALL) {
                time_in_ms_fp32_small / time_in_ms_fp16_small);
     };
 
-
     // clang-format off
     for (size_t s : {1})
     for (size_t f : {3, 5})
@@ -999,7 +1182,6 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BACKWARD_DATA_FLOAT_SMALL) {
     run(128, 384, 14, 14, 3, 1);
     run(128, 192, 28, 28, 3, 1);
     run(128, 576, 14, 14, 3, 1);
-
 }
 
 TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BWD_DATA) {
@@ -1014,8 +1196,8 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BWD_DATA) {
     param.sparse = Convolution::Param::Sparse::GROUP;
     NormalRNG rng;
 
-    auto run = [&](size_t batch, size_t ocpg, size_t group, size_t ih,
-                   size_t iw, size_t f, size_t p, size_t s) {
+    auto run = [&](size_t batch, size_t ocpg, size_t group, size_t ih, size_t iw,
+                   size_t f, size_t p, size_t s) {
         param.pad_h = p;
         param.pad_w = p;
         param.stride_h = s;
@@ -1030,9 +1212,9 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BWD_DATA) {
 
         auto opr = handle_cuda()->create_operator<Convolution>();
         opr->param() = param;
-        float bandwith = static_cast<float>(flt.total_nr_elems() +
-                                            dst_grad.total_nr_elems() +
-                                            src_grad.total_nr_elems()) /
+        float bandwith = static_cast<float>(
+                                 flt.total_nr_elems() + dst_grad.total_nr_elems() +
+                                 src_grad.total_nr_elems()) /
                          (1024 * 1024 * 1024) * 1e3;
 
         bencher.set_param(param)
@@ -1058,8 +1240,7 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BWD_DATA) {
                "%0.2f (fp16/fp32)\n",
                s, src_grad.to_string().c_str(), flt.to_string().c_str(),
                time_in_ms_fp32, bandwith * 4 / time_in_ms_fp32, time_in_ms_fp16,
-               bandwith * 2 / time_in_ms_fp16,
-               time_in_ms_fp32 / time_in_ms_fp16);
+               bandwith * 2 / time_in_ms_fp16, time_in_ms_fp32 / time_in_ms_fp16);
     };
 
     // clang-format off
@@ -1087,8 +1268,8 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BWD_FILTER) {
     param.sparse = Convolution::Param::Sparse::GROUP;
     NormalRNG rng;
 
-    auto run = [&](size_t batch, size_t ocpg, size_t group, size_t i,
-                   size_t f, size_t p, size_t s) {
+    auto run = [&](size_t batch, size_t ocpg, size_t group, size_t i, size_t f,
+                   size_t p, size_t s) {
         param.pad_h = p;
         param.pad_w = p;
         param.stride_h = s;
@@ -1096,15 +1277,14 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BWD_FILTER) {
         size_t d = infer_conv_shape(i, f, s, p, true);
         param.compute_mode = param::Convolution::ComputeMode::DEFAULT;
 
-        TensorShape src = {batch, group, i, i},
-                    dst_grad = {batch, group * ocpg, d, d},
+        TensorShape src = {batch, group, i, i}, dst_grad = {batch, group * ocpg, d, d},
                     flt_grad = {group, ocpg, 1, f, f};
 
         auto opr = handle_cuda()->create_operator<Convolution>();
         opr->param() = param;
-        float bandwith = static_cast<float>(flt_grad.total_nr_elems() +
-                                            dst_grad.total_nr_elems() +
-                                            src.total_nr_elems()) /
+        float bandwith = static_cast<float>(
+                                 flt_grad.total_nr_elems() + dst_grad.total_nr_elems() +
+                                 src.total_nr_elems()) /
                          (1024 * 1024 * 1024) * 1e3;
         bencher.set_param(param)
                 .set_dtype(0, dtype::Float32())
@@ -1129,8 +1309,7 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BWD_FILTER) {
                "%.2f (fp16/fp32)\n",
                s, src.to_string().c_str(), flt_grad.to_string().c_str(),
                time_in_ms_fp32, bandwith * 4 / time_in_ms_fp32, time_in_ms_fp16,
-               bandwith * 2 / time_in_ms_fp16,
-               time_in_ms_fp32 / time_in_ms_fp16);
+               bandwith * 2 / time_in_ms_fp16, time_in_ms_fp32 / time_in_ms_fp16);
     };
 
     // clang-format off
@@ -1145,6 +1324,228 @@ TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BWD_FILTER) {
     // clang-format on
 }
 
+TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_FORWARD_LARGE_KERNEL) {
+    CUBenchmarker<ConvolutionForward> bencher(handle_cuda());
+    size_t RUNS = 100;
+    bencher.set_display(false).set_times(RUNS);
+    std::unique_ptr<OprProxy<ConvolutionForward>> proxy{
+            new OprProxy<ConvolutionForward>{true}};
+    bencher.set_proxy(proxy);
+
+    Convolution::Param param;
+    param.format = ConvBias::Param::Format::NCHW;
+    param.sparse = Convolution::Param::Sparse::GROUP;
+    NormalRNG rng;
+
+    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f, size_t s) {
+        param.pad_h = f / 2;
+        param.pad_w = f / 2;
+        param.stride_h = s;
+        param.stride_w = s;
+        param.compute_mode = param::Convolution::ComputeMode::DEFAULT;
+
+        TensorShape src = {batch, c, ih, iw}, filter = {c, 1, 1, f, f};
+
+        TensorLayout dst_layout;
+        auto opr = handle_cuda()->create_operator<Convolution>();
+        opr->param() = param;
+        opr->deduce_layout(
+                {src, dtype::Float32()}, {filter, dtype::Float32()}, dst_layout);
+        float bandwith = static_cast<float>(
+                                 src.total_nr_elems() + filter.total_nr_elems() +
+                                 dst_layout.total_nr_elems()) /
+                         (1024 * 1024 * 1024) * 1e3;
+
+        bencher.set_param(param)
+                .set_dtype(0, dtype::Float32())
+                .set_dtype(1, dtype::Float32())
+                .set_dtype(2, dtype::Float32())
+                .set_rng(0, &rng)
+                .set_rng(1, &rng);
+        bencher.proxy()->target_execution_policy = {};
+        auto time_in_ms_fp32 = bencher.execs({src, filter, {}}) / RUNS;
+
+        bencher.set_param(param)
+                .set_dtype(0, dtype::Float16())
+                .set_dtype(1, dtype::Float16())
+                .set_dtype(2, dtype::Float16())
+                .set_rng(0, &rng)
+                .set_rng(1, &rng);
+        bencher.proxy()->target_execution_policy = {};
+        auto time_in_ms_fp16 = bencher.execs({src, filter, {}}) / RUNS;
+
+        bencher.proxy()->target_execution_policy.algo.reset();
+        param.compute_mode = param::Convolution::ComputeMode::FLOAT32;
+        bencher.set_param(param);
+        auto time_in_ms_pseudo_fp16 = bencher.execs({src, filter, {}}) / RUNS;
+
+        printf("stride=%zu src=%s, filter=%s, float32: %.2fms %.2fGB/s "
+               "float16: %.2fms %.2fGB/s "
+               "pseudo float16: %.2fms %.2fGB/s "
+               "speedup: "
+               "%0.2f (fp16/fp32) %.2f (fp16/pseudo fp16)\n",
+               s, src.to_string().c_str(), filter.to_string().c_str(), time_in_ms_fp32,
+               bandwith * 4 / time_in_ms_fp32, time_in_ms_fp16,
+               bandwith * 2 / time_in_ms_fp16, time_in_ms_pseudo_fp16,
+               bandwith * 2 / time_in_ms_pseudo_fp16, time_in_ms_fp32 / time_in_ms_fp16,
+               time_in_ms_pseudo_fp16 / time_in_ms_fp16);
+    };
+
+    // clang-format off
+    for (size_t b : {32, 64})
+    for (size_t f : {3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31}) {
+        run(b, 384, 32, 32, f, 1);
+        run(b, 384, 64, 64, f, 1);
+    }
+    // clang-format on
+}
+
+TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BACKWARD_DATA_LARGE_KERNEL) {
+    CUBenchmarker<ConvolutionBackwardData> bencher(handle_cuda());
+    size_t RUNS = 100;
+    bencher.set_display(false).set_times(RUNS);
+    std::unique_ptr<OprProxy<ConvolutionBackwardData>> proxy{
+            new OprProxy<ConvolutionBackwardData>{true}};
+    bencher.set_proxy(proxy);
+
+    Convolution::Param param;
+    param.format = ConvBias::Param::Format::NCHW;
+    param.sparse = Convolution::Param::Sparse::GROUP;
+    NormalRNG rng;
+
+    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f, size_t s) {
+        param.pad_h = f / 2;
+        param.pad_w = f / 2;
+        param.stride_h = s;
+        param.stride_w = s;
+        param.compute_mode = param::Convolution::ComputeMode::DEFAULT;
+
+        TensorShape src = {batch, c, ih, iw}, filter = {c, 1, 1, f, f};
+
+        TensorLayout dst_layout;
+        auto opr = handle_cuda()->create_operator<Convolution>();
+        opr->param() = param;
+        opr->deduce_layout(
+                {src, dtype::Float32()}, {filter, dtype::Float32()}, dst_layout);
+        float bandwith = static_cast<float>(
+                                 src.total_nr_elems() + filter.total_nr_elems() +
+                                 dst_layout.total_nr_elems()) /
+                         (1024 * 1024 * 1024) * 1e3;
+
+        bencher.set_param(param)
+                .set_dtype(0, dtype::Float32())
+                .set_dtype(1, dtype::Float32())
+                .set_dtype(2, dtype::Float32())
+                .set_rng(0, &rng)
+                .set_rng(1, &rng);
+        bencher.proxy()->target_execution_policy = {};
+        auto time_in_ms_fp32 = bencher.execs({filter, src, src}) / RUNS;
+
+        bencher.set_param(param)
+                .set_dtype(0, dtype::Float16())
+                .set_dtype(1, dtype::Float16())
+                .set_dtype(2, dtype::Float16())
+                .set_rng(0, &rng)
+                .set_rng(1, &rng);
+        bencher.proxy()->target_execution_policy = {};
+        auto time_in_ms_fp16 = bencher.execs({filter, src, src}) / RUNS;
+
+        bencher.proxy()->target_execution_policy.algo.reset();
+        param.compute_mode = param::Convolution::ComputeMode::FLOAT32;
+        bencher.set_param(param);
+        auto time_in_ms_pseudo_fp16 = bencher.execs({filter, src, src}) / RUNS;
+
+        printf("stride=%zu src=%s, filter=%s, float32: %.2fms %.2fGB/s "
+               "float16: %.2fms %.2fGB/s "
+               "pseudo float16: %.2fms %.2fGB/s "
+               "speedup: "
+               "%0.2f (fp16/fp32) %.2f (fp16/pseudo fp16)\n",
+               s, src.to_string().c_str(), filter.to_string().c_str(), time_in_ms_fp32,
+               bandwith * 4 / time_in_ms_fp32, time_in_ms_fp16,
+               bandwith * 2 / time_in_ms_fp16, time_in_ms_pseudo_fp16,
+               bandwith * 2 / time_in_ms_pseudo_fp16, time_in_ms_fp32 / time_in_ms_fp16,
+               time_in_ms_pseudo_fp16 / time_in_ms_fp16);
+    };
+
+    // clang-format off
+    for (size_t b : {32, 64})
+    for (size_t f : {3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31}) {
+        run(b, 384, 32, 32, f, 1);
+        run(b, 384, 64, 64, f, 1);
+    }
+    // clang-format on
+}
+
+TEST_F(CUDA, BENCHMARK_CHANWISE_CONV_BACKWARD_FILTER_LARGE_KERNEL) {
+    CUBenchmarker<ConvolutionBackwardFilter> bencher(handle_cuda());
+    size_t RUNS = 100;
+    bencher.set_display(false).set_times(RUNS);
+    std::unique_ptr<OprProxy<ConvolutionBackwardFilter>> proxy{
+            new OprProxy<ConvolutionBackwardFilter>{true}};
+    bencher.set_proxy(proxy);
+
+    Convolution::Param param;
+    param.format = ConvBias::Param::Format::NCHW;
+    param.sparse = Convolution::Param::Sparse::GROUP;
+    NormalRNG rng;
+
+    auto run = [&](size_t batch, size_t c, size_t ih, size_t iw, size_t f, size_t s) {
+        param.pad_h = f / 2;
+        param.pad_w = f / 2;
+        param.stride_h = s;
+        param.stride_w = s;
+        param.compute_mode = param::Convolution::ComputeMode::DEFAULT;
+
+        TensorShape src = {batch, c, ih, iw}, filter = {c, 1, 1, f, f};
+
+        TensorLayout dst_layout;
+        auto opr = handle_cuda()->create_operator<Convolution>();
+        opr->param() = param;
+        opr->deduce_layout(
+                {src, dtype::Float32()}, {filter, dtype::Float32()}, dst_layout);
+        float bandwith = static_cast<float>(
+                                 src.total_nr_elems() + filter.total_nr_elems() +
+                                 dst_layout.total_nr_elems()) /
+                         (1024 * 1024 * 1024) * 1e3;
+
+        bencher.set_param(param)
+                .set_dtype(0, dtype::Float32())
+                .set_dtype(1, dtype::Float32())
+                .set_dtype(2, dtype::Float32())
+                .set_rng(0, &rng)
+                .set_rng(1, &rng);
+        bencher.proxy()->target_execution_policy = {};
+        auto time_in_ms_fp32 = bencher.execs({src, src, filter}) / RUNS;
+
+        bencher.set_param(param)
+                .set_dtype(0, dtype::Float16())
+                .set_dtype(1, dtype::Float16())
+                .set_dtype(2, dtype::Float16())
+                .set_rng(0, &rng)
+                .set_rng(1, &rng);
+        bencher.proxy()->target_execution_policy = {};
+        param.compute_mode = param::Convolution::ComputeMode::FLOAT32;
+        bencher.set_param(param);
+        auto time_in_ms_pseudo_fp16 = bencher.execs({src, src, filter}) / RUNS;
+
+        printf("stride=%zu src=%s, filter=%s, float32: %.2fms %.2fGB/s "
+               "pseudo float16: %.2fms %.2fGB/s "
+               "speedup: "
+               "%0.2f (fp16/fp32) \n",
+               s, src.to_string().c_str(), filter.to_string().c_str(), time_in_ms_fp32,
+               bandwith * 4 / time_in_ms_fp32, time_in_ms_pseudo_fp16,
+               bandwith * 2 / time_in_ms_pseudo_fp16,
+               time_in_ms_fp32 / time_in_ms_pseudo_fp16);
+    };
+
+    // clang-format off
+    for (size_t b : {32, 64})
+    for (size_t f : {3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31}) {
+        run(b, 384, 32, 32, f, 1);
+        run(b, 384, 64, 64, f, 1);
+    }
+    // clang-format on
+}
 #endif
 
 // vim: syntax=cpp.doxygen

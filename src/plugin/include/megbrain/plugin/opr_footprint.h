@@ -1,16 +1,7 @@
-/**
- * \file src/plugin/include/megbrain/plugin/opr_footprint.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
 #pragma once
 
 #include "megbrain/graph.h"
+#include "megbrain/serialization/opr_load_dump.h"
 
 namespace mgb {
 
@@ -24,7 +15,10 @@ class OprFootprint {
 #if MGB_ENABLE_JSON
     using ParamJsonTrait =
             thin_function<std::shared_ptr<json::Value>(cg::OperatorNodeBase*)>;
+    using SerialParamJsonTrait = thin_function<std::shared_ptr<json::Value>(
+            serialization::OprLoadContextRawPOD&)>;
     ThinHashMap<Typeinfo*, ParamJsonTrait> m_type2param_json;
+    ThinHashMap<Typeinfo*, SerialParamJsonTrait> m_type2serialparam_json;
 #endif
 
     //! add single footprint calculator for associated opr type.
@@ -36,7 +30,7 @@ class OprFootprint {
     void add_single_param_json();
 
     //! be invoked when OprFootprint initilizing.
-    void init_all_footprints();
+    MGE_WIN_DECLSPEC_FUC void init_all_footprints();
 
 public:
     struct Result {
@@ -74,15 +68,18 @@ public:
     OprFootprint() { init_all_footprints(); }
 
     //! return footprint rst for associated opr.
-    Result calc_footprint(cg::OperatorNodeBase* opr);
+    MGE_WIN_DECLSPEC_FUC Result calc_footprint(cg::OperatorNodeBase* opr);
     //! get computation of a given operator
-    uint64_t get_computation(cg::OperatorNodeBase* opr);
+    MGE_WIN_DECLSPEC_FUC uint64_t get_computation(cg::OperatorNodeBase* opr);
 #if MGB_ENABLE_JSON
-    std::shared_ptr<json::Value> get_param_json(cg::OperatorNodeBase* opr);
+    MGE_WIN_DECLSPEC_FUC std::shared_ptr<json::Value> get_param_json(
+            cg::OperatorNodeBase* opr);
+    MGE_WIN_DECLSPEC_FUC std::shared_ptr<json::Value> get_serial_param_json(
+            Typeinfo* type, serialization::OprLoadContextRawPOD& context);
     //! get opr foot print and graph exec info
     //! the function will recompile graph, AsyncExecutable compiled before will
     //! be invalid
-    static std::shared_ptr<json::Value> get_opr_fp_graph_exec(
+    MGE_WIN_DECLSPEC_FUC static std::shared_ptr<json::Value> get_opr_fp_graph_exec(
             cg::ComputingGraph& graph, const SymbolVarArray& outputs);
 #endif
 };

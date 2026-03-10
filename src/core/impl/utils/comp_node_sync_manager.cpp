@@ -1,14 +1,3 @@
-/**
- * \file src/core/impl/utils/comp_node_sync_manager.cpp
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #include "megbrain/utils/comp_node_sync_manager.h"
 #include "megbrain/utils/thread.h"
 
@@ -54,10 +43,11 @@ void CompNodeSyncManager::do_set_ready() {
     mgb_assert(m_comp_node.valid());
     m_have_been_waited = true;
     auto nr_ready = m_nr_ready.load();
-    mgb_assert(!nr_ready,
-               "new ready event while"
-               " previous ones have not been fetched (%zu prev)",
-               nr_ready);
+    mgb_assert(
+            !nr_ready,
+            "new ready event while"
+            " previous ones have not been fetched (%zu prev)",
+            nr_ready);
     if (m_ready_event)
         m_ready_event->record();
 
@@ -69,11 +59,12 @@ void CompNodeSyncManager::do_set_ready() {
 }
 
 CompNodeSyncManager& CompNodeSyncManager::busy_wait_set_ready() {
-    mgb_assert(m_nr_waiter,
-               "before actually waiting on a tensor,"
-               " you must call set_has_waiter first");
+    mgb_assert(
+            m_nr_waiter,
+            "before actually waiting on a tensor,"
+            " you must call set_has_waiter first");
 
-    size_t spin = 0, max_spin = SCQueueSynchronizer::max_spin();
+    size_t spin = 0, max_spin = SCQueueSynchronizer::get_default_max_spin();
     while (!m_nr_ready.load()) {
         ++spin;
         if (spin >= max_spin) {
@@ -113,4 +104,3 @@ CompNodeSyncManager& CompNodeSyncManager::busy_wait_set_ready() {
 #endif  // MGB_HAVE_THREAD
 
 // vim: syntax=cpp.doxygen foldmethod=marker foldmarker=f{{{,f}}}
-

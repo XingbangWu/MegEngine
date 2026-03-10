@@ -1,14 +1,3 @@
-/**
- * \file src/core/impl/graph/eager_eval.h
- * MegEngine is Licensed under the Apache License, Version 2.0 (the "License")
- *
- * Copyright (c) 2014-2020 Megvii Inc. All rights reserved.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT ARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- */
-
 #pragma once
 
 #include "./impl_common.h"
@@ -25,8 +14,7 @@ public:
 
     void on_opr_insert(OperatorNodeBase*) {}
 
-    const ComputingGraph::VarReceiverInfo* var_receiver_info(
-            const VarNode*) const {
+    const ComputingGraph::VarReceiverInfo* var_receiver_info(const VarNode*) const {
         return nullptr;
     }
 
@@ -60,7 +48,7 @@ class EagerEvalManager {
             if (!(flag & Flag::MUTABLE)) {
                 need_reeval = false;
             }
-            for (auto &&i : readers) {
+            for (auto&& i : readers) {
                 i->need_reeval = true;
             }
         }
@@ -83,7 +71,7 @@ class EagerEvalManager {
     size_t m_run_id = 1;
 
     void do_on_opr_insert(OperatorNodeBase* opr);
-    void update_static_infer_result(OperatorNodeBase *opr);
+    void update_static_infer_result(OperatorNodeBase* opr);
     void prepare_for_exec(OperatorNodeBase* opr);
     void alloc_output_mem(OperatorNodeBase* opr);
     void init_waiting_spec(OperatorNodeBase* opr);
@@ -113,8 +101,7 @@ public:
      * VarReceiverInfo should be faked so that all vars would be considered as
      * being used
      */
-    const ComputingGraph::VarReceiverInfo* var_receiver_info(
-            const VarNode* var) const;
+    const ComputingGraph::VarReceiverInfo* var_receiver_info(const VarNode* var) const;
 
     /*!
      * \brief get curresponding ExecEnv if enabled; return nullptr if not
@@ -148,7 +135,7 @@ public:
      * \brief flush all oprs recorded and execute the oprs which were depended on
      * dest_vars. Note it would also turn off record mode after calling this method.
      */
-    void flush_record_oprs(const VarNodeArray &dest_vars);
+    void flush_record_oprs(const VarNodeArray& dest_vars);
 
     /*!
      * \brief get the reader numbers of a var. return REFCNT_INF if var is not an
